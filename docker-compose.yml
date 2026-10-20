@@ -1,0 +1,73 @@
+name: ripple
+
+services:
+  # 마이그레이션을 적용하고 끝난다(worker 이미지 사용). worker·web은 이것이 성공한 뒤 뜬다.
+  migrate:
+    build:
+      context: .
+      target: worker
+    command: ["node", "--enable-source-maps", "dist/worker/migrate.mjs"]
+    environment:
+      DATABASE_PATH: /data/ripple.db
+      TZ: Asia/Seoul
+    volumes:
+      - ripple-data:/data
+
+  # DB에 쓰는 유일한 프로세스. 내부 API는 compose 네트워크 안에서만 열린다(ports 없음).
+  worker:
+    build:
+      context: .
+      target: worker
+    environment:
+      DATABASE_PATH: /data/ripple.db
+      WORKER_HOST: 0.0.0.0
+      WORKER_PORT: "4000"
+      TZ: Asia/Seoul
+      # .env에서 읽는다. 외부 API 키는 worker에만 넘긴다(AI 호출·수집은 worker가 함).
+      WORKER_API_TOKEN: ${WORKER_API_TOKEN:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
+    volumes:
+      - ripple-data:/data
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4000/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+      start_interval: 1s
+    restart: unless-stopped
+
+  # 화면. DB는 읽기 전용으로 열고, 쓰기는 worker 내부 API에 요청한다(SPEC D-36).
+  web:
+    build:
+      context: .
+      target: web
+    environment:
+      DATABASE_PATH: /data/ripple.db
+      WORKER_URL: http://worker:4000
+      TZ: Asia/Seoul
+      # 로그인 비밀번호·세션 서명 키는 .env에서 읽어 web에만 넘긴다. 없거나 짧으면 web이 시작하지 않는다.
+      APP_PASSWORD: ${APP_PASSWORD:-}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      WORKER_API_TOKEN: ${WORKER_API_TOKEN:-}
+    volumes:
+      - ripple-data:/data
+    ports:
+      # 터널(9단계) 전까지는 이 컴퓨터에서만 접속한다.
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      worker:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  # SQLite 파일. WAL이 동작하도록 두 컨테이너가 같은 named volume을 쓴다(호스트 폴더 바인드 금지).
+  ripple-data:

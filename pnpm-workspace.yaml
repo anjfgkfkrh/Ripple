@@ -1,0 +1,5 @@
+allowBuilds:
+  sharp: false
+  unrs-resolver: false
+  # 플랫폼 바이너리는 optionalDependencies(@esbuild/*)로 설치되므로 postinstall 불필요
+  esbuild: false

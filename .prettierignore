@@ -1,0 +1,11 @@
+# 문서는 손으로 관리한다(표 정렬 등이 바뀌지 않게).
+*.md
+pnpm-lock.yaml
+# drizzle-kit이 만드는 마이그레이션 SQL·스냅샷
+drizzle/
+.next/
+dist/
+data/
+.e2e/
+test-results/
+playwright-report/

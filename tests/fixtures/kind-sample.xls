@@ -1,0 +1,203 @@
+
+
+
+
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=euc-kr" />
+<title>상장법인목록(EXCEL)</title>
+</head>
+<body>
+	<table cellpadding="0" cellspacing="1" class="bbs_tb" border="1">
+	
+	<col width="20%" />
+	<col width="10%" />
+	<col width="15%" />
+	<col width="20%" />
+	<col width="10%" />
+	<col width="5%" />
+	<col width="8%" />
+	<col width="7%" />
+	<col width="5%" />
+	<tr>
+		<th bgcolor="#66FF99" >회사명</th>
+		<th bgcolor="#66FF99" >시장구분</th>
+		<th bgcolor="#66FF99" >종목코드</th>
+		<th bgcolor="#66FF99" >업종</th>
+		<th bgcolor="#66FF99" >주요제품</th>
+		<th bgcolor="#66FF99" >상장일</th>
+		<th bgcolor="#66FF99" >결산월</th>
+		<th bgcolor="#66FF99" >대표자명</th>
+		<th bgcolor="#66FF99" >홈페이지</th>
+		<th bgcolor="#66FF99" >지역</th>
+	</tr>
+<tr>
+		<td>엘리스</td>
+		<td>
+			
+				
+						
+					코스닥
+					
+					
+						
+			
+		</td>
+		<td style="mso-number-format:'@';text-align:center;">0158S0</td>
+		<td>소프트웨어 개발 및 공급업</td>
+		<td>AX, AI클라우드</td>
+		<td style="text-align:center;">2026-10-20</td>
+		<td style="text-align:center;">12월</td>
+		<td>김재원</td>
+		<td>
+			http://elice.io/
+		</td>
+		<td >서울특별시</td>
+	</tr>
+<tr>
+		<td>멜콘</td>
+		<td>
+			
+				
+						
+					코스닥
+					
+					
+						
+			
+		</td>
+		<td style="mso-number-format:'@';text-align:center;">179880</td>
+		<td>특수 목적용 기계 제조업</td>
+		<td>THC, XPS</td>
+		<td style="text-align:center;">2026-10-15</td>
+		<td style="text-align:center;">12월</td>
+		<td>김성일</td>
+		<td>
+			http://www.melcon.co.kr
+		</td>
+		<td >경기도</td>
+	</tr>
+<tr>
+		<td>카카오</td>
+		<td>
+			
+				
+					유가
+				
+					
+					
+						
+			
+		</td>
+		<td style="mso-number-format:'@';text-align:center;">035720</td>
+		<td>자료처리, 호스팅, 포털 및 기타 인터넷 정보매개 서비스업</td>
+		<td>인터넷 서비스(인터넷 광고)</td>
+		<td style="text-align:center;">2017-07-10</td>
+		<td style="text-align:center;">12월</td>
+		<td>정신아</td>
+		<td>
+			http://www.kakaocorp.com
+		</td>
+		<td >제주특별자치도</td>
+	</tr>
+<tr>
+		<td>SK하이닉스</td>
+		<td>
+			
+				
+					유가
+				
+					
+					
+						
+			
+		</td>
+		<td style="mso-number-format:'@';text-align:center;">000660</td>
+		<td>반도체 제조업</td>
+		<td>반도체,컴퓨터,통신기기 제조,도매</td>
+		<td style="text-align:center;">1996-12-26</td>
+		<td style="text-align:center;">12월</td>
+		<td>곽노정</td>
+		<td>
+			http://www.skhynix.com
+		</td>
+		<td >경기도</td>
+	</tr>
+<tr>
+		<td>현대건설</td>
+		<td>
+			
+				
+					유가
+				
+					
+					
+						
+			
+		</td>
+		<td style="mso-number-format:'@';text-align:center;">000720</td>
+		<td>토목 건설업</td>
+		<td>공사수입,주택분양,건설산업부문 설계,감리 등 엔지니어링서비스</td>
+		<td style="text-align:center;">1984-12-22</td>
+		<td style="text-align:center;">12월</td>
+		<td>이한우</td>
+		<td>
+			http://www.hdec.kr
+		</td>
+		<td >서울특별시</td>
+	</tr>
+<tr>
+		<td>삼성전자</td>
+		<td>
+			
+				
+					유가
+				
+					
+					
+						
+			
+		</td>
+		<td style="mso-number-format:'@';text-align:center;">005930</td>
+		<td>통신 및 방송 장비 제조업</td>
+		<td>통신 및 방송 장비 제조(무선) 제품, 반도체 제조(메모리) 제품,  전자부품 제조(디스플레이) 제품, 영상 및 음향기기 제조(영상기기) 제품 등</td>
+		<td style="text-align:center;">1975-06-11</td>
+		<td style="text-align:center;">12월</td>
+		<td>전영현, 노태문</td>
+		<td>
+			http://www.samsung.com/sec
+		</td>
+		<td >경기도</td>
+	</tr>
+<tr>
+		<td>나노솔루션</td>
+		<td>
+			
+				
+					
+						
+					코넥스
+					
+						
+			
+		</td>
+		<td style="mso-number-format:'@';text-align:center;">238540</td>
+		<td>기타 화학제품 제조업</td>
+		<td>SWCNT, SAHD30</td>
+		<td style="text-align:center;">2026-07-28</td>
+		<td style="text-align:center;">12월</td>
+		<td>김형열</td>
+		<td>
+			
+		</td>
+		<td >전북특별자치도</td>
+	</tr>
+			
+		
+		
+	
+	</table>
+</body>
+</html>
