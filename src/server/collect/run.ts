@@ -1,4 +1,5 @@
 import { asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import type { Decider } from "@/server/ai/decider/types";
 import type { Db } from "@/server/db/client";
 import {
   articleMatches,
@@ -6,10 +7,12 @@ import {
   collectionRuns,
   keywords,
   stocks,
+  type EvaluationSummary,
   type RunStatus,
   type RunTrigger,
   type SourceResult,
 } from "@/server/db/schema";
+import { evaluatePending } from "@/server/evaluate/run";
 import { log, logError } from "@/server/log";
 import type { RssFeed } from "./feeds";
 import type { FinnhubClient } from "./finnhub";
@@ -57,6 +60,8 @@ export type CollectDeps = {
   feeds: RssFeed[];
   /** 키가 없으면 null: 미국 뉴스는 건너뛴다. */
   finnhub: FinnhubClient | null;
+  /** 키가 없으면 null: 수집만 하고 평가는 미룬다(5단계). */
+  decider: Decider | null;
   now?: () => Date;
 };
 
@@ -132,6 +137,24 @@ async function collect(
     failed === 0 ? "success" : failed === results.length ? "failed" : "partial";
   const articlesNew = results.reduce((sum, r) => sum + r.saved, 0);
   const matchesNew = results.reduce((sum, r) => sum + r.matched, 0);
+  log(
+    `수집 회차 ${runId}: ${status}, 소스 ${results.length}개(실패 ${failed}), 새 기사 ${articlesNew}건, 새 연결 ${matchesNew}건`,
+  );
+
+  // 수집 직후 새 연결(과 지난번에 못 한 것)을 평가한다(5단계 결정). 평가가 실패해도 수집 결과는 남긴다.
+  let evaluation: EvaluationSummary | null = null;
+  try {
+    evaluation = await evaluatePending({
+      db: deps.db,
+      decider: deps.decider,
+      now,
+    });
+    log(
+      `평가 회차 ${runId}: ${evaluation.evaluated}건(기준 이상 ${evaluation.relevant}, 실패 ${evaluation.failed}, 남김 ${evaluation.remaining}), $${evaluation.costUsd.toFixed(5)}${evaluation.note ? `, ${evaluation.note}` : ""}`,
+    );
+  } catch (error) {
+    logError(`평가 회차 ${runId} 실패`, error);
+  }
   finishRun(
     deps.db,
     runId,
@@ -141,9 +164,7 @@ async function collect(
     articlesNew,
     matchesNew,
     null,
-  );
-  log(
-    `수집 회차 ${runId}: ${status}, 소스 ${results.length}개(실패 ${failed}), 새 기사 ${articlesNew}건, 새 연결 ${matchesNew}건`,
+    evaluation,
   );
   return { runId, status, articlesNew, matchesNew };
 }
@@ -282,6 +303,7 @@ function mergeMatches(
     byStock.set(stockId, {
       stockId,
       keywordPath: displayNames.get(stockId) ?? "",
+      keywordReason: null,
       matchKind: "direct",
       level: 0,
     });
@@ -334,6 +356,7 @@ function saveItems(
             articleId,
             stockId: m.stockId,
             keywordPath: m.keywordPath,
+            keywordReason: m.keywordReason,
             matchKind: m.matchKind,
             level: m.level,
             createdAt: at,
@@ -380,6 +403,7 @@ export function loadMatchStocks(db: Db): MatchStock[] {
         textKo: k.textKo,
         textEn: k.textEn,
         path: k.path,
+        reason: k.reason,
       })),
   }));
 }
@@ -412,9 +436,18 @@ function finishRun(
   articlesNew: number,
   matchesNew: number,
   note: string | null,
+  evaluation: EvaluationSummary | null = null,
 ): void {
   db.update(collectionRuns)
-    .set({ status, finishedAt: at, sources, articlesNew, matchesNew, note })
+    .set({
+      status,
+      finishedAt: at,
+      sources,
+      articlesNew,
+      matchesNew,
+      note,
+      evaluation,
+    })
     .where(eq(collectionRuns.id, runId))
     .run();
 }

@@ -1,9 +1,14 @@
 import { asc, eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { createTestDbFile } from "../../../tests/db";
-import { seedListings } from "../../../tests/fixtures";
+import { fakeDecider, seedListings } from "../../../tests/fixtures";
 import { openDb, type Db } from "../db/client";
-import { articleMatches, articles, collectionRuns } from "../db/schema";
+import {
+  articleMatches,
+  articles,
+  collectionRuns,
+  evaluations,
+} from "../db/schema";
 import { replaceKeywords } from "../keywords/generate";
 import { deleteStock, registerStock } from "../stocks/repository";
 import type { RssFeed } from "./feeds";
@@ -160,6 +165,7 @@ function deps(
       robots: allowAll,
       feeds: FEEDS,
       finnhub: null,
+      decider: null,
       now: () => NOW,
       ...extra,
     } satisfies CollectDeps,
@@ -392,6 +398,48 @@ describe("수집 회차 (SPEC FR-4)", () => {
   });
 });
 
+describe("수집 직후 평가 (5단계)", () => {
+  const routes = {
+    "https://a.example/economy.xml": {
+      text: rss(
+        item("삼성전자 3분기 실적", "https://n.example/1", ago(1)),
+        item("엔비디아, 새 AI 가속기 공개", "https://n.example/2", ago(2)),
+      ),
+    },
+  };
+
+  it("새 연결을 Jev로 평가하고 회차 기록에 평가 결과를 남긴다", async () => {
+    const db = testDb();
+    addStocks(db);
+    const decider = fakeDecider();
+    const { deps: d } = deps(db, routes, { feeds: [FEEDS[0]], decider });
+
+    expect(await run(d)).toMatchObject({ matchesNew: 3 });
+
+    expect(decider.calls).toHaveLength(3);
+    expect(db.select().from(evaluations).all()).toHaveLength(3);
+    expect(db.select().from(collectionRuns).get()?.evaluation).toMatchObject({
+      evaluated: 3,
+      relevant: 3,
+      failed: 0,
+      remaining: 0,
+    });
+  });
+
+  it("키가 없으면 수집만 하고 평가하지 않은 이유를 남긴다", async () => {
+    const db = testDb();
+    addStocks(db);
+    const { deps: d } = deps(db, routes, { feeds: [FEEDS[0]] });
+
+    expect(await run(d)).toMatchObject({ status: "success", matchesNew: 3 });
+    expect(db.select().from(collectionRuns).get()?.evaluation).toMatchObject({
+      evaluated: 0,
+      remaining: 3,
+      note: "TYPESAFE_API_KEY가 없어 평가하지 않았습니다.",
+    });
+  });
+});
+
 describe("기준 시각 (D-20)", () => {
   it("처음엔 24시간 전, 이후엔 지난 회차 시작 1시간 전, 최대 7일", async () => {
     const db = testDb();
@@ -539,6 +587,7 @@ describe("회차 관리", () => {
       robots: allowAll,
       feeds: FEEDS,
       finnhub: null,
+      decider: null,
       now: () => NOW,
     });
     const first = runner.start("manual");

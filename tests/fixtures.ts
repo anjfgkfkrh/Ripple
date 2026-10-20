@@ -1,5 +1,10 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import type {
+  Decider,
+  Decision,
+  DecisionInput,
+} from "../src/server/ai/decider/types";
 import {
   LlmError,
   type LlmClient,
@@ -180,6 +185,37 @@ export function fakeCollector(): CollectionRunner & {
     idle: () => Promise.resolve(),
     finish() {
       running = null;
+    },
+  };
+}
+
+/** 기본 평가 결과(관련 7점·호재·입력 1000토큰) */
+export function fakeDecision(overrides: Partial<Decision> = {}): Decision {
+  return {
+    relevance: 7,
+    relevanceConfidence: 0.7,
+    impact: "positive",
+    impactConfidence: 0.8,
+    impactProbabilities: { positive: 0.8, negative: 0.1, neutral: 0.1 },
+    model: "jev-1.13.0",
+    usage: { inputTokens: 1000, outputTokens: 50 },
+    ...overrides,
+  };
+}
+
+/** 입력마다 정한 결과(또는 오류)를 돌려주는 가짜 Jev. 받은 입력과 모델을 calls에 남긴다. */
+export function fakeDecider(
+  answer: (input: DecisionInput) => Decision | Error = () => fakeDecision(),
+): Decider & { calls: { input: DecisionInput; model: string }[] } {
+  const calls: { input: DecisionInput; model: string }[] = [];
+  return {
+    provider: "typesafe",
+    calls,
+    async decide(input, model) {
+      calls.push({ input, model });
+      const result = answer(input);
+      if (result instanceof Error) throw result;
+      return result;
     },
   };
 }

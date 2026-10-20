@@ -70,6 +70,9 @@ export default defineConfig({
             ]),
             FINNHUB_API_KEY: "e2e-fake-finnhub-key",
             FINNHUB_BASE_URL: `${MOCK}/finnhub`,
+            // 실제 TypeSafe 대신 가짜 Jev를 쓴다(유료 호출 없음).
+            TYPESAFE_API_KEY: "e2e-fake-typesafe-key",
+            TYPESAFE_BASE_URL: `${MOCK}/typesafe`,
           },
           gracefulShutdown: { signal: "SIGTERM", timeout: 5000 },
         },

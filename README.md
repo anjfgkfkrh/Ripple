@@ -3,14 +3,14 @@
 보유 주식 관련 뉴스·증권사 리포트를 자동 수집하고 Jev로 선별해 웹으로 보여주는 개인용 MVP.
 요구사항·결정 기록·미결정 목록은 [SPEC.md](SPEC.md)에 있다.
 
-> 현재 4단계(기사 수집)까지 구현했다. 홈 화면은 아직 시스템 상태·수집 확인용이다.
+> 현재 5단계(Jev 평가)까지 구현했다. 홈 화면은 아직 시스템 상태·수집 확인용이다.
 
 ## 구성
 
 | 서비스 | 역할 |
 |---|---|
 | `migrate` | 일회성. 아직 적용하지 않은 마이그레이션을 적용하고 종료한다(worker 이미지 사용) |
-| `worker` | DB에 쓰는 유일한 프로세스. 내부 API(포트 4000, compose 네트워크 안에서만, 공유 토큰 필요)로 web의 쓰기·AI 요청을 받는다. 공식 종목 목록을 주 1회 받고, 종목의 연관 키워드를 만들고, 기사를 수집한다. 이후 단계에서 평가·스케줄을 맡는다 |
+| `worker` | DB에 쓰는 유일한 프로세스. 내부 API(포트 4000, compose 네트워크 안에서만, 공유 토큰 필요)로 web의 쓰기·AI 요청을 받는다. 공식 종목 목록을 주 1회 받고, 종목의 연관 키워드를 만들고, 기사를 수집해 Jev로 평가한다. 이후 단계에서 스케줄을 맡는다 |
 | `web` | Next.js 화면. 로그인한 사용자만 쓸 수 있다. DB는 읽기 전용으로 열고, 쓰기는 worker 내부 API에 요청한다 (SPEC D-36) |
 
 DB는 SQLite(Drizzle ORM, better-sqlite3)이고, 파일은 named volume `ripple_ripple-data`의 `/data/ripple.db`에 있으며 WAL 모드로 동작한다.
@@ -66,6 +66,19 @@ cp .env.example .env              # 아직 .env가 없을 때만
 - 미국 뉴스에는 `.env`의 `FINNHUB_API_KEY`가 필요하다(무료 가입, worker에만 전달). 없으면 미국 뉴스는 건너뛴다.
 - 실측(2026-10-20, 종목 3개: 삼성전자·엔비디아·현대건설): 한 번에 약 24초, 받은 기사 4,417건 중 최근 24시간 2,622건, 저장 313건(연결 348건). 그중 Finnhub 엔비디아 종목 뉴스가 154건.
 
+## Jev 평가 (5단계)
+
+- 수집 회차마다 수집이 끝나면 아직 평가하지 않은 기사–종목 연결을 최근 기사부터 Jev(TypeSafe)로 평가한다. 연결 하나에 한 번 묻고(관련도와 호재·악재를 한 요청에), 결과는 연결마다 한 줄로 저장한다.
+- 관련도: 상황 6단계(0 관련 없음 ~ 5 주가를 크게 움직일 핵심 소식)의 기댓값 × 2 = 0~10점. 6점(= 실적·주가에 영향을 줄 구체적 소식) 이상이 화면에 보일 기사다(7단계 타임라인). 6점 미만도 지우지 않는다(D-22).
+- 호재·악재·중립과 각 확률, 확신도, 응답한 실제 모델 버전도 저장한다.
+- Jev에 보내는 것: 종목(이름, 미국 종목은 공식 영문 이름, 시장, 거래소, 코드), 걸린 경위(직접·종목 이름·키워드, 경로와 이유), 기사 제목과 요약(앞 300자). 지시문은 영어, 기사는 한국어 그대로다.
+- 모델은 `jev-1.13.0`(버전 고정, D-23). 설정 화면(8단계) 전까지는 settings 테이블의 `jev.model`로 바꾼다. 표시 기준은 `evaluation.minRelevance`(기본 6), 단가는 `jev.usdPerMillionInputTokens`(기본 0.042달러/100만 입력 토큰).
+- 비용 안전장치: 호출마다 월 예산을 먼저 확인하고, 응답의 입력 토큰 × 단가를 사용량에 기록한다(출력 토큰은 무료). 하나씩 차례로 불러 앞선 호출이 모두 예산 검사에 들어간다.
+- 멈추는 경우(수집은 그대로 하고 남은 연결은 다음 회차에 평가): 키가 없거나 맞지 않을 때, 이번 달 예산을 다 썼을 때, 연달아 3번 실패했을 때. 그 밖의 실패는 다음 회차에 다시 평가한다.
+- 상태 화면에는 누적 평가 수(6점 이상 수)와 회차별 평가 결과(평가·6점 이상·실패·남김·비용·멈춘 이유)가 보인다.
+- `.env`의 `TYPESAFE_API_KEY`가 필요하다(worker에만 전달). 없으면 기사는 모으고 평가는 미룬다.
+- 실측(2026-10-20, 같은 종목 3개, 연결 347건): 평가 69초(건당 약 0.2초), $0.0117(건당 약 $0.00003), 6점 이상 96건. 키워드로 걸린 90건 중 6점 이상은 1건, Finnhub 엔비디아 종목 뉴스 152건 중 23건, 삼성전자 이름으로 걸린 90건 중 65건이었다. 지시문 언어·모델 비교는 SPEC 11장.
+
 ## Docker로 실행
 
 ```bash
@@ -95,8 +108,8 @@ pnpm dev              # 터미널 2: web     http://localhost:3000
 
 ### 환경변수
 
-`.env.example` 참고. 지금 쓰는 값은 `DATABASE_PATH`, `WORKER_URL`, `WORKER_HOST`, `WORKER_PORT`, `TZ`, `APP_PASSWORD`, `SESSION_SECRET`, `WORKER_API_TOKEN`, `OPENROUTER_API_KEY`, `FINNHUB_API_KEY`다.
-Docker에서는 compose 파일이 컨테이너용 값을 정하고, 비밀 값만 `.env`에서 읽어 필요한 곳에만 넘긴다(로그인 값은 web, OpenRouter·Finnhub 키는 worker, 공유 토큰은 둘 다). `.env`는 커밋하지 않는다.
+`.env.example` 참고. 지금 쓰는 값은 `DATABASE_PATH`, `WORKER_URL`, `WORKER_HOST`, `WORKER_PORT`, `TZ`, `APP_PASSWORD`, `SESSION_SECRET`, `WORKER_API_TOKEN`, `OPENROUTER_API_KEY`, `FINNHUB_API_KEY`, `TYPESAFE_API_KEY`다.
+Docker에서는 compose 파일이 컨테이너용 값을 정하고, 비밀 값만 `.env`에서 읽어 필요한 곳에만 넘긴다(로그인 값은 web, OpenRouter·Finnhub·TypeSafe 키는 worker, 공유 토큰은 둘 다). `.env`는 커밋하지 않는다.
 
 ## 검사·테스트
 
@@ -106,7 +119,7 @@ Docker에서는 compose 파일이 컨테이너용 값을 정하고, 비밀 값�
 | `pnpm typecheck` | 타입 검사 (Next 라우트 타입 생성 포함) |
 | `pnpm format:check` / `pnpm format` | Prettier 검사 / 적용 |
 | `pnpm test` | Vitest 단위·통합 테스트. 실제 마이그레이션으로 만든 임시 DB를 쓴다 |
-| `pnpm test:e2e` | Playwright. 가짜 외부 서비스(4200: 공식 목록 표본, 종목 찾기·키워드 생성을 흉내 내는 OpenRouter, 언론사 RSS 2개, Finnhub)와 테스트용 worker(4100)·web(3100)을 띄워 화면을 검사하고 `test-results/`에 캡처한다. 유료 API나 실제 언론사를 부르지 않는다 |
+| `pnpm test:e2e` | Playwright. 가짜 외부 서비스(4200: 공식 목록 표본, 종목 찾기·키워드 생성을 흉내 내는 OpenRouter, 언론사 RSS 2개, Finnhub, 기사 평가를 흉내 내는 TypeSafe)와 테스트용 worker(4100)·web(3100)을 띄워 화면을 검사하고 `test-results/`에 캡처한다. 유료 API나 실제 언론사를 부르지 않는다 |
 | Docker 화면 검사 | 아래 참고 |
 
 Docker로 띄운 화면을 검사하려면 테스트 전용 비밀번호로 띄운 뒤 검사하고, 끝나면 내린다(테스트 값은 `e2e/test-env.ts`에 공개돼 있으므로 그대로 두지 않는다). 종목·키워드·수집 E2E는 가짜 외부 서비스가 필요해 이 방식에서는 건너뛴다.
@@ -128,11 +141,13 @@ src/components/     공용 부품: shadcn/ui(ui/), 화면 자동 새로 고침
 src/server/         web·worker 공용 서버 코드 (db, 환경변수, 시간, 상태 확인)
 src/server/auth/    로그인: 설정 확인, 세션 쿠키, 실패 제한, 서버 코드용 2차 확인, worker 공유 토큰
 src/server/ai/llm/  생성형 LLM 인터페이스와 OpenRouter 구현
+src/server/ai/decider/ 기사 평가(Jev) 인터페이스(types), 질문 문구(questions), TypeSafe 구현(typesafe)
 src/server/budget/  AI 사용량 기록과 월 한도 검사(AI 호출은 반드시 여기를 거침)
 src/server/listings/ 공식 종목 목록 받기·읽기(KIND, NASDAQ Trader)
 src/server/stocks/  종목 매칭(LLM + 공식 목록 대조)·등록·삭제
 src/server/keywords/ 연관 키워드: 프롬프트와 트리 검증(tree), 생성·저장(generate), worker 대기열(queue), 읽기(read)
 src/server/collect/ 기사 수집: RSS 목록(feeds), RSS 읽기(rss), 요청 간격(http), robots.txt(robots), 종목 연결(match), Finnhub(finnhub), 회차 실행(run·runner), 읽기(read)
+src/server/evaluate/ 기사 평가 흐름: 평가할 연결 고르기·평가·저장(run), 읽기(read)
 src/server/db/      스키마(schema.ts), 연결, 마이그레이션 적용
 src/worker/         worker 진입점, 내부 API, 마이그레이션 진입점
 drizzle/            마이그레이션 SQL (drizzle-kit이 생성)

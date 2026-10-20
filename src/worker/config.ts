@@ -2,6 +2,7 @@ import * as z from "zod";
 import { OPENROUTER_BASE_URL } from "@/server/ai/llm/openrouter";
 import { readWorkerApiToken } from "@/server/auth/worker-token";
 import { RSS_FEEDS, type RssFeed } from "@/server/collect/feeds";
+import { TYPESAFE_BASE_URL } from "@/server/ai/decider/typesafe";
 import { FINNHUB_BASE_URL } from "@/server/collect/finnhub";
 import { readPort, requireEnv } from "@/server/env";
 import { LISTING_SOURCES, type ListingSources } from "@/server/listings/sync";
@@ -21,6 +22,9 @@ export type WorkerConfig = {
   finnhubApiKey: string | undefined;
   finnhubBaseUrl: string;
   rssFeeds: RssFeed[];
+  /** 없으면 기사는 모으고 Jev 평가는 미룬다. */
+  typesafeApiKey: string | undefined;
+  typesafeBaseUrl: string;
 };
 
 const rssFeedsOverride = z
@@ -35,7 +39,7 @@ const rssFeedsOverride = z
   .min(1);
 
 /**
- * 원천 주소 재정의(OPENROUTER_BASE_URL, LISTING_*_URL, FINNHUB_BASE_URL, RSS_FEEDS_JSON)는
+ * 원천 주소 재정의(OPENROUTER_BASE_URL, LISTING_*_URL, FINNHUB_BASE_URL, TYPESAFE_BASE_URL, RSS_FEEDS_JSON)는
  * 테스트에서 가짜 서버를 쓰기 위한 것이다.
  */
 export function readWorkerConfig(env: Env = process.env): WorkerConfig {
@@ -56,6 +60,8 @@ export function readWorkerConfig(env: Env = process.env): WorkerConfig {
     finnhubApiKey: env.FINNHUB_API_KEY?.trim() || undefined,
     finnhubBaseUrl: env.FINNHUB_BASE_URL?.trim() || FINNHUB_BASE_URL,
     rssFeeds: readRssFeeds(env.RSS_FEEDS_JSON),
+    typesafeApiKey: env.TYPESAFE_API_KEY?.trim() || undefined,
+    typesafeBaseUrl: env.TYPESAFE_BASE_URL?.trim() || TYPESAFE_BASE_URL,
   };
 }
 

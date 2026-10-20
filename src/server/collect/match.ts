@@ -12,6 +12,7 @@ export type MatchStock = {
     textKo: string;
     textEn: string | null;
     path: string;
+    reason: string;
   }[];
 };
 
@@ -19,12 +20,20 @@ export type StockMatch = {
   stockId: number;
   /** D-16: 당시 경로를 글자로 남긴다. 종목 자체로 걸리면 종목 이름 */
   keywordPath: string;
+  /** 키워드 연결일 때 그 키워드의 이유(5단계 Jev 입력) */
+  keywordReason: string | null;
   matchKind: MatchKind;
   /** 0이면 종목 자체, 1~4는 키워드 단계 */
   level: number;
 };
 
-type Term = { words: string[]; level: number; path: string; kind: MatchKind };
+type Term = {
+  words: string[];
+  level: number;
+  path: string;
+  reason: string | null;
+  kind: MatchKind;
+};
 
 /**
  * 제목+요약에 종목 이름이나 키워드의 낱말이 모두 들어 있으면 그 종목에 건다(4단계 결정).
@@ -37,22 +46,24 @@ export function createMatcher(
   const prepared = stocks.map((stock) => {
     const display = stock.nameKo ?? stock.name;
     const terms: Term[] = [
-      { words: toWords(display), level: 0, path: display, kind: "name" },
+      {
+        words: toWords(display),
+        level: 0,
+        path: display,
+        reason: null,
+        kind: "name",
+      },
     ];
     for (const keyword of stock.keywords) {
-      terms.push({
-        words: toWords(keyword.textKo),
+      const base = {
         level: keyword.level,
         path: keyword.path,
-        kind: "keyword",
-      });
+        reason: keyword.reason || null,
+        kind: "keyword" as const,
+      };
+      terms.push({ ...base, words: toWords(keyword.textKo) });
       if (keyword.textEn) {
-        terms.push({
-          words: toWords(keyword.textEn),
-          level: keyword.level,
-          path: keyword.path,
-          kind: "keyword",
-        });
+        terms.push({ ...base, words: toWords(keyword.textEn) });
       }
     }
     // 가까운 경로가 먼저 오게 한다(정렬은 안정적이라 같은 단계는 원래 순서).
@@ -71,6 +82,7 @@ export function createMatcher(
         matches.push({
           stockId: stock.id,
           keywordPath: hit.path,
+          keywordReason: hit.reason,
           matchKind: hit.kind,
           level: hit.level,
         });

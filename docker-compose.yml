@@ -27,6 +27,7 @@ services:
       WORKER_API_TOKEN: ${WORKER_API_TOKEN:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
     volumes:
       - ripple-data:/data
     depends_on:

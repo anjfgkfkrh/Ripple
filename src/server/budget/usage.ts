@@ -56,6 +56,13 @@ export function recordUsage(
     .run();
 }
 
+/** 이번 달 사용액이 한도에 닿았으면 BudgetExceededError. AI 호출 전에 부른다(CLAUDE.md). */
+export function assertWithinBudget(db: Db, now: Date = new Date()): void {
+  const limitUsd = readSetting(db, "budget.monthlyUsd");
+  const spentUsd = monthSpendUsd(db, now);
+  if (spentUsd >= limitUsd) throw new BudgetExceededError(spentUsd, limitUsd);
+}
+
 /**
  * AI 호출은 반드시 이 함수를 거친다(CLAUDE.md): 월 한도 검사 → 호출 → 사용량 기록.
  * 응답을 받은 뒤 형식이 틀려 실패해도 청구된 비용은 기록한다.
@@ -67,9 +74,7 @@ export async function generateWithBudget<T>(
   options: { purpose: string; now?: () => Date },
 ): Promise<StructuredResult<T>> {
   const now = options.now ?? (() => new Date());
-  const limitUsd = readSetting(db, "budget.monthlyUsd");
-  const spentUsd = monthSpendUsd(db, now());
-  if (spentUsd >= limitUsd) throw new BudgetExceededError(spentUsd, limitUsd);
+  assertWithinBudget(db, now());
 
   try {
     const result = await llm.generateObject(request);

@@ -184,6 +184,8 @@ export const articleMatches = sqliteTable(
       .references(() => stocks.id),
     /** 예: 삼성전자 → HBM 메모리 → 엔비디아. 종목 자체로 걸리면 종목 이름 */
     keywordPath: text("keyword_path").notNull(),
+    /** 걸린 키워드가 윗단계와 이어지는 이유(키워드 연결일 때만, 5단계 Jev 입력) */
+    keywordReason: text("keyword_reason"),
     matchKind: text("match_kind", { enum: MATCH_KINDS }).notNull(),
     /** 0이면 종목 자체, 1~4는 키워드 단계 */
     level: integer("level").notNull(),
@@ -248,6 +250,64 @@ export const collectionRuns = sqliteTable(
     matchesNew: integer("matches_new").notNull().default(0),
     /** 회차 전체가 실패했거나 건너뛴 이유 */
     note: text("note"),
+    /** 이 회차의 Jev 평가 결과(5단계). 평가를 하지 않았으면 null */
+    evaluation: text("evaluation", { mode: "json" }).$type<EvaluationSummary>(),
   },
   (table) => [index("collection_runs_started").on(table.startedAt)],
+);
+
+/** 수집 회차 안에서 한 Jev 평가 요약 */
+export type EvaluationSummary = {
+  /** 새로 평가한 기사–종목 연결 수 */
+  evaluated: number;
+  /** 그중 표시 기준(관련도) 이상 */
+  relevant: number;
+  /** 실패해 다음 회차로 미룬 수 */
+  failed: number;
+  /** 예산·키 문제 등으로 손대지 않고 남긴 수 */
+  remaining: number;
+  /** 이 회차 평가 비용(달러) */
+  costUsd: number;
+  ms: number;
+  /** 멈춘 이유(예산 초과, 키 없음 등) */
+  note?: string;
+};
+
+/** 호재 / 악재 / 중립 (SPEC FR-5) */
+export const IMPACTS = ["positive", "negative", "neutral"] as const;
+export type Impact = (typeof IMPACTS)[number];
+
+/**
+ * Jev 평가(SPEC FR-5). 기사–종목 연결 하나에 한 줄.
+ * 표시 기준 미만도 지우지 않고 두고 화면에서만 숨긴다(D-22).
+ */
+export const evaluations = sqliteTable(
+  "evaluations",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    matchId: integer("match_id")
+      .notNull()
+      .references(() => articleMatches.id),
+    articleId: integer("article_id")
+      .notNull()
+      .references(() => articles.id),
+    stockId: integer("stock_id")
+      .notNull()
+      .references(() => stocks.id),
+    /** 관련도 0~10(상황 6단계 기댓값 × 2) */
+    relevance: real("relevance").notNull(),
+    relevanceConfidence: real("relevance_confidence").notNull(),
+    impact: text("impact", { enum: IMPACTS }).notNull(),
+    impactConfidence: real("impact_confidence").notNull(),
+    impactProbabilities: text("impact_probabilities", { mode: "json" })
+      .$type<Record<Impact, number>>()
+      .notNull(),
+    /** 응답한 실제 모델 버전(D-23) */
+    model: text("model").notNull(),
+    evaluatedAt: integer("evaluated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("evaluations_match").on(table.matchId),
+    index("evaluations_stock_relevance").on(table.stockId, table.relevance),
+  ],
 );

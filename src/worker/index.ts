@@ -1,3 +1,5 @@
+import { JEV_QUESTION_LANGUAGE } from "@/server/ai/decider/questions";
+import { createTypeSafeDecider } from "@/server/ai/decider/typesafe";
 import { createOpenRouterClient } from "@/server/ai/llm/openrouter";
 import { createFinnhubClient } from "@/server/collect/finnhub";
 import { createHttpClient } from "@/server/collect/http";
@@ -43,6 +45,9 @@ async function main(): Promise<void> {
   if (!config.finnhubApiKey) {
     log("FINNHUB_API_KEY가 없어 미국 뉴스(Finnhub)는 수집하지 않습니다.");
   }
+  if (!config.typesafeApiKey) {
+    log("TYPESAFE_API_KEY가 없어 기사 평가(Jev)는 하지 않습니다.");
+  }
   const http = createHttpClient();
   const collector = createCollectionRunner({
     db,
@@ -54,6 +59,13 @@ async function main(): Promise<void> {
           http,
           apiKey: config.finnhubApiKey,
           baseUrl: config.finnhubBaseUrl,
+        })
+      : null,
+    decider: config.typesafeApiKey
+      ? createTypeSafeDecider({
+          apiKey: config.typesafeApiKey,
+          baseUrl: config.typesafeBaseUrl,
+          language: JEV_QUESTION_LANGUAGE,
         })
       : null,
   });

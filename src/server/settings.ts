@@ -10,6 +10,12 @@ export const SETTING_DEFAULTS: {
   "budget.monthlyUsd": number;
   /** 키워드 확장 깊이 1~4 (SPEC FR-3, 기본 2) */
   "keywords.depth": number;
+  /** 기사 평가 모델. 버전을 고정한다(D-23) */
+  "jev.model": string;
+  /** Jev 단가: 입력 100만 토큰당 달러(D-06, 2026-10-20 공식 가격). 출력은 무료 */
+  "jev.usdPerMillionInputTokens": number;
+  /** 화면에 보일 관련도 기준 0~10 (SPEC FR-5, 기본 6) */
+  "evaluation.minRelevance": number;
   /** 공식 종목 목록을 마지막으로 받은 시각(ms). 0이면 아직 없음 */
   "listings.syncedAt.KR": number;
   "listings.syncedAt.US": number;
@@ -17,6 +23,9 @@ export const SETTING_DEFAULTS: {
   "llm.model": "anthropic/claude-haiku-5.5",
   "budget.monthlyUsd": 5,
   "keywords.depth": 2,
+  "jev.model": "jev-1.13.0",
+  "jev.usdPerMillionInputTokens": 0.042,
+  "evaluation.minRelevance": 6,
   "listings.syncedAt.KR": 0,
   "listings.syncedAt.US": 0,
 };

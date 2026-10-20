@@ -1,14 +1,14 @@
 import { expect, test } from "@playwright/test";
 import { asClient, login, registerStock, waitForListings } from "./helpers";
 
-// 가짜 언론사 RSS·Finnhub가 필요한 테스트라 로컬에서만 돈다.
+// 가짜 언론사 RSS·Finnhub·Jev가 필요한 테스트라 로컬에서만 돈다.
 test.skip(
   Boolean(process.env.E2E_BASE_URL),
   "가짜 외부 서비스가 필요한 테스트라 로컬 E2E에서만 실행한다",
 );
 
-test.describe("기사 수집 (SPEC FR-4)", () => {
-  test("상태 화면에서 '지금 수집'을 누르면 종목에 걸린 기사를 모으고 출처별 결과를 보여 준다", async ({
+test.describe("기사 수집과 평가 (SPEC FR-4, FR-5)", () => {
+  test("상태 화면에서 '지금 수집'을 누르면 종목에 걸린 기사를 모아 Jev로 평가하고 출처별 결과를 보여 준다", async ({
     page,
   }, testInfo) => {
     test.skip(
@@ -40,6 +40,13 @@ test.describe("기사 수집 (SPEC FR-4)", () => {
     // 이름으로 걸린 SK하이닉스 기사 2건, 키워드로 걸린 기사, Finnhub 기사가 저장된다.
     await expect(run).toContainText(/새 기사 [1-9]\d*건/);
     await expect(panel).not.toContainText("저장된 기사 0건");
+    // 가짜 Jev는 종목 이름으로 걸린 기사(SK하이닉스 2건)에 8점, 키워드로 걸린 기사에 3점을 준다.
+    const evaluation = run.getByTestId("collection-evaluation");
+    await expect(evaluation).toContainText(
+      /평가 [1-9]\d*건 · 6점 이상 [1-9]\d*건/,
+    );
+    await expect(evaluation).not.toContainText("실패");
+    await expect(panel).toContainText(/평가 [1-9]\d*건\(6점 이상 [1-9]\d*건\)/);
 
     await run.getByText(/출처별 결과 \d+곳/).click();
     const sources = run.getByTestId("collection-sources");

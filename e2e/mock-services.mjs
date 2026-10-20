@@ -1,4 +1,4 @@
-// E2E 전용 가짜 외부 서비스: 공식 종목 목록(KIND·NASDAQ 표본), OpenRouter, 언론사 RSS, Finnhub.
+// E2E 전용 가짜 외부 서비스: 공식 종목 목록(KIND·NASDAQ 표본), OpenRouter, 언론사 RSS, Finnhub, TypeSafe(Jev).
 // 실제 사이트와 유료 API를 부르지 않고 화면 흐름을 검사하기 위한 것이다.
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -144,6 +144,36 @@ function keywordAnswer(user) {
   };
 }
 
+/**
+ * 가짜 Jev 답(공식 API 응답 모양). 종목 이름으로 걸린 기사는 관련(4단계 → 8점), 그 밖은 1.5단계(3점).
+ * 제목에 '확대'·'실적'·'rise'가 있으면 호재, 아니면 중립.
+ */
+function jevAnswer({ model, state }) {
+  const named = state.link.path === state.stock.name;
+  const positive = /확대|실적|rise/.test(state.article.title);
+  return {
+    model,
+    answers: {
+      relevance: {
+        type: "score",
+        score: named ? 4 : 1.5,
+        confidence: 0.7,
+        legend: {},
+        probabilities: {},
+      },
+      impact: {
+        type: "choice",
+        choice: positive ? "positive" : "neutral",
+        confidence: 0.8,
+        probabilities: positive
+          ? { positive: 0.85, negative: 0.05, neutral: 0.1 }
+          : { positive: 0.1, negative: 0.05, neutral: 0.85 },
+      },
+    },
+    usage: { input_tokens: 900, output_tokens: 50 },
+  };
+}
+
 function sendJson(response, status, body) {
   response.writeHead(status, { "content-type": "application/json" });
   response.end(JSON.stringify(body));
@@ -197,6 +227,24 @@ createServer(async (request, response) => {
     const [type, name] = files[pathname];
     response.writeHead(200, { "content-type": type });
     return response.end(fixture(name));
+  }
+
+  if (request.method === "POST" && pathname === "/typesafe/v1/systemone") {
+    if (!request.headers.authorization?.startsWith("Bearer ")) {
+      return sendJson(response, 401, { detail: "no key" });
+    }
+    let body = "";
+    for await (const chunk of request) body += chunk;
+    const parsed = JSON.parse(body);
+    if (
+      !parsed.model ||
+      parsed.questions?.relevance?.type !== "score" ||
+      parsed.questions?.impact?.type !== "choice" ||
+      !parsed.state?.article?.title
+    ) {
+      return sendJson(response, 422, { detail: "bad request" });
+    }
+    return sendJson(response, 200, jevAnswer(parsed));
   }
 
   if (

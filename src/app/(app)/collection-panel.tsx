@@ -7,8 +7,13 @@ import {
   latestRun,
   type CollectionRun,
 } from "@/server/collect/read";
-import type { RunStatus, SourceResult } from "@/server/db/schema";
+import type {
+  EvaluationSummary,
+  RunStatus,
+  SourceResult,
+} from "@/server/db/schema";
 import { getWebDb } from "@/server/db/web";
+import { evaluationTotals } from "@/server/evaluate/read";
 import { formatSeoulDateTime } from "@/server/time";
 import { CollectNowButton } from "./collect-now-button";
 
@@ -19,12 +24,13 @@ const STATUS_LABEL: Record<RunStatus, string> = {
   failed: "실패",
 };
 
-/** 최근 수집 회차와 저장된 기사 수. 수집 중이면 화면이 스스로 다시 읽는다. */
+/** 최근 수집 회차와 저장·평가된 기사 수. 수집 중이면 화면이 스스로 다시 읽는다. */
 export async function CollectionPanel() {
   await requireSession();
   const db = getWebDb();
   const run = latestRun(db);
   const totals = collectionTotals(db);
+  const evaluated = evaluationTotals(db);
   const running = run?.status === "running";
 
   return (
@@ -35,12 +41,17 @@ export async function CollectionPanel() {
       <AutoRefresh active={running} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          저장된 기사 {totals.articles}건 · 종목 연결 {totals.matches}건
+          저장된 기사 {totals.articles}건 · 종목 연결 {totals.matches}건 ·{" "}
+          {/* 좁은 화면에서 '(6점 이상 / 0건)'처럼 끊기지 않게 한 덩어리로 둔다. */}
+          <span className="whitespace-nowrap">
+            평가 {evaluated.evaluated}건({evaluated.minRelevance}점 이상{" "}
+            {evaluated.relevant}건)
+          </span>
         </p>
         <CollectNowButton running={running} />
       </div>
       {run ? (
-        <RunView run={run} />
+        <RunView run={run} minRelevance={evaluated.minRelevance} />
       ) : (
         <p className="text-sm text-muted-foreground">
           아직 수집하지 않았습니다.
@@ -50,7 +61,13 @@ export async function CollectionPanel() {
   );
 }
 
-function RunView({ run }: { run: CollectionRun }) {
+function RunView({
+  run,
+  minRelevance,
+}: {
+  run: CollectionRun;
+  minRelevance: number;
+}) {
   const seconds = run.finishedAt
     ? Math.max(
         0,
@@ -86,14 +103,19 @@ function RunView({ run }: { run: CollectionRun }) {
       {run.status !== "running" && (
         <p className="text-sm">
           새 기사 <strong>{run.articlesNew}</strong>건 · 새 연결{" "}
-          <strong>{run.matchesNew}</strong>건
-          <span className="text-muted-foreground">
-            {" "}
+          <strong>{run.matchesNew}</strong>건{" "}
+          <span className="whitespace-nowrap text-muted-foreground">
             · {formatSeoulDateTime(run.since).slice(0, 16)} 이후 기사
           </span>
         </p>
       )}
       {run.note && <p className="text-sm text-muted-foreground">{run.note}</p>}
+      {run.evaluation && (
+        <EvaluationView
+          evaluation={run.evaluation}
+          minRelevance={minRelevance}
+        />
+      )}
       {failed.length > 0 && (
         <ul
           className="space-y-1 text-sm text-destructive"
@@ -136,6 +158,32 @@ function RunView({ run }: { run: CollectionRun }) {
           </ul>
         </details>
       )}
+    </div>
+  );
+}
+
+/** 이번 회차의 Jev 평가 결과(SPEC FR-5) */
+function EvaluationView({
+  evaluation: e,
+  minRelevance,
+}: {
+  evaluation: EvaluationSummary;
+  minRelevance: number;
+}) {
+  return (
+    <div className="space-y-1 text-sm" data-testid="collection-evaluation">
+      <p>
+        평가 <strong>{e.evaluated}</strong>건 · {minRelevance}점 이상{" "}
+        <strong>{e.relevant}</strong>건
+        {e.failed > 0 && (
+          <span className="text-destructive"> · 실패 {e.failed}건</span>
+        )}
+        <span className="text-muted-foreground">
+          {e.remaining > 0 && ` · 남김 ${e.remaining}건`} · $
+          {e.costUsd.toFixed(5)}
+        </span>
+      </p>
+      {e.note && <p className="text-muted-foreground">{e.note}</p>}
     </div>
   );
 }
