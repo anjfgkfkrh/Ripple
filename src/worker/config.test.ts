@@ -25,7 +25,18 @@ describe("readWorkerConfig", () => {
       typesafeApiKey: undefined,
       typesafeBaseUrl: "https://api.typesafe.ai",
       schedulerJobsEnabled: true,
+      backupDir: undefined,
     });
+  });
+
+  it("BACKUP_DIR가 있으면 그 폴더에 자동 백업한다", () => {
+    expect(
+      readWorkerConfig({
+        DATABASE_PATH: "x.db",
+        WORKER_API_TOKEN: TOKEN,
+        BACKUP_DIR: " /backups ",
+      }).backupDir,
+    ).toBe("/backups");
   });
 
   it("SCHEDULER_DISABLED=1(테스트용)이면 정기 작업을 끈다", () => {

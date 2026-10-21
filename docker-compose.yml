@@ -1,3 +1,5 @@
+# 본 실행: docker compose up -d --build (프로젝트 이름 ripple)
+# 시험용으로 따로 띄울 때는 -p ripple-check와 WEB_PORT·BACKUP_HOST_DIR를 바꿔 볼륨·포트·백업 폴더를 나눈다(docs/DEVELOPMENT.md).
 name: ripple
 
 services:
@@ -28,8 +30,12 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
       TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+      # 자동 백업(D-27): 매일 04:00(한국 시간)에 여기로 남기고 최근 7개만 둔다.
+      BACKUP_DIR: /backups
     volumes:
       - ripple-data:/data
+      # 백업은 이 컴퓨터의 폴더에 둔다(Docker를 지워도 남게). DB 자체는 WAL 때문에 named volume에 둔다.
+      - ${BACKUP_HOST_DIR:-./backups}:/backups
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -59,14 +65,27 @@ services:
       APP_PASSWORD: ${APP_PASSWORD:-}
       SESSION_SECRET: ${SESSION_SECRET:-}
       WORKER_API_TOKEN: ${WORKER_API_TOKEN:-}
+      # 상태 화면에 외부 접속 임시 주소를 보여 주려고 cloudflared에 묻는다(9단계).
+      TUNNEL_METRICS_URL: http://tunnel:20241
     volumes:
       - ripple-data:/data
     ports:
-      # 터널(9단계) 전까지는 이 컴퓨터에서만 접속한다.
-      - "127.0.0.1:3000:3000"
+      # 이 컴퓨터에서만 열린다. 밖(휴대폰)에서는 아래 tunnel의 임시 주소로 들어온다.
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
     depends_on:
       worker:
         condition: service_healthy
+    restart: unless-stopped
+
+  # 외부 접속(9단계): Cloudflare Quick Tunnel. 계정 없이 임시 주소(*.trycloudflare.com)를 받는다.
+  # 주소는 다시 켤 때마다 바뀐다. 상태 화면 또는 `docker compose logs tunnel`에서 확인한다(로그인으로 보호, FR-1).
+  # 메트릭 서버(20241)는 compose 내부망에서 web만 읽는다(/quicktunnel = 지금 주소). 호스트에는 열지 않는다.
+  tunnel:
+    image: cloudflare/cloudflared:2026.10.0
+    command:
+      ["tunnel", "--metrics", "0.0.0.0:20241", "--url", "http://web:3000"]
+    depends_on:
+      - web
     restart: unless-stopped
 
 volumes:

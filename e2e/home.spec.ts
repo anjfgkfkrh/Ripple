@@ -19,6 +19,18 @@ test("상태 화면(/status): web이 DB(읽기 전용)와 worker 내부 API에 �
   await expect(dbStatus).toContainText("정상");
   await expect(dbStatus).toContainText("journal_mode wal");
   await expect(workerStatus).toContainText("정상");
+  // 외부 접속 임시 주소와 마지막 백업(9단계). 로컬 E2E에는 터널·백업 폴더가 없다.
+  const tunnel = page.getByTestId("tunnel-status");
+  const backup = page.getByTestId("backup-status");
+  if (process.env.E2E_BASE_URL) {
+    await expect(tunnel).toBeVisible();
+    await expect(backup).toBeVisible();
+  } else {
+    await expect(tunnel).toHaveText(
+      "터널을 쓰지 않습니다(이 컴퓨터에서만 접속).",
+    );
+    await expect(backup).toContainText("아직 없습니다");
+  }
   // 공개 URL로 노출되므로 검색엔진 수집을 막는다.
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute(
     "content",

@@ -15,6 +15,7 @@ import {
 } from "@/server/listings/sync";
 import { log, logError } from "@/server/log";
 import { isOpenRouterModel } from "@/server/ai/llm/models";
+import { backupDatabase } from "@/server/backup";
 import { startScheduler } from "@/server/schedule/scheduler";
 import { readWorkerConfig } from "./config";
 import { createWorkerServer } from "./server";
@@ -91,12 +92,15 @@ async function main(): Promise<void> {
   if (!config.schedulerJobsEnabled) {
     log("SCHEDULER_DISABLED: 정기 수집과 키워드 자동 재생성을 하지 않습니다.");
   }
+  const backupDir = config.backupDir;
+  if (!backupDir) log("BACKUP_DIR가 없어 자동 백업을 하지 않습니다.");
   const scheduler = startScheduler({
     db,
     collector,
     keywordQueue,
     syncListings: createListingSync(db, config.listingSources),
     jobsEnabled: config.schedulerJobsEnabled,
+    backup: backupDir ? (now) => backupDatabase(db, backupDir, now) : undefined,
   });
 
   let stopping = false;

@@ -27,6 +27,8 @@ export type WorkerConfig = {
   typesafeBaseUrl: string;
   /** false면 정기 수집·키워드 자동 재생성을 하지 않는다(E2E용 SCHEDULER_DISABLED). */
   schedulerJobsEnabled: boolean;
+  /** 자동 백업 폴더(D-27). 없으면 백업하지 않는다(Docker는 /backups). */
+  backupDir: string | undefined;
 };
 
 const rssFeedsOverride = z
@@ -67,6 +69,7 @@ export function readWorkerConfig(env: Env = process.env): WorkerConfig {
     schedulerJobsEnabled: !["1", "true"].includes(
       env.SCHEDULER_DISABLED?.trim().toLowerCase() ?? "",
     ),
+    backupDir: env.BACKUP_DIR?.trim() || undefined,
   };
 }
 

@@ -1,6 +1,7 @@
 import type { CollectionRunner } from "@/server/collect/runner";
 import type { Db } from "@/server/db/client";
 import type { KeywordQueue } from "@/server/keywords/queue";
+import { backupPlan } from "@/server/backup";
 import { log, logError } from "@/server/log";
 import { writeSetting } from "@/server/settings";
 import { collectionPlan, keywordPlan } from "./plan";
@@ -12,6 +13,8 @@ export const SCHEDULER_TICK_MS = 60 * 1000;
  * 처음 받기에 실패해도(네트워크 등) 30분 안에 다시 시도한다.
  */
 export const LISTING_CHECK_INTERVAL_MS = 30 * 60 * 1000;
+/** 백업이 실패하면(폴더 권한 등) 이만큼 뒤에 다시 시도한다. 1분마다 되풀이하지 않게. */
+export const BACKUP_RETRY_MS = 60 * 60 * 1000;
 
 const TRIGGER_LABEL = {
   scheduled: "정기",
@@ -35,6 +38,8 @@ export function startScheduler(deps: {
   keywordQueue: KeywordQueue;
   /** 공식 종목 목록이 오래됐으면 받는다. 던지지 않아야 한다. */
   syncListings: () => Promise<void>;
+  /** DB를 백업한다(D-27). 백업 폴더(BACKUP_DIR)를 정하지 않았으면 없다. */
+  backup?: (now: Date) => Promise<{ file: string; bytes: number }>;
   /** false면 정기 수집·키워드 자동 재생성을 하지 않는다(E2E용). 목록 확인은 한다. */
   jobsEnabled?: boolean;
   now?: () => Date;
@@ -43,6 +48,8 @@ export function startScheduler(deps: {
   const now = deps.now ?? (() => new Date());
   const jobsEnabled = deps.jobsEnabled ?? true;
   let lastListingCheck = -Infinity;
+  let backupRunning = false;
+  let backupRetryAt = -Infinity;
 
   const tick = () => {
     const at = now();
@@ -73,6 +80,32 @@ export function startScheduler(deps: {
         }
       } catch (error) {
         logError("키워드 자동 재생성 확인 실패", error);
+      }
+    }
+    // 백업은 정기 작업을 꺼도(E2E) 폴더가 정해져 있으면 한다(D-27: 매일 04:00, 놓쳤으면 켜질 때).
+    const backup = deps.backup;
+    if (backup && !backupRunning && at.getTime() >= backupRetryAt) {
+      try {
+        if (backupPlan(deps.db, at).due) {
+          backupRunning = true;
+          backup(at)
+            .then((result) => {
+              writeSetting(deps.db, "backup.lastAt", at.getTime());
+              writeSetting(deps.db, "backup.lastFile", result.file);
+              log(
+                `백업: ${result.file} (${(result.bytes / 1024 / 1024).toFixed(1)}MB)`,
+              );
+            })
+            .catch((error: unknown) => {
+              backupRetryAt = at.getTime() + BACKUP_RETRY_MS;
+              logError("백업 실패(1시간 뒤 다시 시도)", error);
+            })
+            .finally(() => {
+              backupRunning = false;
+            });
+        }
+      } catch (error) {
+        logError("백업 확인 실패", error);
       }
     }
     if (at.getTime() - lastListingCheck >= LISTING_CHECK_INTERVAL_MS) {

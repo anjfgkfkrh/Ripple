@@ -35,7 +35,11 @@ const NOW = new Date("2026-10-21T03:18:00Z");
 const MIN = 60 * 1000;
 
 function setup(
-  options: { jobsEnabled?: boolean; collector?: CollectionRunner } = {},
+  options: {
+    jobsEnabled?: boolean;
+    collector?: CollectionRunner;
+    backup?: (now: Date) => Promise<{ file: string; bytes: number }>;
+  } = {},
 ) {
   const db = testDb();
   const registered = registerStock(db, {
@@ -66,6 +70,7 @@ function setup(
         listingChecks.push(now);
       },
       jobsEnabled: options.jobsEnabled,
+      backup: options.backup,
       now: () => now,
       // 테스트에서는 tick()을 직접 부른다.
       tickMs: 24 * 60 * MIN,
@@ -169,5 +174,48 @@ describe("startScheduler (SPEC FR-6, D-31)", () => {
     t.start();
     expect(t.keywordQueue.enqueued).toEqual([t.stockId]);
     expect(t.listingChecks).toHaveLength(1);
+  });
+
+  it("백업 폴더가 있으면 04:00 주기마다 한 번 백업하고 기록한다(정기 작업을 꺼도)", async () => {
+    const calls: Date[] = [];
+    const t = setup({
+      jobsEnabled: false,
+      backup: async (at) => {
+        calls.push(at);
+        return { file: "ripple-20261021-121800.db", bytes: 1024 };
+      },
+    });
+    const scheduler = t.start();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(calls).toEqual([NOW]);
+    expect(readSetting(t.db, "backup.lastAt")).toBe(NOW.getTime());
+    expect(readSetting(t.db, "backup.lastFile")).toBe(
+      "ripple-20261021-121800.db",
+    );
+    t.advance(60);
+    scheduler.tick();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(calls).toHaveLength(1);
+  });
+
+  it("백업이 실패하면 1분마다 되풀이하지 않고 1시간 뒤에 다시 한다", async () => {
+    let calls = 0;
+    const t = setup({
+      backup: async () => {
+        calls += 1;
+        throw new Error("폴더에 쓸 수 없음");
+      },
+    });
+    const scheduler = t.start();
+    await new Promise((resolve) => setImmediate(resolve));
+    t.advance(30);
+    scheduler.tick();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(calls).toBe(1);
+    t.advance(31);
+    scheduler.tick();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(calls).toBe(2);
+    expect(readSetting(t.db, "backup.lastAt")).toBe(0);
   });
 });

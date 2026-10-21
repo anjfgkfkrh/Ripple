@@ -24,6 +24,9 @@ export const SETTING_DEFAULTS: {
   "keywords.regenerateEvery": "daily" | "weekly";
   /** 키워드 자동 재생성을 마지막으로 한 시각(ms). 0이면 아직 없음 */
   "keywords.autoRegeneratedAt": number;
+  /** 마지막 자동 백업 시각(ms)과 파일 이름. 0·빈 값이면 아직 없음 (D-27) */
+  "backup.lastAt": number;
+  "backup.lastFile": string;
   /** 공식 종목 목록을 마지막으로 받은 시각(ms). 0이면 아직 없음 */
   "listings.syncedAt.KR": number;
   "listings.syncedAt.US": number;
@@ -38,6 +41,8 @@ export const SETTING_DEFAULTS: {
   "collect.intervalMinutes": 30,
   "keywords.regenerateEvery": "daily",
   "keywords.autoRegeneratedAt": 0,
+  "backup.lastAt": 0,
+  "backup.lastFile": "",
   "listings.syncedAt.KR": 0,
   "listings.syncedAt.US": 0,
 };

@@ -45,6 +45,9 @@ next-env.d.ts
 /data/
 /dist/
 /.e2e/
+# DB 백업(개인 데이터라 커밋하지 않음)
+/backups/
+/.check-backups/
 
 # playwright
 /test-results/
