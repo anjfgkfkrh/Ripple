@@ -73,6 +73,8 @@ export default defineConfig({
             // 실제 TypeSafe 대신 가짜 Jev를 쓴다(유료 호출 없음).
             TYPESAFE_API_KEY: "e2e-fake-typesafe-key",
             TYPESAFE_BASE_URL: `${MOCK}/typesafe`,
+            // 정기 수집이 테스트의 "지금 수집"과 겹치지 않게 끈다(계획 표시는 그대로 검사한다).
+            SCHEDULER_DISABLED: "1",
           },
           gracefulShutdown: { signal: "SIGTERM", timeout: 5000 },
         },

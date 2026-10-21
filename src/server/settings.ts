@@ -16,6 +16,12 @@ export const SETTING_DEFAULTS: {
   "jev.usdPerMillionInputTokens": number;
   /** 화면에 보일 관련도 기준 0~10 (SPEC FR-5, 기본 6) */
   "evaluation.minRelevance": number;
+  /** 정기 수집 간격(분): 15·30·60·180 (SPEC FR-6, D-01 기본 30) */
+  "collect.intervalMinutes": number;
+  /** 키워드 자동 재생성 주기 (SPEC FR-3, 기본 하루 1회) */
+  "keywords.regenerateEvery": "daily" | "weekly";
+  /** 키워드 자동 재생성을 마지막으로 한 시각(ms). 0이면 아직 없음 */
+  "keywords.autoRegeneratedAt": number;
   /** 공식 종목 목록을 마지막으로 받은 시각(ms). 0이면 아직 없음 */
   "listings.syncedAt.KR": number;
   "listings.syncedAt.US": number;
@@ -26,6 +32,9 @@ export const SETTING_DEFAULTS: {
   "jev.model": "jev-1.13.0",
   "jev.usdPerMillionInputTokens": 0.042,
   "evaluation.minRelevance": 6,
+  "collect.intervalMinutes": 30,
+  "keywords.regenerateEvery": "daily",
+  "keywords.autoRegeneratedAt": 0,
   "listings.syncedAt.KR": 0,
   "listings.syncedAt.US": 0,
 };

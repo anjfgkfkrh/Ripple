@@ -31,3 +31,41 @@ export function formatSeoulDateTime(date: Date): string {
   }
   return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
 }
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * now 이전(같은 시각 포함)의 가장 최근 한국 시간 hour시 정각. weekly면 그중 월요일.
+ * 키워드 자동 재생성 시각(매일 06:00, 일주일 1회면 월요일 06:00)의 기준이다.
+ */
+export function lastSeoulBoundary(
+  now: Date,
+  hour: number,
+  weekly = false,
+): Date {
+  const seoul = new Date(now.getTime() + SEOUL_OFFSET_MS);
+  let boundary =
+    Date.UTC(
+      seoul.getUTCFullYear(),
+      seoul.getUTCMonth(),
+      seoul.getUTCDate(),
+      hour,
+    ) - SEOUL_OFFSET_MS;
+  if (boundary > now.getTime()) boundary -= DAY_MS;
+  if (weekly) {
+    // 0=일요일 … 1=월요일. 한국 시간 날짜의 요일로 센다.
+    const day = new Date(boundary + SEOUL_OFFSET_MS).getUTCDay();
+    boundary -= ((day + 6) % 7) * DAY_MS;
+  }
+  return new Date(boundary);
+}
+
+/** now 다음(같은 시각 제외)의 한국 시간 hour시 정각. weekly면 그중 월요일. */
+export function nextSeoulBoundary(
+  now: Date,
+  hour: number,
+  weekly = false,
+): Date {
+  const last = lastSeoulBoundary(now, hour, weekly);
+  return new Date(last.getTime() + (weekly ? 7 : 1) * DAY_MS);
+}

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createTestDbFile } from "../../../tests/db";
 import {
   fakeLlm,
+  insertLink,
   sampleKeywordTree,
   seedListings,
 } from "../../../tests/fixtures";
@@ -72,7 +73,13 @@ describe("generateKeywordsForStock (SPEC FR-3)", () => {
       now: () => NOW,
     });
 
-    expect(result).toEqual({ ok: true, count: 10, depth: 2, dropped: 0 });
+    expect(result).toEqual({
+      ok: true,
+      count: 10,
+      depth: 2,
+      dropped: 0,
+      headlines: 0,
+    });
     expect(llm.calls).toHaveLength(1);
     expect(llm.calls[0]).toMatchObject({
       model: "anthropic/claude-haiku-5.5",
@@ -104,6 +111,25 @@ describe("generateKeywordsForStock (SPEC FR-3)", () => {
         model: "anthropic/claude-haiku-5.5",
       }),
     ]);
+  });
+
+  it("그 종목의 최근 주요 기사 제목을 함께 넣고, 넣은 수를 알려 준다", async () => {
+    const db = testDb();
+    const id = register(db);
+    insertLink(db, {
+      stockId: id,
+      title: "삼성전자 노조 협상",
+      publishedAt: NOW,
+      relevance: 8,
+    });
+    const llm = fakeLlm(() => sampleKeywordTree());
+
+    const result = await generateKeywordsForStock(db, llm, id, {
+      now: () => LATER,
+    });
+
+    expect(result).toMatchObject({ ok: true, headlines: 1 });
+    expect(llm.calls[0].messages[1].content).toContain("- 삼성전자 노조 협상");
   });
 
   it("만드는 동안에는 상태가 '만드는 중'이다", async () => {
@@ -143,6 +169,7 @@ describe("generateKeywordsForStock (SPEC FR-3)", () => {
       count: 5,
       depth: 1,
       dropped: 5,
+      headlines: 0,
     });
     expect(llm.calls[0].messages.at(-1)?.content).toContain("깊이: 1");
 

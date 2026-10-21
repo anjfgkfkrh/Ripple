@@ -23,6 +23,11 @@ test.describe("기사 수집과 평가 (SPEC FR-4, FR-5)", () => {
     await page.goto("/");
     const panel = page.getByTestId("collection");
     await expect(panel).toBeVisible();
+    // 다음 정기 수집과 키워드 재생성 시각(6단계)
+    const schedule = panel.getByTestId("collection-schedule");
+    await expect(schedule).toContainText("정기 수집");
+    await expect(schedule).toContainText("30분마다");
+    await expect(schedule).toContainText(/매일 06:00 · (곧 시작|다음 )/);
     await panel.getByRole("button", { name: "지금 수집" }).click();
     // 같은 사이트에는 요청 간격(1.1초)을 두므로 바로 끝나지 않는다.
     await expect(panel.getByRole("button", { name: "수집 중…" })).toBeVisible();
@@ -47,6 +52,10 @@ test.describe("기사 수집과 평가 (SPEC FR-4, FR-5)", () => {
     );
     await expect(evaluation).not.toContainText("실패");
     await expect(panel).toContainText(/평가 [1-9]\d*건\(6점 이상 [1-9]\d*건\)/);
+    // "지금 수집"도 간격 계산에 넣어, 다음 정기 수집은 30분 뒤다.
+    await expect(schedule).toContainText(
+      /30분마다 · 다음 (\d{2}-\d{2} )?\d{2}:\d{2}/,
+    );
 
     await run.getByText(/출처별 결과 \d+곳/).click();
     const sources = run.getByTestId("collection-sources");
@@ -56,6 +65,12 @@ test.describe("기사 수집과 평가 (SPEC FR-4, FR-5)", () => {
     await page.screenshot({
       path: testInfo.outputPath("collect-done.png"),
       fullPage: true,
+      animations: "disabled",
+    });
+    // 좁은 화면(320px)에서 줄이 바뀌는 모양을 캡처해 본다.
+    await page.setViewportSize({ width: 320, height: 900 });
+    await panel.screenshot({
+      path: testInfo.outputPath("collect-narrow.png"),
       animations: "disabled",
     });
   });

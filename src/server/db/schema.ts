@@ -63,6 +63,11 @@ export const stocks = sqliteTable(
     keywordsGeneratedAt: integer("keywords_generated_at", {
       mode: "timestamp_ms",
     }),
+    /**
+     * 새로 등록하거나 되살린 종목은 다음 회차에서 이 시각(등록 24시간 전) 이후 기사까지 연결한다.
+     * 그 회차가 끝나면(완료·일부 실패) 비운다(2026-10-21 결정, D-20 보완).
+     */
+    backfillFrom: integer("backfill_from", { mode: "timestamp_ms" }),
   },
   (table) => [uniqueIndex("stocks_market_code").on(table.market, table.code)],
 );
@@ -227,6 +232,8 @@ export type SourceResult = {
   saved: number;
   /** 새로 만든 기사–종목 연결 수 */
   matched: number;
+  /** 이 소스만 회차 기준 시각과 다른 기준 시각(ms)을 썼을 때(지난번에 실패한 소스, D-24) */
+  since?: number;
   error?: string;
   ms: number;
 };

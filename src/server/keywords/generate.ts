@@ -5,6 +5,7 @@ import type { Db } from "@/server/db/client";
 import { keywords, stocks, type KeywordStatus } from "@/server/db/schema";
 import { logError } from "@/server/log";
 import { readSetting } from "@/server/settings";
+import { recentHeadlines } from "./headlines";
 import {
   buildKeywordMessages,
   buildKeywordTree,
@@ -24,6 +25,8 @@ export type GenerateResult =
       depth: number;
       /** LLM이 줬지만 규칙(단계별 5개 등)에 맞지 않아 버린 키워드 수 */
       dropped: number;
+      /** 참고로 넣은 최근 기사 제목 수 */
+      headlines: number;
     }
   | { ok: false; error: string };
 
@@ -45,13 +48,14 @@ export async function generateKeywordsForStock(
 
   setKeywordStatus(db, stockId, "generating");
   const depth = clampDepth(readSetting(db, "keywords.depth"));
+  const headlines = recentHeadlines(db, stockId, now());
   try {
     const { value } = await generateWithBudget(
       db,
       llm,
       {
         model: readSetting(db, "llm.model"),
-        messages: buildKeywordMessages(stock, depth),
+        messages: buildKeywordMessages(stock, depth, headlines),
         schema: keywordTreeSchema,
         schemaName: "keyword_tree",
         // 추론 토큰과 함께 쓴다. 깊이 4(20개)에도 넉넉하다.
@@ -69,6 +73,7 @@ export async function generateKeywordsForStock(
       count: tree.length,
       depth,
       dropped: value.keywords.length - tree.length,
+      headlines: headlines.length,
     };
   } catch (error) {
     // 화면에는 짧은 이유만 보이므로, 자세한 내용은 worker 로그에 남긴다.

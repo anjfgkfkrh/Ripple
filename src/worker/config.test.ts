@@ -24,7 +24,24 @@ describe("readWorkerConfig", () => {
       rssFeeds: RSS_FEEDS,
       typesafeApiKey: undefined,
       typesafeBaseUrl: "https://api.typesafe.ai",
+      schedulerJobsEnabled: true,
     });
+  });
+
+  it("SCHEDULER_DISABLED=1(테스트용)이면 정기 작업을 끈다", () => {
+    const base = { DATABASE_PATH: "x.db", WORKER_API_TOKEN: TOKEN };
+    expect(
+      readWorkerConfig({ ...base, SCHEDULER_DISABLED: "1" })
+        .schedulerJobsEnabled,
+    ).toBe(false);
+    expect(
+      readWorkerConfig({ ...base, SCHEDULER_DISABLED: "true" })
+        .schedulerJobsEnabled,
+    ).toBe(false);
+    expect(
+      readWorkerConfig({ ...base, SCHEDULER_DISABLED: "0" })
+        .schedulerJobsEnabled,
+    ).toBe(true);
   });
 
   it("테스트용 원천 주소를 재정의할 수 있다", () => {

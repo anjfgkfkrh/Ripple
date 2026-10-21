@@ -1,4 +1,13 @@
-import { asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+} from "drizzle-orm";
 import type { Decider } from "@/server/ai/decider/types";
 import type { Db } from "@/server/db/client";
 import {
@@ -125,11 +134,26 @@ async function collect(
     return { runId, status: "success", articlesNew: 0, matchesNew: 0 };
   }
 
-  const sources = buildSources(deps, watched, since, startedAt);
+  const sinceFor = sourceSinceResolver(deps.db, startedAt, since);
+  const backfill = loadBackfill(deps.db, startedAt);
+  if (backfill.size > 0) {
+    log(
+      `새로 등록한 종목 ${backfill.size}개는 등록 24시간 전 기사까지 연결합니다.`,
+    );
+  }
+  const sources = buildSources(deps, watched, sinceFor, backfill, startedAt);
   const matcher = createMatcher(watched);
   const displayNames = new Map(watched.map((s) => [s.id, s.nameKo ?? s.name]));
   const results = await mapLimit(sources, SOURCE_CONCURRENCY, (source) =>
-    runSource(deps.db, source, matcher, displayNames, since, startedAt),
+    runSource(
+      deps.db,
+      source,
+      matcher,
+      displayNames,
+      { run: since, source: sinceFor(source.id) },
+      backfill,
+      startedAt,
+    ),
   );
 
   const failed = results.filter((r) => r.error).length;
@@ -137,6 +161,8 @@ async function collect(
     failed === 0 ? "success" : failed === results.length ? "failed" : "partial";
   const articlesNew = results.reduce((sum, r) => sum + r.saved, 0);
   const matchesNew = results.reduce((sum, r) => sum + r.matched, 0);
+  // 회차가 돌았으면(완료·일부 실패) 새 종목의 지난 기사 연결은 끝난 것으로 본다. 모두 실패하면 다음 회차에 다시.
+  if (status !== "failed") clearBackfill(deps.db, backfill);
   log(
     `수집 회차 ${runId}: ${status}, 소스 ${results.length}개(실패 ${failed}), 새 기사 ${articlesNew}건, 새 연결 ${matchesNew}건`,
   );
@@ -172,7 +198,8 @@ async function collect(
 function buildSources(
   deps: CollectDeps,
   watched: MatchStock[],
-  since: Date,
+  sinceFor: (sourceId: string) => Date,
+  backfill: Backfill,
   startedAt: Date,
 ): Source[] {
   const sources: Source[] = deps.feeds.map((feed) => ({
@@ -200,12 +227,19 @@ function buildSources(
   const finnhub = deps.finnhub;
   if (finnhub) {
     for (const stock of watched.filter((s) => s.market === "US")) {
+      const id = `finnhub:company:${stock.code}`;
       sources.push({
-        id: `finnhub:company:${stock.code}`,
+        id,
         label: `Finnhub ${stock.nameKo ?? stock.name}`,
         group: "Finnhub",
         async fetch() {
-          const news = await finnhub.companyNews(stock.code, since, startedAt);
+          const since = sinceFor(id);
+          const from = backfill.get(stock.id)?.from;
+          const news = await finnhub.companyNews(
+            stock.code,
+            from && from < since ? from : since,
+            startedAt,
+          );
           return news.map((n) => ({
             url: n.url,
             title: n.headline,
@@ -241,10 +275,13 @@ async function runSource(
   source: Source,
   matcher: (text: string) => StockMatch[],
   displayNames: Map<number, string>,
-  since: Date,
+  sinces: { run: Date; source: Date },
+  backfill: Backfill,
   seenAt: Date,
 ): Promise<SourceResult> {
   const started = Date.now();
+  const since = sinces.source;
+  const backfillFrom = earliest(backfill);
   const result: SourceResult = {
     id: source.id,
     label: source.label,
@@ -253,6 +290,9 @@ async function runSource(
     fresh: 0,
     saved: 0,
     matched: 0,
+    ...(since.getTime() !== sinces.run.getTime()
+      ? { since: since.getTime() }
+      : {}),
     ms: 0,
   };
   try {
@@ -269,14 +309,22 @@ async function runSource(
       if (!key || !item.title.trim()) continue;
       // 발행 시각이 없는 피드(한겨레 등)는 처음 받은 시각으로 본다.
       const publishedAt = item.publishedAt ?? seenAt;
-      if (publishedAt < since) continue;
-      result.fresh += 1;
+      const fresh = publishedAt >= since;
+      if (!fresh && !(backfillFrom && publishedAt >= backfillFrom)) continue;
+      if (fresh) result.fresh += 1;
       // 피드가 본문 전체를 요약 자리에 넣기도 해서, 저장하는 요약(앞 300자)까지만 보고 건다.
       const clipped = {
         ...item,
         summary: clip(item.summary, SUMMARY_MAX_CHARS),
       };
-      const matches = mergeMatches(clipped, matcher, displayNames);
+      let matches = mergeMatches(clipped, matcher, displayNames);
+      // 기준 시각 전 기사는 새로 등록한 종목에만 건다(D-20 보완).
+      if (!fresh) {
+        matches = matches.filter((m) => {
+          const from = backfill.get(m.stockId)?.from;
+          return from !== undefined && publishedAt >= from;
+        });
+      }
       if (matches.length > 0)
         keep.push({ item: clipped, key, publishedAt, matches });
     }
@@ -425,6 +473,97 @@ export function computeSince(db: Db, now: Date): Date {
     ? last.startedAt.getTime() - OVERLAP_MS
     : now.getTime() - FIRST_RUN_WINDOW_MS;
   return new Date(Math.max(from, floor));
+}
+
+/** 새로 등록한 종목: 종목 id → 이번 회차에서 연결할 가장 이른 발행 시각(from)과 DB에 적힌 값(stored) */
+type Backfill = Map<number, { from: Date; stored: Date }>;
+
+/**
+ * 새로 등록하거나 되살린 종목(D-20 보완, 2026-10-21 결정): 이번 회차에서 등록 24시간 전 기사까지 연결한다.
+ * 키워드를 만드는 중인 종목은 다음 회차로 미룬다(키워드로 걸 기사를 놓치지 않게). 최대 7일 전까지.
+ */
+export function loadBackfill(db: Db, now: Date): Backfill {
+  const floor = now.getTime() - MAX_WINDOW_MS;
+  const rows = db
+    .select({
+      id: stocks.id,
+      stored: stocks.backfillFrom,
+      status: stocks.keywordsStatus,
+    })
+    .from(stocks)
+    .where(and(isNull(stocks.deletedAt), isNotNull(stocks.backfillFrom)))
+    .all();
+  const backfill: Backfill = new Map();
+  for (const row of rows) {
+    if (!row.stored || row.status === "pending" || row.status === "generating")
+      continue;
+    backfill.set(row.id, {
+      from: new Date(Math.max(row.stored.getTime(), floor)),
+      stored: row.stored,
+    });
+  }
+  return backfill;
+}
+
+/** 이번 회차에서 지난 기사를 연결한 종목의 표시를 지운다. 그사이 다시 등록돼 값이 바뀐 종목은 남긴다. */
+function clearBackfill(db: Db, backfill: Backfill): void {
+  for (const [stockId, { stored }] of backfill) {
+    db.update(stocks)
+      .set({ backfillFrom: null })
+      .where(and(eq(stocks.id, stockId), eq(stocks.backfillFrom, stored)))
+      .run();
+  }
+}
+
+function earliest(backfill: Backfill): Date | null {
+  let min: Date | null = null;
+  for (const { from } of backfill.values()) {
+    if (!min || from < min) min = from;
+  }
+  return min;
+}
+
+/**
+ * 소스마다 볼 기사의 기준 시각(D-24): 그 소스가 마지막으로 성공한 회차 시작 1시간 전.
+ * 지난번에 실패한 소스는 이번 회차 기준 시각보다 앞에서부터 받아, 피드에 남은 기사를 놓치지 않는다.
+ * 처음 보는 소스(새 피드·새로 등록한 미국 종목)는 회차 기준 시각, 최근 7일 동안 한 번도 성공하지 못한 소스는 7일 전부터.
+ */
+export function sourceSinceResolver(
+  db: Db,
+  now: Date,
+  runSince: Date,
+): (sourceId: string) => Date {
+  const floor = new Date(now.getTime() - MAX_WINDOW_MS);
+  const runs = db
+    .select({
+      startedAt: collectionRuns.startedAt,
+      sources: collectionRuns.sources,
+    })
+    .from(collectionRuns)
+    .where(
+      and(
+        inArray(collectionRuns.status, ["success", "partial", "failed"]),
+        gte(collectionRuns.startedAt, floor),
+      ),
+    )
+    .orderBy(desc(collectionRuns.startedAt))
+    .all();
+  const lastOk = new Map<string, Date>();
+  const seen = new Set<string>();
+  for (const run of runs) {
+    for (const source of run.sources) {
+      seen.add(source.id);
+      if (!source.error && !lastOk.has(source.id)) {
+        lastOk.set(source.id, run.startedAt);
+      }
+    }
+  }
+  return (sourceId) => {
+    const ok = lastOk.get(sourceId);
+    if (!ok) return seen.has(sourceId) ? floor : runSince;
+    const from = Math.max(ok.getTime() - OVERLAP_MS, floor.getTime());
+    return new Date(Math.min(from, runSince.getTime()));
+  };
 }
 
 function finishRun(

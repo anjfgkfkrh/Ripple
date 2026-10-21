@@ -14,14 +14,9 @@ import {
   type ListingSources,
 } from "@/server/listings/sync";
 import { log, logError } from "@/server/log";
+import { startScheduler } from "@/server/schedule/scheduler";
 import { readWorkerConfig } from "./config";
 import { createWorkerServer } from "./server";
-
-/**
- * 공식 종목 목록이 오래됐는지 확인하는 간격. 실제로 받는 것은 목록이 없거나 7일이 지났을 때뿐이다(D-12).
- * 처음 받기에 실패해도(네트워크 등) 30분 안에 다시 시도한다.
- */
-const LISTING_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 
 async function main(): Promise<void> {
   const config = readWorkerConfig();
@@ -83,21 +78,30 @@ async function main(): Promise<void> {
   });
   log(`내부 API 대기 중: http://${config.host}:${config.port}`);
 
-  // 6단계 스케줄러가 생기면 그쪽으로 옮긴다.
-  const listingTimer = startListingSync(db, config.listingSources);
-
   // 대기 중이었거나 만들다 멈춘(재시작 등) 키워드 생성을 이어서 한다.
   const resumed = stocksAwaitingKeywords(db);
   if (resumed.length > 0)
     log(`키워드 생성 이어서 하기: ${resumed.length}개 종목`);
   for (const stockId of resumed) keywordQueue.enqueue(stockId);
 
+  // 정기 수집·키워드 자동 재생성·공식 목록 확인(6단계). 시작하자마자 한 번 확인해 놓친 일을 한다.
+  if (!config.schedulerJobsEnabled) {
+    log("SCHEDULER_DISABLED: 정기 수집과 키워드 자동 재생성을 하지 않습니다.");
+  }
+  const scheduler = startScheduler({
+    db,
+    collector,
+    keywordQueue,
+    syncListings: createListingSync(db, config.listingSources),
+    jobsEnabled: config.schedulerJobsEnabled,
+  });
+
   let stopping = false;
   const shutdown = (signal: string) => {
     if (stopping) return;
     stopping = true;
     log(`${signal} 수신, 종료합니다.`);
-    clearInterval(listingTimer);
+    scheduler.stop();
     server.close();
     server.closeAllConnections();
     db.$client.close();
@@ -107,9 +111,13 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
-function startListingSync(db: Db, sources: ListingSources): NodeJS.Timeout {
+/** 공식 종목 목록이 오래됐으면 받는다(D-12). 겹쳐 돌지 않고, 던지지 않는다. */
+function createListingSync(
+  db: Db,
+  sources: ListingSources,
+): () => Promise<void> {
   let running = false;
-  const run = async () => {
+  return async () => {
     if (running) return;
     running = true;
     try {
@@ -123,12 +131,12 @@ function startListingSync(db: Db, sources: ListingSources): NodeJS.Timeout {
           );
         }
       }
+    } catch (error) {
+      logError("공식 종목 목록 확인 실패", error);
     } finally {
       running = false;
     }
   };
-  void run();
-  return setInterval(() => void run(), LISTING_CHECK_INTERVAL_MS);
 }
 
 main().catch((error: unknown) => {

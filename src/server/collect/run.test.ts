@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { createTestDbFile } from "../../../tests/db";
 import { fakeDecider, seedListings } from "../../../tests/fixtures";
@@ -8,9 +8,11 @@ import {
   articles,
   collectionRuns,
   evaluations,
+  stocks,
 } from "../db/schema";
 import { replaceKeywords } from "../keywords/generate";
 import { deleteStock, registerStock } from "../stocks/repository";
+import { setKeywordStatus } from "../keywords/generate";
 import type { RssFeed } from "./feeds";
 import type { FinnhubClient, FinnhubNews } from "./finnhub";
 import type { HttpClient } from "./http";
@@ -19,6 +21,7 @@ import {
   closeStaleRuns,
   computeSince,
   startCollectionRun,
+  sourceSinceResolver,
   SUMMARY_MAX_CHARS,
   type CollectDeps,
 } from "./run";
@@ -44,18 +47,26 @@ const NOW = new Date("2026-10-20T03:00:00Z");
 const HOUR = 60 * 60 * 1000;
 const ago = (hours: number) => new Date(NOW.getTime() - hours * HOUR);
 
-function addStocks(db: Db) {
-  const samsung = registerStock(db, {
-    market: "KR",
-    code: "005930",
-    userInput: "삼전",
-  });
-  const nvidia = registerStock(db, {
-    market: "US",
-    code: "NVDA",
-    userInput: "NVDA",
-    nameKo: "엔비디아",
-  });
+function addStocks(db: Db, at: Date = NOW) {
+  const samsung = registerStock(
+    db,
+    {
+      market: "KR",
+      code: "005930",
+      userInput: "삼전",
+    },
+    at,
+  );
+  const nvidia = registerStock(
+    db,
+    {
+      market: "US",
+      code: "NVDA",
+      userInput: "NVDA",
+      nameKo: "엔비디아",
+    },
+    at,
+  );
   if (samsung.status === "not_listed" || nvidia.status === "not_listed")
     throw new Error("표본에 없음");
   replaceKeywords(
@@ -471,6 +482,209 @@ describe("기준 시각 (D-20)", () => {
   });
 });
 
+describe("소스별 기준 시각 (D-24)", () => {
+  const ok = (id: string) => ({
+    id,
+    label: id,
+    group: id,
+    fetched: 1,
+    fresh: 1,
+    saved: 0,
+    matched: 0,
+    ms: 1,
+  });
+  const failed = (id: string) => ({ ...ok(id), error: "HTTP 500" });
+
+  it("지난번에 실패한 소스는 마지막으로 성공한 회차부터, 처음 보는 소스는 회차 기준 시각부터", () => {
+    const db = testDb();
+    const insert = (
+      startedAt: Date,
+      status: "success" | "partial" | "failed",
+      sources: ReturnType<typeof ok>[],
+    ) =>
+      db
+        .insert(collectionRuns)
+        .values({
+          trigger: "scheduled",
+          status,
+          startedAt,
+          since: startedAt,
+          sources,
+        })
+        .run();
+    const DAY = 24 * HOUR;
+    // 8일 전에 마지막으로 성공한 e는 7일 안에 성공 기록이 없다.
+    insert(new Date(NOW.getTime() - 8 * DAY), "success", [ok("e")]);
+    insert(ago(5), "success", [ok("a"), ok("b")]);
+    insert(ago(3), "partial", [ok("a"), failed("b")]);
+    insert(ago(2), "failed", [failed("a"), failed("b")]);
+    insert(ago(1), "partial", [ok("a"), failed("b"), failed("c"), failed("e")]);
+
+    const runSince = computeSince(db, NOW);
+    expect(runSince).toEqual(ago(2));
+    const sinceFor = sourceSinceResolver(db, NOW, runSince);
+    expect(sinceFor("a")).toEqual(ago(2));
+    // b는 5시간 전 회차가 마지막 성공
+    expect(sinceFor("b")).toEqual(ago(6));
+    // 7일 동안 한 번도 성공하지 못한 소스는 최대 기간(7일)
+    expect(sinceFor("c")).toEqual(new Date(NOW.getTime() - 7 * DAY));
+    expect(sinceFor("e")).toEqual(new Date(NOW.getTime() - 7 * DAY));
+    // 처음 보는 소스(새 피드, 새로 등록한 미국 종목)
+    expect(sinceFor("new")).toEqual(ago(2));
+  });
+
+  it("실패했던 소스가 돌아오면 그 사이 피드에 남은 기사를 받고, 쓴 기준 시각을 남긴다", async () => {
+    const db = testDb();
+    addStocks(db);
+    // 4시간 전 회차: 두 소스 모두 성공
+    await run(
+      deps(
+        db,
+        {
+          "https://a.example/economy.xml": { text: rss() },
+          "https://b.example/all.xml": { text: rss() },
+        },
+        { now: () => ago(4) },
+      ).deps,
+    );
+    // 2시간 전 회차: b만 실패
+    await run(
+      deps(
+        db,
+        {
+          "https://a.example/economy.xml": { text: rss() },
+          "https://b.example/all.xml": { status: 503, text: "" },
+        },
+        { now: () => ago(2) },
+      ).deps,
+    );
+    // 지금 회차: 회차 기준 시각은 3시간 전(2시간 전 회차 − 1시간).
+    // b의 3.5시간 전 기사는 b의 기준 시각(4시간 전 회차 − 1시간 = 5시간 전) 안이라 받는다.
+    const item35 = item("삼성전자 b 소식", "https://n.example/b35", ago(3.5));
+    const { deps: d } = deps(db, {
+      "https://a.example/economy.xml": {
+        text: rss(item("삼성전자 a 소식", "https://n.example/a35", ago(3.5))),
+      },
+      "https://b.example/all.xml": { text: rss(item35) },
+    });
+
+    await run(d);
+
+    expect(db.select({ title: articles.title }).from(articles).all()).toEqual([
+      { title: "삼성전자 b 소식" },
+    ]);
+    const last = db
+      .select()
+      .from(collectionRuns)
+      .orderBy(desc(collectionRuns.id))
+      .get()!;
+    expect(last.since).toEqual(ago(3));
+    expect(last.sources[0].since).toBeUndefined();
+    expect(last.sources[1].since).toBe(ago(5).getTime());
+  });
+});
+
+describe("새로 등록한 종목의 지난 기사 (D-20 보완, 2026-10-21 결정)", () => {
+  function addHynix(db: Db, at: Date) {
+    const r = registerStock(
+      db,
+      { market: "KR", code: "000660", userInput: "하닉" },
+      at,
+    );
+    if (r.status === "not_listed") throw new Error("표본에 없음");
+    return r.stock.id;
+  }
+  const backfillOf = (db: Db, id: number) =>
+    db
+      .select({ at: stocks.backfillFrom })
+      .from(stocks)
+      .where(eq(stocks.id, id))
+      .get()?.at;
+  const feed = (...items: string[]) => ({
+    "https://a.example/economy.xml": { text: rss(...items) },
+  });
+  const titles = (db: Db) =>
+    db
+      .select({ title: articles.title, stockId: articleMatches.stockId })
+      .from(articleMatches)
+      .innerJoin(articles, eq(articles.id, articleMatches.articleId))
+      .orderBy(asc(articleMatches.id))
+      .all();
+
+  it("다음 회차에서 그 종목만 등록 24시간 전 기사까지 걸고, 한 번 걸면 표시를 지운다", async () => {
+    const db = testDb();
+    const ids = addStocks(db, ago(10));
+    // 삼성전자는 이미 수집해 온 종목
+    await run(deps(db, feed(), { feeds: [FEEDS[0]], now: () => ago(5) }).deps);
+    const hynix = addHynix(db, ago(1));
+    setKeywordStatus(db, hynix, "ready");
+    expect(backfillOf(db, hynix)).toEqual(ago(25));
+
+    await run(
+      deps(
+        db,
+        feed(
+          item("SK하이닉스 HBM 증설", "https://n.example/h20", ago(20)),
+          item("삼성전자와 SK하이닉스 협력", "https://n.example/b20", ago(20)),
+          item("삼성전자 지난 소식", "https://n.example/s20", ago(20)),
+          item("SK하이닉스 오래된 소식", "https://n.example/h30", ago(30)),
+          item("삼성전자 새 소식", "https://n.example/s1", ago(0.5)),
+        ),
+        { feeds: [FEEDS[0]] },
+      ).deps,
+    );
+
+    expect(titles(db)).toEqual([
+      { title: "SK하이닉스 HBM 증설", stockId: hynix },
+      // 기준 시각 전 기사는 새 종목에만 건다.
+      { title: "삼성전자와 SK하이닉스 협력", stockId: hynix },
+      { title: "삼성전자 새 소식", stockId: ids.samsung },
+    ]);
+    expect(backfillOf(db, hynix)).toBeNull();
+
+    // 다음 회차부터는 다른 종목과 같은 기준 시각
+    await run(
+      deps(
+        db,
+        feed(
+          item("SK하이닉스 다른 지난 소식", "https://n.example/h22", ago(22)),
+        ),
+        { feeds: [FEEDS[0]], now: () => new Date(NOW.getTime() + HOUR) },
+      ).deps,
+    );
+    expect(titles(db)).toHaveLength(3);
+  });
+
+  it("키워드를 만드는 중이면 다음 회차로 미루고, 회차가 모두 실패하면 다음 회차에 다시 한다", async () => {
+    const db = testDb();
+    addStocks(db, ago(10));
+    await run(deps(db, feed(), { feeds: [FEEDS[0]], now: () => ago(5) }).deps);
+    const hynix = addHynix(db, ago(1));
+    setKeywordStatus(db, hynix, "generating");
+    const old = item("SK하이닉스 HBM 증설", "https://n.example/h20", ago(20));
+
+    await run(deps(db, feed(old), { feeds: [FEEDS[0]] }).deps);
+    expect(titles(db)).toEqual([]);
+    expect(backfillOf(db, hynix)).toEqual(ago(25));
+
+    setKeywordStatus(db, hynix, "ready");
+    await run(
+      deps(
+        db,
+        { "https://a.example/economy.xml": { status: 503, text: "" } },
+        { feeds: [FEEDS[0]] },
+      ).deps,
+    );
+    expect(backfillOf(db, hynix)).toEqual(ago(25));
+
+    await run(deps(db, feed(old), { feeds: [FEEDS[0]] }).deps);
+    expect(titles(db)).toEqual([
+      { title: "SK하이닉스 HBM 증설", stockId: hynix },
+    ]);
+    expect(backfillOf(db, hynix)).toBeNull();
+  });
+});
+
 describe("Finnhub (미국 뉴스)", () => {
   const news = (
     headline: string,
@@ -540,6 +754,37 @@ describe("Finnhub (미국 뉴스)", () => {
         path: "엔비디아 → AI 가속기",
         kind: "keyword",
       },
+    ]);
+  });
+
+  it("새로 등록한 미국 종목은 종목 뉴스를 등록 24시간 전부터 묻는다", async () => {
+    const db = testDb();
+    addStocks(db, ago(10));
+    const asked: { symbol: string; from: Date }[] = [];
+    const finnhub: FinnhubClient = {
+      async companyNews(symbol, from) {
+        asked.push({ symbol, from });
+        return [];
+      },
+      async generalNews() {
+        return [];
+      },
+    };
+    await run(deps(db, {}, { feeds: [], finnhub, now: () => ago(5) }).deps);
+    const tesla = registerStock(
+      db,
+      { market: "US", code: "TSLA", userInput: "TSLA", nameKo: "테슬라" },
+      ago(1),
+    );
+    if (tesla.status === "not_listed") throw new Error("표본에 없음");
+    setKeywordStatus(db, tesla.stock.id, "ready");
+
+    await run(deps(db, {}, { feeds: [], finnhub }).deps);
+
+    expect(asked.slice(1)).toEqual([
+      // 이미 수집해 온 엔비디아는 회차 기준 시각(지난 회차 1시간 전)부터
+      { symbol: "NVDA", from: ago(6) },
+      { symbol: "TSLA", from: ago(25) },
     ]);
   });
 

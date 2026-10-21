@@ -4,6 +4,7 @@ import { badgeVariants } from "@/components/ui/badge";
 import { requireSession } from "@/server/auth/guard";
 import {
   collectionTotals,
+  groupFailures,
   latestRun,
   type CollectionRun,
 } from "@/server/collect/read";
@@ -14,6 +15,12 @@ import type {
 } from "@/server/db/schema";
 import { getWebDb } from "@/server/db/web";
 import { evaluationTotals } from "@/server/evaluate/read";
+import {
+  collectionPlan,
+  keywordPlan,
+  type CollectionPlan,
+  type KeywordPlan,
+} from "@/server/schedule/plan";
 import { formatSeoulDateTime } from "@/server/time";
 import { CollectNowButton } from "./collect-now-button";
 
@@ -32,6 +39,7 @@ export async function CollectionPanel() {
   const totals = collectionTotals(db);
   const evaluated = evaluationTotals(db);
   const running = run?.status === "running";
+  const now = new Date();
 
   return (
     <div
@@ -50,6 +58,11 @@ export async function CollectionPanel() {
         </p>
         <CollectNowButton running={running} />
       </div>
+      <ScheduleView
+        collect={collectionPlan(db, now)}
+        keywords={keywordPlan(db, now)}
+        now={now}
+      />
       {run ? (
         <RunView run={run} minRelevance={evaluated.minRelevance} />
       ) : (
@@ -74,7 +87,7 @@ function RunView({
         Math.round((run.finishedAt.getTime() - run.startedAt.getTime()) / 1000),
       )
     : null;
-  const failed = run.sources.filter((s) => s.error);
+  const failures = groupFailures(run.sources);
   const groups = groupSources(run.sources);
 
   return (
@@ -103,9 +116,11 @@ function RunView({
       {run.status !== "running" && (
         <p className="text-sm">
           새 기사 <strong>{run.articlesNew}</strong>건 · 새 연결{" "}
-          <strong>{run.matchesNew}</strong>건{" "}
+          <strong>{run.matchesNew}</strong>건
+          {/* 점 앞은 줄바꿈 없는 공백이라 점이 다음 줄 맨 앞으로 가지 않는다. */}
+          <span className="text-muted-foreground">{"\u00a0· "}</span>
           <span className="whitespace-nowrap text-muted-foreground">
-            · {formatSeoulDateTime(run.since).slice(0, 16)} 이후 기사
+            {formatSeoulDateTime(run.since).slice(0, 16)} 이후 기사
           </span>
         </p>
       )}
@@ -116,14 +131,17 @@ function RunView({
           minRelevance={minRelevance}
         />
       )}
-      {failed.length > 0 && (
+      {failures.length > 0 && (
         <ul
           className="space-y-1 text-sm text-destructive"
           aria-label="실패한 소스"
         >
-          {failed.map((s) => (
-            <li key={s.id}>
-              {s.label}: {s.error}
+          {failures.map(({ reason, labels }) => (
+            <li key={reason}>
+              {labels.length === 1
+                ? labels[0]
+                : `${labels[0]} 등 ${labels.length}곳`}
+              : {reason}
             </li>
           ))}
         </ul>
@@ -160,6 +178,55 @@ function RunView({
       )}
     </div>
   );
+}
+
+/** 다음 정기 수집과 키워드 자동 재생성 시각(6단계 결정). 계산은 worker와 같은 함수로 한다. */
+function ScheduleView({
+  collect,
+  keywords,
+  now,
+}: {
+  collect: CollectionPlan;
+  keywords: KeywordPlan;
+  now: Date;
+}) {
+  return (
+    <dl
+      className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm"
+      data-testid="collection-schedule"
+    >
+      <dt className="text-muted-foreground">정기 수집</dt>
+      <dd>
+        {collect.idle
+          ? "등록한 종목이 없어 쉬는 중"
+          : collect.running
+            ? `${collect.intervalMinutes}분마다 · 지금 수집 중`
+            : `${collect.intervalMinutes}분마다 · ${next(collect.nextAt, now)}`}
+        {collect.retrying && !collect.running && !collect.idle && (
+          <>
+            {" "}
+            <span className="whitespace-nowrap">(실패해 5분 뒤 다시)</span>
+          </>
+        )}
+      </dd>
+      <dt className="text-muted-foreground">키워드 다시 만들기</dt>
+      <dd>
+        {keywords.every === "weekly" ? "매주 월요일 06:00" : "매일 06:00"}
+        {!keywords.idle && ` · ${next(keywords.nextAt, now)}`}
+      </dd>
+    </dl>
+  );
+}
+
+/** 이미 지났으면 '곧 시작'(worker가 1분 안에 시작), 오늘이면 시각만, 아니면 날짜와 시각(한국 시간) */
+function next(at: Date, now: Date): string {
+  if (at <= now) return "곧 시작";
+  const target = formatSeoulDateTime(at);
+  return `다음 ${
+    target.slice(0, 10) === formatSeoulDateTime(now).slice(0, 10)
+      ? target.slice(11, 16)
+      : target.slice(5, 16)
+  }`;
 }
 
 /** 이번 회차의 Jev 평가 결과(SPEC FR-5) */

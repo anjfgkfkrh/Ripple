@@ -58,6 +58,9 @@ export type RegisterResult =
  * 공식 목록에 있는 종목만 등록한다(D-12). 이름·거래소는 목록 값을 쓴다.
  * 예전에 지운 종목이면 새로 만들지 않고 되살린다(D-11).
  */
+/** 새로 등록하거나 되살린 종목은 다음 수집 회차에서 이만큼 지난 기사까지 연결한다(2026-10-21 결정). */
+export const NEW_STOCK_BACKFILL_MS = 24 * 60 * 60 * 1000;
+
 export function registerStock(
   db: Db,
   input: RegisterInput,
@@ -75,6 +78,7 @@ export function registerStock(
     nameKo,
     exchange: listing.exchange,
     userInput: input.userInput.trim(),
+    backfillFrom: new Date(now.getTime() - NEW_STOCK_BACKFILL_MS),
   };
 
   const existing = db

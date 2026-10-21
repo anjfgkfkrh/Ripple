@@ -25,6 +25,8 @@ export type WorkerConfig = {
   /** 없으면 기사는 모으고 Jev 평가는 미룬다. */
   typesafeApiKey: string | undefined;
   typesafeBaseUrl: string;
+  /** false면 정기 수집·키워드 자동 재생성을 하지 않는다(E2E용 SCHEDULER_DISABLED). */
+  schedulerJobsEnabled: boolean;
 };
 
 const rssFeedsOverride = z
@@ -40,7 +42,7 @@ const rssFeedsOverride = z
 
 /**
  * 원천 주소 재정의(OPENROUTER_BASE_URL, LISTING_*_URL, FINNHUB_BASE_URL, TYPESAFE_BASE_URL, RSS_FEEDS_JSON)는
- * 테스트에서 가짜 서버를 쓰기 위한 것이다.
+ * 테스트에서 가짜 서버를 쓰기 위한 것이다. SCHEDULER_DISABLED도 테스트용이다(E2E가 정기 수집과 겹치지 않게).
  */
 export function readWorkerConfig(env: Env = process.env): WorkerConfig {
   return {
@@ -62,6 +64,9 @@ export function readWorkerConfig(env: Env = process.env): WorkerConfig {
     rssFeeds: readRssFeeds(env.RSS_FEEDS_JSON),
     typesafeApiKey: env.TYPESAFE_API_KEY?.trim() || undefined,
     typesafeBaseUrl: env.TYPESAFE_BASE_URL?.trim() || TYPESAFE_BASE_URL,
+    schedulerJobsEnabled: !["1", "true"].includes(
+      env.SCHEDULER_DISABLED?.trim().toLowerCase() ?? "",
+    ),
   };
 }
 

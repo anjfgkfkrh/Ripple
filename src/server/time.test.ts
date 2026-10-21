@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { formatSeoulDateTime, startOfSeoulMonth } from "./time";
+import {
+  formatSeoulDateTime,
+  lastSeoulBoundary,
+  nextSeoulBoundary,
+  startOfSeoulMonth,
+} from "./time";
 
 describe("startOfSeoulMonth", () => {
   it("한국 시간 기준 그달 1일 0시를 돌려준다", () => {
@@ -40,5 +45,47 @@ describe("formatSeoulDateTime", () => {
     expect(formatSeoulDateTime(new Date("2026-03-05T14:59:59Z"))).toBe(
       "2026-03-05 23:59:59",
     );
+  });
+});
+
+describe("lastSeoulBoundary / nextSeoulBoundary (키워드 재생성 06:00)", () => {
+  // 2026-10-21은 수요일, 2026-10-19는 월요일
+  const at = (iso: string) => new Date(iso);
+
+  it("매일: 한국 06:00 전이면 전날 06:00, 06:00부터는 그날 06:00", () => {
+    // 한국 10-21 05:59
+    expect(lastSeoulBoundary(at("2026-10-20T20:59:00Z"), 6).toISOString()).toBe(
+      "2026-10-19T21:00:00.000Z",
+    );
+    // 한국 10-21 06:00 정각
+    expect(lastSeoulBoundary(at("2026-10-20T21:00:00Z"), 6).toISOString()).toBe(
+      "2026-10-20T21:00:00.000Z",
+    );
+    // 한국 10-21 23:30
+    expect(lastSeoulBoundary(at("2026-10-21T14:30:00Z"), 6).toISOString()).toBe(
+      "2026-10-20T21:00:00.000Z",
+    );
+    expect(nextSeoulBoundary(at("2026-10-21T14:30:00Z"), 6).toISOString()).toBe(
+      "2026-10-21T21:00:00.000Z",
+    );
+  });
+
+  it("일주일: 가장 최근 월요일 06:00", () => {
+    // 한국 10-21(수) 12:00 → 10-19(월) 06:00
+    expect(
+      lastSeoulBoundary(at("2026-10-21T03:00:00Z"), 6, true).toISOString(),
+    ).toBe("2026-10-18T21:00:00.000Z");
+    // 한국 10-19(월) 05:00 → 그 전 주 월요일 10-12 06:00
+    expect(
+      lastSeoulBoundary(at("2026-10-18T20:00:00Z"), 6, true).toISOString(),
+    ).toBe("2026-10-11T21:00:00.000Z");
+    // 한국 10-19(월) 06:00 정각 → 그날
+    expect(
+      lastSeoulBoundary(at("2026-10-18T21:00:00Z"), 6, true).toISOString(),
+    ).toBe("2026-10-18T21:00:00.000Z");
+    // 한국 10-25(일) 23:00 → 다음은 10-26(월) 06:00
+    expect(
+      nextSeoulBoundary(at("2026-10-25T14:00:00Z"), 6, true).toISOString(),
+    ).toBe("2026-10-25T21:00:00.000Z");
   });
 });

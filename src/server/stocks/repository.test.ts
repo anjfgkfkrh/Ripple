@@ -62,6 +62,32 @@ describe("종목 등록 (SPEC FR-2)", () => {
     expect(listActiveStocks(db)).toEqual([]);
   });
 
+  it("새로 등록하거나 되살리면 다음 회차에서 등록 24시간 전 기사까지 연결하게 표시한다", () => {
+    const db = testDb();
+    const at = new Date("2026-10-21T03:00:00Z");
+    const created = registerStock(
+      db,
+      { market: "KR", code: "005930", userInput: "삼전" },
+      at,
+    );
+    if (created.status !== "created") throw new Error("등록 실패");
+    expect(created.stock.backfillFrom).toEqual(
+      new Date("2026-10-20T03:00:00Z"),
+    );
+
+    deleteStock(db, created.stock.id, at);
+    const later = new Date("2026-10-25T03:00:00Z");
+    const restored = registerStock(
+      db,
+      { market: "KR", code: "005930", userInput: "삼전" },
+      later,
+    );
+    if (restored.status !== "restored") throw new Error("되살리기 실패");
+    expect(restored.stock.backfillFrom).toEqual(
+      new Date("2026-10-24T03:00:00Z"),
+    );
+  });
+
   it("이미 등록했으면 exists", () => {
     const db = testDb();
     registerStock(db, { market: "KR", code: "005930", userInput: "삼전" });

@@ -23,9 +23,8 @@ export default function HomePage() {
       <section className="mt-10">
         <h2 className="text-base font-semibold">기사 수집</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          언론사 RSS와 Finnhub(미국 종목)에서 등록한 종목에 걸린 기사를 모으고
-          Jev로 관련도(0~10)와 호재·악재를 평가합니다. 정기 수집은 6단계에서
-          붙습니다.
+          언론사 RSS와 Finnhub(미국 종목)에서 등록한 종목에 걸린 기사를 정해진
+          간격마다 모으고 Jev로 관련도(0~10)와 호재·악재를 평가합니다.
         </p>
         <Suspense
           fallback={
