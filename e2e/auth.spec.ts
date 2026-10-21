@@ -53,9 +53,9 @@ test.describe("로그인 (SPEC FR-1, D-10)", () => {
     page,
   }, testInfo) => {
     await asClient(page, testInfo, "login-logout");
-    await login(page, "/?tab=status");
+    await login(page, "/status?from=login");
 
-    await expect(page).toHaveURL(/\/\?tab=status$/);
+    await expect(page).toHaveURL(/\/status\?from=login$/);
     await expect(page.getByRole("button", { name: "로그아웃" })).toBeVisible();
     await expect(page.getByTestId("db-status")).toBeVisible();
 

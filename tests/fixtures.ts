@@ -17,6 +17,7 @@ import {
   articleMatches,
   articles,
   evaluations,
+  type Impact,
   type MatchKind,
 } from "../src/server/db/schema";
 import type { CollectionRunner } from "../src/server/collect/runner";
@@ -227,33 +228,41 @@ export function fakeDecider(
 }
 
 let linkSerial = 0;
-/** 기사 하나와 종목 연결 하나를 넣는다. relevance를 주면 그 점수로 평가한 것으로 한다. */
+/**
+ * 기사 하나와 종목 연결 하나를 넣는다. relevance를 주면 그 점수(와 impact)로 평가한 것으로 한다.
+ * articleId를 주면 그 기사에 연결만 더한다(여러 종목에 걸린 기사).
+ */
 export function insertLink(
   db: Db,
   link: {
     stockId: number;
-    title: string;
+    title?: string;
     publishedAt: Date;
+    articleId?: number;
+    publisher?: string;
     kind?: MatchKind;
     path?: string;
     relevance?: number;
+    impact?: Impact;
   },
-): number {
+): { matchId: number; articleId: number } {
   linkSerial += 1;
-  const article = db
-    .insert(articles)
-    .values({
-      urlKey: `fixture.example/${linkSerial}`,
-      url: `https://fixture.example/${linkSerial}`,
-      title: link.title,
-      summary: null,
-      publisher: "가경제",
-      feed: "rss:a:economy",
-      publishedAt: link.publishedAt,
-      collectedAt: link.publishedAt,
-    })
-    .returning({ id: articles.id })
-    .get();
+  const article = link.articleId
+    ? { id: link.articleId }
+    : db
+        .insert(articles)
+        .values({
+          urlKey: `fixture.example/${linkSerial}`,
+          url: `https://fixture.example/${linkSerial}`,
+          title: link.title ?? `기사 ${linkSerial}`,
+          summary: null,
+          publisher: link.publisher ?? "가경제",
+          feed: "rss:a:economy",
+          publishedAt: link.publishedAt,
+          collectedAt: link.publishedAt,
+        })
+        .returning({ id: articles.id })
+        .get();
   const kind = link.kind ?? "name";
   const matchId = db
     .insert(articleMatches)
@@ -276,7 +285,7 @@ export function insertLink(
         stockId: link.stockId,
         relevance: link.relevance,
         relevanceConfidence: 0.7,
-        impact: "neutral",
+        impact: link.impact ?? "neutral",
         impactConfidence: 0.7,
         impactProbabilities: { positive: 0.1, negative: 0.1, neutral: 0.8 },
         model: "jev-1.13.0",
@@ -284,5 +293,5 @@ export function insertLink(
       })
       .run();
   }
-  return matchId;
+  return { matchId, articleId: article.id };
 }

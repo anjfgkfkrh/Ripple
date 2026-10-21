@@ -1,105 +1,137 @@
-import { Suspense, type ReactNode } from "react";
+import Link from "next/link";
+import { Suspense } from "react";
+import { buttonVariants } from "@/components/ui/button";
 import { requireSession } from "@/server/auth/guard";
 import { getWebDb } from "@/server/db/web";
-import { getSystemStatus } from "@/server/status";
-import { formatSeoulDateTime } from "@/server/time";
-import { CollectionPanel } from "./collection-panel";
+import { countPendingEvaluations } from "@/server/evaluate/read";
+import { listActiveStocks } from "@/server/stocks/repository";
+import {
+  parseTimelineParams,
+  readTimeline,
+  TIMELINE_PAGE_SIZE,
+  type TimelineCard,
+} from "@/server/timeline/read";
+import { seoulDateKey, timelineDayLabel } from "@/server/time";
+import { TimelineCardView } from "./timeline-card";
+import { TimelineFilters, timelineHref } from "./timeline-filters";
 
-// 시스템 상태와 기사 수집 확인 화면. 7단계에서 통합 타임라인으로 바뀐다.
-export default function HomePage() {
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+// 통합 타임라인(SPEC FR-7, 7단계). 고른 필터와 개수는 주소에 남는다(D-25).
+export default function TimelinePage({ searchParams }: PageProps<"/">) {
   return (
-    <main className="mx-auto w-full max-w-xl px-4 py-8 sm:py-12">
-      <h1 className="text-xl font-semibold">시스템 상태</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        시스템 상태와 기사 수집을 확인합니다. 7단계에서 타임라인으로 바뀝니다.
-      </p>
+    <main className="mx-auto w-full max-w-xl px-4 py-6 sm:py-10">
+      <h1 className="text-xl font-semibold">타임라인</h1>
       <Suspense
         fallback={
-          <p className="mt-6 text-sm text-muted-foreground">확인 중…</p>
+          <p className="mt-4 text-sm text-muted-foreground">불러오는 중…</p>
         }
       >
-        <SystemStatusView />
+        <Timeline searchParams={searchParams as SearchParams} />
       </Suspense>
-      <section className="mt-10">
-        <h2 className="text-base font-semibold">기사 수집</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          언론사 RSS와 Finnhub(미국 종목)에서 등록한 종목에 걸린 기사를 정해진
-          간격마다 모으고 Jev로 관련도(0~10)와 호재·악재를 평가합니다.
-        </p>
-        <Suspense
-          fallback={
-            <p className="mt-3 text-sm text-muted-foreground">불러오는 중…</p>
-          }
-        >
-          <CollectionPanel />
-        </Suspense>
-      </section>
     </main>
   );
 }
 
-async function SystemStatusView() {
-  // 데이터에 닿기 전에 로그인을 한 번 더 확인한다. 쿠키를 읽으므로 요청 시점에 실행된다.
+async function Timeline({ searchParams }: { searchParams: SearchParams }) {
+  // 데이터에 닿기 전에 로그인을 한 번 더 확인한다(요청 시점 실행).
   await requireSession();
-  const { database, worker, checkedAt } = await getSystemStatus({
-    getDb: getWebDb,
-    workerUrl: process.env.WORKER_URL,
-  });
+  const db = getWebDb();
+  const stocks = listActiveStocks(db);
+  if (stocks.length === 0) {
+    return (
+      <p className="mt-4 text-sm text-muted-foreground">
+        등록한 종목이 없습니다.{" "}
+        <Link href="/stocks" className="underline underline-offset-2">
+          종목을 등록
+        </Link>
+        하면 30분마다 기사를 모아 여기에 보여 줍니다.
+      </p>
+    );
+  }
+  const { filter, limit } = parseTimelineParams(
+    await searchParams,
+    stocks.map((stock) => stock.id),
+  );
+  const { cards, hasMore, minRelevance } = readTimeline(db, { filter, limit });
+  const pending = countPendingEvaluations(db);
+  const now = new Date();
+  const filtered = filter.stockId !== null || filter.impact !== null;
 
   return (
-    <dl className="mt-6 divide-y rounded-lg border">
-      <StatusRow
-        label="DB (web: 읽기 전용)"
-        testId="db-status"
-        ok={database.ok}
-      >
-        {database.ok
-          ? `journal_mode ${database.journalMode} · settings ${database.settingsCount}건`
-          : database.reason}
-      </StatusRow>
-      <StatusRow label="worker 내부 API" testId="worker-status" ok={worker.ok}>
-        {worker.ok
-          ? worker.listings
-            ? `응답함 · 공식 종목 목록 한국 ${worker.listings.KR}개, 미국 ${worker.listings.US}개`
-            : "응답함"
-          : worker.reason}
-      </StatusRow>
-      <div className="flex flex-col gap-1 p-4 sm:flex-row sm:justify-between">
-        <dt className="text-sm text-muted-foreground">확인 시각 (한국 시간)</dt>
-        <dd className="text-sm tabular-nums">
-          {formatSeoulDateTime(checkedAt)}
-        </dd>
-      </div>
-    </dl>
+    <>
+      <p className="mt-1 text-sm text-muted-foreground">
+        관련도 {minRelevance}점 이상인 기사를 최신순으로 보여 줍니다.
+      </p>
+      <TimelineFilters
+        stocks={stocks.map((stock) => ({
+          id: stock.id,
+          name: stock.nameKo ?? stock.name,
+        }))}
+        filter={filter}
+      />
+      {pending > 0 && (
+        <p className="mt-4 text-sm text-muted-foreground">
+          평가를 기다리는 기사 {pending}건은 평가가 끝나면 기준에 맞는 것만
+          보입니다.
+        </p>
+      )}
+      {cards.length === 0 ? (
+        <p
+          className="mt-6 text-sm text-muted-foreground"
+          data-testid="timeline-empty"
+        >
+          {filtered
+            ? "조건에 맞는 기사가 없습니다."
+            : `아직 관련도 ${minRelevance}점 이상인 기사가 없습니다.`}
+        </p>
+      ) : (
+        <DayGroups cards={cards} now={now} />
+      )}
+      {hasMore && (
+        <Link
+          href={timelineHref(filter, limit + TIMELINE_PAGE_SIZE)}
+          scroll={false}
+          className={buttonVariants({
+            variant: "outline",
+            className: "mt-6 w-full",
+          })}
+        >
+          더 보기
+        </Link>
+      )}
+    </>
   );
 }
 
-function StatusRow(props: {
-  label: string;
-  testId: string;
-  ok: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-1 p-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-      <dt className="text-sm text-muted-foreground">{props.label}</dt>
-      <dd
-        className="flex flex-col gap-1 text-sm sm:items-end"
-        data-testid={props.testId}
-      >
-        <span
-          className={
-            props.ok
-              ? "w-fit rounded bg-green-100 px-2 py-0.5 font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300"
-              : "w-fit rounded bg-destructive/10 px-2 py-0.5 font-medium text-destructive"
-          }
-        >
-          {props.ok ? "정상" : "오류"}
-        </span>
-        <span className="break-all text-muted-foreground sm:text-right">
-          {props.children}
-        </span>
-      </dd>
-    </div>
-  );
+/** 날짜마다 구분선을 둔다(2026-10-21 결정). */
+function DayGroups({ cards, now }: { cards: TimelineCard[]; now: Date }) {
+  const days: { key: string; label: string; cards: TimelineCard[] }[] = [];
+  for (const card of cards) {
+    const key = seoulDateKey(card.publishedAt);
+    const last = days.at(-1);
+    if (last?.key === key) {
+      last.cards.push(card);
+    } else {
+      days.push({
+        key,
+        label: timelineDayLabel(card.publishedAt, now),
+        cards: [card],
+      });
+    }
+  }
+  return days.map((day) => (
+    <section key={day.key} className="mt-6" data-testid="timeline-day">
+      <h2 className="border-b pb-1 text-sm font-medium text-muted-foreground">
+        {day.label}
+      </h2>
+      <ul className="mt-3 space-y-3">
+        {day.cards.map((card) => (
+          <li key={card.articleId}>
+            <TimelineCardView card={card} now={now} />
+          </li>
+        ))}
+      </ul>
+    </section>
+  ));
 }

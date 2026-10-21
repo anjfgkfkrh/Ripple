@@ -3,8 +3,9 @@ import { Button } from "@/components/ui/button";
 import { logout } from "./actions";
 
 const NAV = [
-  { href: "/", label: "상태" },
+  { href: "/", label: "타임라인" },
   { href: "/stocks", label: "종목" },
+  { href: "/status", label: "상태" },
 ] as const;
 
 /** 로그인한 사용자가 보는 화면의 공통 틀: 앱 이름, 메뉴, 로그아웃 버튼 */

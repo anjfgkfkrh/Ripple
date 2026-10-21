@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   formatSeoulDateTime,
+  formatTimelineTime,
   lastSeoulBoundary,
   nextSeoulBoundary,
+  seoulDateKey,
   startOfSeoulMonth,
+  timelineDayLabel,
 } from "./time";
 
 describe("startOfSeoulMonth", () => {
@@ -87,5 +90,50 @@ describe("lastSeoulBoundary / nextSeoulBoundary (키워드 재생성 06:00)", ()
     expect(
       nextSeoulBoundary(at("2026-10-25T14:00:00Z"), 6, true).toISOString(),
     ).toBe("2026-10-25T21:00:00.000Z");
+  });
+});
+
+describe("타임라인 시각 (2026-10-21 결정)", () => {
+  // 한국 시간 2026-10-21(수) 00:30
+  const now = new Date("2026-10-20T15:30:00Z");
+
+  it("오늘·어제는 '오늘 14:05'처럼, 그 전은 '10-19 08:00', 해가 다르면 연도까지", () => {
+    // 한국 10-21 00:10
+    expect(formatTimelineTime(new Date("2026-10-20T15:10:00Z"), now)).toBe(
+      "오늘 00:10",
+    );
+    // 한국 10-20 23:59
+    expect(formatTimelineTime(new Date("2026-10-20T14:59:00Z"), now)).toBe(
+      "어제 23:59",
+    );
+    // 한국 10-19 08:00
+    expect(formatTimelineTime(new Date("2026-10-18T23:00:00Z"), now)).toBe(
+      "10-19 08:00",
+    );
+    expect(
+      formatTimelineTime(
+        new Date("2025-12-31T00:00:00Z"),
+        new Date("2026-01-02T00:00:00Z"),
+      ),
+    ).toBe("2025-12-31 09:00");
+  });
+
+  it("날짜 구분선은 오늘·어제를 붙이고 요일을 쓴다", () => {
+    expect(timelineDayLabel(new Date("2026-10-20T15:10:00Z"), now)).toBe(
+      "오늘 · 10월 21일(수)",
+    );
+    expect(timelineDayLabel(new Date("2026-10-20T14:59:00Z"), now)).toBe(
+      "어제 · 10월 20일(화)",
+    );
+    expect(timelineDayLabel(new Date("2026-10-18T23:00:00Z"), now)).toBe(
+      "10월 19일(월)",
+    );
+    expect(
+      timelineDayLabel(
+        new Date("2025-12-31T00:00:00Z"),
+        new Date("2026-01-02T00:00:00Z"),
+      ),
+    ).toBe("2025년 12월 31일(수)");
+    expect(seoulDateKey(new Date("2026-10-20T15:10:00Z"))).toBe("2026-10-21");
   });
 });

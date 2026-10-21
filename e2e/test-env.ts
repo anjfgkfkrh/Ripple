@@ -9,3 +9,5 @@ export const E2E_SESSION_SECRET =
 export const E2E_WORKER_API_TOKEN = "e2e-worker-token-not-for-production-use";
 
 export const E2E_PORTS = { web: 3100, worker: 4100, mock: 4200 } as const;
+/** 테스트용 worker·web이 쓰는 DB 파일(실행할 때마다 새로 만든다) */
+export const E2E_DB_PATH = ".e2e/ripple.db";

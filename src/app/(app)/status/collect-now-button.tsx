@@ -2,9 +2,9 @@
 
 import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
-import { collectNowAction, type CollectState } from "./actions";
+import { collectNowAction, type CollectState } from "../actions";
 
-/** 6단계 스케줄러 전까지 수집을 시작하는 방법(4단계 결정). */
+/** 정기 수집을 기다리지 않고 바로 수집한다(4단계 결정, D-29 결정 전까지 상태 화면에 둔다). */
 export function CollectNowButton({ running }: { running: boolean }) {
   const [state, formAction, pending] = useActionState<CollectState>(
     collectNowAction,

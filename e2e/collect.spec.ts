@@ -20,7 +20,7 @@ test.describe("기사 수집과 평가 (SPEC FR-4, FR-5)", () => {
     await login(page, "/stocks");
     await registerStock(page, "하닉", "SK하이닉스");
 
-    await page.goto("/");
+    await page.goto("/status");
     const panel = page.getByTestId("collection");
     await expect(panel).toBeVisible();
     // 다음 정기 수집과 키워드 재생성 시각(6단계)

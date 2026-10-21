@@ -69,3 +69,52 @@ export function nextSeoulBoundary(
   const last = lastSeoulBoundary(now, hour, weekly);
   return new Date(last.getTime() + (weekly ? 7 : 1) * DAY_MS);
 }
+
+const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+
+/** 이 시각이 속한 날(한국 시간)의 0시 */
+function startOfSeoulDay(date: Date): number {
+  const seoul = new Date(date.getTime() + SEOUL_OFFSET_MS);
+  return (
+    Date.UTC(seoul.getUTCFullYear(), seoul.getUTCMonth(), seoul.getUTCDate()) -
+    SEOUL_OFFSET_MS
+  );
+}
+
+/** now 기준 며칠 전인지(한국 시간 날짜로 센다). 오늘 0, 어제 1 */
+function daysAgo(at: Date, now: Date): number {
+  return Math.round((startOfSeoulDay(now) - startOfSeoulDay(at)) / DAY_MS);
+}
+
+/** 한국 시간 날짜 "YYYY-MM-DD"(타임라인 날짜 묶음 기준) */
+export function seoulDateKey(date: Date): string {
+  return formatSeoulDateTime(date).slice(0, 10);
+}
+
+/**
+ * 타임라인 기사 시각(2026-10-21 결정): "오늘 14:05", "어제 09:12", 그 전은 "10-19 08:00".
+ * 해가 다르면 "2025-12-31 08:00".
+ */
+export function formatTimelineTime(at: Date, now: Date): string {
+  const text = formatSeoulDateTime(at);
+  const time = text.slice(11, 16);
+  const days = daysAgo(at, now);
+  if (days === 0) return `오늘 ${time}`;
+  if (days === 1) return `어제 ${time}`;
+  return text.slice(0, 4) === formatSeoulDateTime(now).slice(0, 4)
+    ? text.slice(5, 16)
+    : text.slice(0, 16);
+}
+
+/** 타임라인 날짜 구분선: "오늘 · 10월 21일(수)", "어제 · 10월 20일(화)", "10월 19일(월)". 해가 다르면 연도도 */
+export function timelineDayLabel(at: Date, now: Date): string {
+  const seoul = new Date(at.getTime() + SEOUL_OFFSET_MS);
+  const sameYear =
+    seoul.getUTCFullYear() ===
+    new Date(now.getTime() + SEOUL_OFFSET_MS).getUTCFullYear();
+  const date = `${sameYear ? "" : `${seoul.getUTCFullYear()}년 `}${seoul.getUTCMonth() + 1}월 ${seoul.getUTCDate()}일(${WEEKDAYS[seoul.getUTCDay()]})`;
+  const days = daysAgo(at, now);
+  if (days === 0) return `오늘 · ${date}`;
+  if (days === 1) return `어제 · ${date}`;
+  return date;
+}

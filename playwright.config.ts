@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 import {
   E2E_APP_PASSWORD,
+  E2E_DB_PATH,
   E2E_PORTS,
   E2E_SESSION_SECRET,
   E2E_WORKER_API_TOKEN,
@@ -9,7 +10,7 @@ import {
 // E2E_BASE_URL을 주면(예: Docker로 띄운 http://127.0.0.1:3000) 서버를 띄우지 않고 그 주소를 검사한다.
 const externalBaseUrl = process.env.E2E_BASE_URL;
 
-const E2E_DB = ".e2e/ripple.db";
+const E2E_DB = E2E_DB_PATH;
 const MOCK = `http://127.0.0.1:${E2E_PORTS.mock}`;
 
 const baseEnv = Object.fromEntries(

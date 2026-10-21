@@ -1,11 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { asClient, login } from "./helpers";
 
-test("상태 화면: web이 DB(읽기 전용)와 worker 내부 API에 닿는다", async ({
+test("상태 화면(/status): web이 DB(읽기 전용)와 worker 내부 API에 닿는다", async ({
   page,
 }, testInfo) => {
   await asClient(page, testInfo, "home");
-  await login(page);
+  await login(page, "/status");
 
   await expect(
     page.getByRole("heading", { name: "시스템 상태" }),
