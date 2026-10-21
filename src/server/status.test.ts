@@ -60,6 +60,7 @@ describe("getSystemStatus (0단계 확인 화면)", () => {
         llm: fakeStockLlm(),
         keywordQueue: fakeKeywordQueue(),
         collector: fakeCollector(),
+        checkModel: async () => true,
       }),
     );
     const reader = open(file.path, "readonly");

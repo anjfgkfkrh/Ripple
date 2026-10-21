@@ -1,6 +1,8 @@
-import { asc, inArray } from "drizzle-orm";
+import { asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
-import { keywords } from "@/server/db/schema";
+import { keywords, stocks } from "@/server/db/schema";
+import { readSetting } from "@/server/settings";
+import { clampDepth } from "./tree";
 
 export type Keyword = typeof keywords.$inferSelect;
 
@@ -19,4 +21,31 @@ export function listKeywordsByStock(
     .all();
   for (const row of rows) grouped.get(row.stockId)?.push(row);
   return grouped;
+}
+
+/**
+ * 저장한 깊이와 다른 깊이로 키워드를 만든 종목(키워드가 없는 종목 포함). 만드는 중·대기 중인 종목은 뺀다.
+ * 설정 화면의 "지금 다시 만들기"가 이 종목들을 다시 만든다(2026-10-21 결정).
+ */
+export function stocksWithOtherDepth(db: Db): number[] {
+  const depth = clampDepth(readSetting(db, "keywords.depth"));
+  return db
+    .select({
+      id: stocks.id,
+      status: stocks.keywordsStatus,
+      deepest: sql<number | null>`max(${keywords.level})`,
+    })
+    .from(stocks)
+    .leftJoin(keywords, eq(keywords.stockId, stocks.id))
+    .where(isNull(stocks.deletedAt))
+    .groupBy(stocks.id)
+    .orderBy(asc(stocks.id))
+    .all()
+    .filter(
+      (row) =>
+        row.status !== "pending" &&
+        row.status !== "generating" &&
+        (row.deepest ?? 0) !== depth,
+    )
+    .map((row) => row.id);
 }

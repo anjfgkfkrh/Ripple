@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import {
   DeciderError,
   type Decider,
@@ -22,6 +22,8 @@ import { readSetting } from "@/server/settings";
 
 /** 연달아 이만큼 실패하면(TypeSafe 장애 등) 이번 회차 평가를 멈춘다. 호출마다 재시도·제한 시간을 다 기다리지 않게. */
 export const MAX_CONSECUTIVE_FAILURES = 3;
+/** 이보다 오래된 기사는 평가하지 않는다(D-05: 한도·예산에 밀린 옛 기사보다 요즘 기사를 먼저). */
+export const EVALUATION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 type Pending = {
   matchId: number;
@@ -30,8 +32,11 @@ type Pending = {
   input: DecisionInput;
 };
 
-/** 아직 평가하지 않은 기사–종목 연결. 최근 기사부터(예산이 모자라면 최근 소식이 먼저 평가되게). */
-export function pendingEvaluations(db: Db): Pending[] {
+/**
+ * 아직 평가하지 않은 최근 7일 기사–종목 연결(D-05). 화면에 나올 가능성이 큰 종목 이름·Finnhub 직접 연결을
+ * 먼저, 그다음 최근 기사부터(실측: 키워드 연결은 90건 중 1건만 6점 이상, SPEC 11장).
+ */
+export function pendingEvaluations(db: Db, now: Date = new Date()): Pending[] {
   const rows = db
     .select({
       matchId: articleMatches.id,
@@ -52,8 +57,21 @@ export function pendingEvaluations(db: Db): Pending[] {
     .innerJoin(articles, eq(articles.id, articleMatches.articleId))
     .innerJoin(stocks, eq(stocks.id, articleMatches.stockId))
     .leftJoin(evaluations, eq(evaluations.matchId, articleMatches.id))
-    .where(and(isNull(evaluations.id), isNull(stocks.deletedAt)))
-    .orderBy(desc(articles.publishedAt), desc(articleMatches.id))
+    .where(
+      and(
+        isNull(evaluations.id),
+        isNull(stocks.deletedAt),
+        gte(
+          articles.publishedAt,
+          new Date(now.getTime() - EVALUATION_WINDOW_MS),
+        ),
+      ),
+    )
+    .orderBy(
+      sql`case when ${articleMatches.matchKind} = 'keyword' then 1 else 0 end`,
+      desc(articles.publishedAt),
+      desc(articleMatches.id),
+    )
     .all();
   return rows.map((r) => ({
     matchId: r.matchId,
@@ -87,7 +105,7 @@ export async function evaluatePending(deps: {
   const { db } = deps;
   const now = deps.now ?? (() => new Date());
   const started = Date.now();
-  const pending = pendingEvaluations(db);
+  const pending = pendingEvaluations(db, now());
   const summary: EvaluationSummary = {
     evaluated: 0,
     relevant: 0,
@@ -107,10 +125,12 @@ export async function evaluatePending(deps: {
   const model = readSetting(db, "jev.model");
   const price = readSetting(db, "jev.usdPerMillionInputTokens");
   const minRelevance = readSetting(db, "evaluation.minRelevance");
+  // 회차당 한도(D-03). 넘는 것은 다음 회차로 넘긴다(D-05).
+  const maxPerRun = Math.max(1, readSetting(db, "evaluation.maxPerRun"));
 
   let note: string | undefined;
   let failedInRow = 0;
-  for (const item of pending) {
+  for (const item of pending.slice(0, maxPerRun)) {
     try {
       assertWithinBudget(db, now());
     } catch (error) {
@@ -168,6 +188,9 @@ export async function evaluatePending(deps: {
 
   summary.remaining = pending.length - summary.evaluated - summary.failed;
   summary.ms = Date.now() - started;
+  if (!note && pending.length > maxPerRun) {
+    note = `회차 한도 ${maxPerRun}건까지 평가했습니다. 남은 ${summary.remaining}건은 다음 회차에 평가합니다.`;
+  }
   if (note) summary.note = note;
   return summary;
 }

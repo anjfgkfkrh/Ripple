@@ -14,6 +14,7 @@ import {
   type ListingSources,
 } from "@/server/listings/sync";
 import { log, logError } from "@/server/log";
+import { isOpenRouterModel } from "@/server/ai/llm/models";
 import { startScheduler } from "@/server/schedule/scheduler";
 import { readWorkerConfig } from "./config";
 import { createWorkerServer } from "./server";
@@ -71,6 +72,8 @@ async function main(): Promise<void> {
     llm,
     keywordQueue,
     collector,
+    checkModel: (modelId) =>
+      isOpenRouterModel(modelId, { baseUrl: config.openRouterBaseUrl }),
   });
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);

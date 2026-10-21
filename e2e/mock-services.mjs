@@ -229,6 +229,14 @@ createServer(async (request, response) => {
     return response.end(fixture(name));
   }
 
+  // OpenRouter 공개 모델 목록(설정 화면의 모델 ID 확인용, 실제 응답 모양: { data, links })
+  if (request.method === "GET" && pathname === "/openrouter/models") {
+    return sendJson(response, 200, {
+      data: [{ id: "anthropic/claude-haiku-5.5" }, { id: "e2e/other-model" }],
+      links: { next: null },
+    });
+  }
+
   if (request.method === "POST" && pathname === "/typesafe/v1/systemone") {
     if (!request.headers.authorization?.startsWith("Bearer ")) {
       return sendJson(response, 401, { detail: "no key" });

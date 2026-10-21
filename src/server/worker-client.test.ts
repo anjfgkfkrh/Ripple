@@ -37,6 +37,7 @@ async function startWorker(): Promise<string> {
       llm: fakeStockLlm(),
       keywordQueue: fakeKeywordQueue(),
       collector: fakeCollector(),
+      checkModel: async () => true,
     }),
   );
 }

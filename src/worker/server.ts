@@ -15,6 +15,14 @@ import { BudgetExceededError } from "@/server/budget/usage";
 import type { CollectionRunner } from "@/server/collect/runner";
 import type { Db } from "@/server/db/client";
 import type { KeywordQueue } from "@/server/keywords/queue";
+import { stocksWithOtherDepth } from "@/server/keywords/read";
+import { ModelListError } from "@/server/ai/llm/models";
+import {
+  settingsErrors,
+  settingsFormSchema,
+  writeSettingsForm,
+} from "@/server/settings-form";
+import { readSetting } from "@/server/settings";
 import { MARKETS } from "@/server/db/schema";
 import { listingCount } from "@/server/listings/sync";
 import { log, logError } from "@/server/log";
@@ -35,8 +43,10 @@ export type WorkerDeps = {
   llm: LlmClient;
   /** 등록 직후·다시 만들기 요청 때 키워드 생성을 맡긴다(D-37). */
   keywordQueue: KeywordQueue;
-  /** 기사 수집(4단계). 6단계 전까지는 화면의 "지금 수집"으로만 돈다. */
+  /** 기사 수집(4단계). 정기 수집은 스케줄러가, "지금 수집"은 여기가 시작한다. */
   collector: CollectionRunner;
+  /** OpenRouter에 이 모델 ID가 있는지(설정 저장 때, 2026-10-21 결정). 확인하지 못하면 ModelListError */
+  checkModel: (modelId: string) => Promise<boolean>;
   now?: () => Date;
 };
 
@@ -170,6 +180,48 @@ async function handle(
     return;
   }
 
+  if (method === "PUT" && pathname === "/settings") {
+    const raw = await readJson(request, response);
+    if (raw === undefined) return;
+    const parsed = settingsFormSchema.safeParse(raw);
+    if (!parsed.success) {
+      sendJson(response, 400, {
+        error: "invalid_settings",
+        fields: settingsErrors(parsed.error),
+      });
+      return;
+    }
+    const form = parsed.data;
+    // 모델을 바꿀 때만 OpenRouter 목록으로 확인한다(없으면 저장하지 않음).
+    if (form.llmModel !== readSetting(deps.db, "llm.model")) {
+      try {
+        if (!(await deps.checkModel(form.llmModel))) {
+          sendJson(response, 422, { error: "unknown_model" });
+          return;
+        }
+      } catch (error) {
+        if (!(error instanceof ModelListError)) throw error;
+        logError("OpenRouter 모델 목록 확인 실패", error.message);
+        sendJson(response, 502, { error: "model_check_failed" });
+        return;
+      }
+    }
+    const changed = writeSettingsForm(deps.db, form);
+    if (changed.length > 0) log(`설정 저장: ${changed.join(", ")}`);
+    sendJson(response, 200, { ok: true, changed });
+    return;
+  }
+
+  if (method === "POST" && pathname === "/keywords/rebuild") {
+    const ids = stocksWithOtherDepth(deps.db);
+    for (const id of ids) deps.keywordQueue.enqueue(id);
+    if (ids.length > 0) {
+      log(`키워드 다시 만들기(깊이 변경): ${ids.length}개 종목`);
+    }
+    sendJson(response, 202, { count: ids.length });
+    return;
+  }
+
   const stockPath = pathname.match(/^\/stocks\/(\d+)$/);
   if (method === "DELETE" && stockPath) {
     const deleted = deleteStock(deps.db, Number(stockPath[1]), deps.now?.());
@@ -208,12 +260,11 @@ function sendMatchError(response: ServerResponse, error: unknown): void {
   throw error;
 }
 
-/** JSON 본문을 읽고 검증한다. 실패하면 응답을 보내고 undefined를 돌려준다. */
-async function readBody<T>(
+/** JSON 본문을 읽는다. 너무 크면 응답을 보내고 undefined, 형식이 틀리면 null을 돌려준다. */
+async function readJson(
   request: IncomingMessage,
   response: ServerResponse,
-  schema: z.ZodType<T>,
-): Promise<T | undefined> {
+): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of request) {
@@ -224,12 +275,21 @@ async function readBody<T>(
     }
     chunks.push(chunk as Buffer);
   }
-  let json: unknown;
   try {
-    json = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
   } catch {
-    json = undefined;
+    return null;
   }
+}
+
+/** JSON 본문을 읽고 검증한다. 실패하면 응답을 보내고 undefined를 돌려준다. */
+async function readBody<T>(
+  request: IncomingMessage,
+  response: ServerResponse,
+  schema: z.ZodType<T>,
+): Promise<T | undefined> {
+  const json = await readJson(request, response);
+  if (json === undefined) return undefined;
   const parsed = schema.safeParse(json);
   if (!parsed.success) {
     sendJson(response, 400, { error: "invalid_request" });

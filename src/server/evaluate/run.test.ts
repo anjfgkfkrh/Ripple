@@ -19,7 +19,7 @@ import {
 } from "../db/schema";
 import { writeSetting } from "../settings";
 import { deleteStock, registerStock } from "../stocks/repository";
-import { evaluationTotals } from "./read";
+import { countPendingEvaluations, evaluationTotals } from "./read";
 import { evaluatePending, MAX_CONSECUTIVE_FAILURES } from "./run";
 
 const opened: Db[] = [];
@@ -103,7 +103,7 @@ const evaluate = (db: Db, decider: ReturnType<typeof fakeDecider> | null) =>
   evaluatePending({ db, decider, now: () => NOW });
 
 describe("evaluatePending (SPEC FR-5)", () => {
-  it("평가하지 않은 연결을 최근 기사부터 평가해 저장하고, 쓴 비용을 기록한다", async () => {
+  it("평가하지 않은 연결을 종목 이름·직접 연결 먼저, 그다음 최근 기사부터 평가해 저장하고, 쓴 비용을 기록한다", async () => {
     const db = testDb();
     const ids = addStocks(db);
     const oldest = addLink(db, ids.samsung, "삼성전자 실적", ago(3));
@@ -137,10 +137,11 @@ describe("evaluatePending (SPEC FR-5)", () => {
     // 입력 1000토큰 × 100만 토큰당 $0.042 × 3회
     expect(summary.costUsd).toBeCloseTo(0.000126, 9);
 
+    // D-05: 이름 연결(최근 것부터) 다음에 키워드 연결
     expect(decider.calls.map((c) => c.input.article.title)).toEqual([
-      "HBM 증설",
       "엔비디아 신제품",
       "삼성전자 실적",
+      "HBM 증설",
     ]);
     expect(decider.calls.every((c) => c.model === "jev-1.13.0")).toBe(true);
     const nvidiaName = db
@@ -148,7 +149,7 @@ describe("evaluatePending (SPEC FR-5)", () => {
       .from(stocks)
       .where(eq(stocks.id, ids.nvidia))
       .get()!.name;
-    expect(decider.calls[1].input).toEqual({
+    expect(decider.calls[0].input).toEqual({
       stock: {
         name: "엔비디아",
         officialName: nvidiaName,
@@ -159,8 +160,8 @@ describe("evaluatePending (SPEC FR-5)", () => {
       link: { kind: "name", path: "엔비디아", reason: null },
       article: { title: "엔비디아 신제품", summary: "엔비디아 신제품 요약" },
     });
-    expect(decider.calls[0].input.stock.officialName).toBeNull();
-    expect(decider.calls[0].input.link).toEqual({
+    expect(decider.calls[2].input.stock.officialName).toBeNull();
+    expect(decider.calls[2].input.link).toEqual({
       kind: "keyword",
       path: "삼성전자 → HBM 메모리",
       reason: "주력 메모리 제품",
@@ -197,6 +198,31 @@ describe("evaluatePending (SPEC FR-5)", () => {
       at: NOW,
     });
     expect(usage[0].costUsd).toBeCloseTo(0.000042, 9);
+  });
+
+  it("회차 한도(D-03)까지만 평가하고 나머지는 다음 회차로, 7일 지난 기사는 평가하지 않는다(D-05)", async () => {
+    const db = testDb();
+    const ids = addStocks(db);
+    for (let i = 0; i < 5; i += 1) {
+      addLink(db, ids.samsung, `삼성전자 소식 ${i}`, ago(i + 1));
+    }
+    addLink(db, ids.samsung, "삼성전자 8일 전 소식", ago(8 * 24));
+    writeSetting(db, "evaluation.maxPerRun", 3);
+    const decider = fakeDecider();
+
+    expect(await evaluate(db, decider)).toMatchObject({
+      evaluated: 3,
+      remaining: 2,
+      note: "회차 한도 3건까지 평가했습니다. 남은 2건은 다음 회차에 평가합니다.",
+    });
+    expect(await evaluate(db, decider)).toMatchObject({
+      evaluated: 2,
+      remaining: 0,
+    });
+    expect(decider.calls.map((c) => c.input.article.title)).not.toContain(
+      "삼성전자 8일 전 소식",
+    );
+    expect(countPendingEvaluations(db, NOW)).toBe(0);
   });
 
   it("이미 평가한 연결과 삭제한 종목의 연결은 다시 평가하지 않는다", async () => {

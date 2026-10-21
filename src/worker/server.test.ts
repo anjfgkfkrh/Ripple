@@ -3,9 +3,12 @@ import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import type { LlmClient } from "@/server/ai/llm/types";
 import { LlmError } from "@/server/ai/llm/types";
+import { ModelListError } from "@/server/ai/llm/models";
 import { recordUsage } from "@/server/budget/usage";
 import { openDb, type Db } from "@/server/db/client";
-import { listActiveStocks } from "@/server/stocks/repository";
+import { replaceKeywords } from "@/server/keywords/generate";
+import { readSettingsForm } from "@/server/settings-form";
+import { listActiveStocks, registerStock } from "@/server/stocks/repository";
 import { createTestDbFile } from "../../tests/db";
 import {
   fakeCollector,
@@ -20,7 +23,13 @@ const servers: Server[] = [];
 const clients: Db[] = [];
 const cleanups: (() => void)[] = [];
 
-async function start(options: { llm?: LlmClient; seeded?: boolean } = {}) {
+async function start(
+  options: {
+    llm?: LlmClient;
+    seeded?: boolean;
+    checkModel?: (id: string) => Promise<boolean>;
+  } = {},
+) {
   const file = createTestDbFile();
   cleanups.push(file.cleanup);
   const db = openDb(file.path, "readwrite");
@@ -34,6 +43,7 @@ async function start(options: { llm?: LlmClient; seeded?: boolean } = {}) {
     llm: options.llm ?? fakeStockLlm(),
     keywordQueue,
     collector,
+    checkModel: options.checkModel ?? (async () => true),
   });
   servers.push(server);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -297,5 +307,147 @@ describe("worker 내부 API: 기사 수집", () => {
     const { baseUrl, collector } = await start();
     expect((await call(baseUrl, "/collect", { token: null })).status).toBe(401);
     expect(collector.started).toEqual([]);
+  });
+});
+
+describe("worker 내부 API: 설정 (SPEC FR-8)", () => {
+  const form = {
+    collectIntervalMinutes: "60",
+    keywordsDepth: "3",
+    keywordsRegenerateEvery: "weekly",
+    minRelevance: "6.5",
+    maxPerRun: "150",
+    monthlyBudgetUsd: "7.5",
+    llmModel: "anthropic/claude-haiku-5.5",
+  };
+
+  it("PUT /settings: 검사한 값을 한 번에 저장하고 바뀐 항목을 알려 준다", async () => {
+    const checked: string[] = [];
+    const { baseUrl, db } = await start({
+      checkModel: async (id) => {
+        checked.push(id);
+        return true;
+      },
+    });
+    const response = await call(baseUrl, "/settings", {
+      method: "PUT",
+      body: form,
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      changed: [
+        "collectIntervalMinutes",
+        "keywordsDepth",
+        "keywordsRegenerateEvery",
+        "minRelevance",
+        "maxPerRun",
+        "monthlyBudgetUsd",
+      ],
+    });
+    expect(readSettingsForm(db)).toEqual({
+      collectIntervalMinutes: 60,
+      keywordsDepth: 3,
+      keywordsRegenerateEvery: "weekly",
+      minRelevance: 6.5,
+      maxPerRun: 150,
+      monthlyBudgetUsd: 7.5,
+      llmModel: "anthropic/claude-haiku-5.5",
+    });
+    // 모델을 바꾸지 않았으면 OpenRouter에 묻지 않는다.
+    expect(checked).toEqual([]);
+  });
+
+  it("값이 틀리면 400과 항목별 이유, 아무것도 저장하지 않는다", async () => {
+    const { baseUrl, db } = await start();
+    const response = await call(baseUrl, "/settings", {
+      method: "PUT",
+      body: {
+        ...form,
+        collectIntervalMinutes: "45",
+        minRelevance: "11",
+        llmModel: "모델",
+      },
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "invalid_settings",
+      fields: {
+        collectIntervalMinutes: "15·30·60·180분 중에서 고르세요.",
+        minRelevance: "0~10 사이로 넣으세요.",
+        llmModel: "모델 ID 형식이 아닙니다(예: anthropic/claude-haiku-5.5).",
+      },
+    });
+    expect(readSettingsForm(db).collectIntervalMinutes).toBe(30);
+  });
+
+  it("모델을 바꾸면 OpenRouter 목록으로 확인하고, 없거나 확인하지 못하면 저장하지 않는다", async () => {
+    const unknown = await start({ checkModel: async () => false });
+    const body = { ...form, llmModel: "openai/gpt-none" };
+    const notFound = await call(unknown.baseUrl, "/settings", {
+      method: "PUT",
+      body,
+    });
+    expect(notFound.status).toBe(422);
+    expect(await notFound.json()).toEqual({ error: "unknown_model" });
+    expect(readSettingsForm(unknown.db).collectIntervalMinutes).toBe(30);
+
+    const offline = await start({
+      checkModel: async () => {
+        throw new ModelListError("연결 실패");
+      },
+    });
+    const failed = await call(offline.baseUrl, "/settings", {
+      method: "PUT",
+      body,
+    });
+    expect(failed.status).toBe(502);
+    expect(await failed.json()).toEqual({ error: "model_check_failed" });
+
+    const known = await start({ checkModel: async () => true });
+    const saved = await call(known.baseUrl, "/settings", {
+      method: "PUT",
+      body,
+    });
+    expect(saved.status).toBe(200);
+    expect(readSettingsForm(known.db).llmModel).toBe("openai/gpt-none");
+  });
+
+  it("POST /keywords/rebuild: 저장한 깊이와 다른 깊이로 만든 종목만 다시 만든다", async () => {
+    const { baseUrl, db, keywordQueue } = await start();
+    const deep = registerStock(db, {
+      market: "KR",
+      code: "005930",
+      userInput: "삼전",
+    });
+    const fresh = registerStock(db, {
+      market: "KR",
+      code: "000660",
+      userInput: "하닉",
+    });
+    if (deep.status === "not_listed" || fresh.status === "not_listed")
+      throw new Error("표본에 없음");
+    const node = (key: number, level: number, parentKey: number | null) => ({
+      key,
+      parentKey,
+      level,
+      textKo: `키워드 ${key}`,
+      textEn: null,
+      reason: "r",
+      path: `경로 ${key}`,
+    });
+    // 삼성전자는 깊이 1, SK하이닉스는 깊이 2(기본)로 만들어져 있다.
+    replaceKeywords(db, deep.stock.id, [node(1, 1, null)], new Date());
+    replaceKeywords(
+      db,
+      fresh.stock.id,
+      [node(1, 1, null), node(2, 2, 1)],
+      new Date(),
+    );
+
+    const response = await call(baseUrl, "/keywords/rebuild");
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({ count: 1 });
+    expect(keywordQueue.enqueued).toEqual([deep.stock.id]);
   });
 });

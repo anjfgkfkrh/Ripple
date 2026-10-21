@@ -59,6 +59,12 @@ export type WorkerApi = {
   regenerateKeywords(id: number): Promise<WorkerResult<{ status: "queued" }>>;
   /** 기사 수집을 시작한다. 결과는 기다리지 않는다(이미 도는 중이면 already_running). */
   startCollection(): Promise<WorkerResult<{ runId: number }>>;
+  /** 설정 화면 값을 저장한다(worker가 검사·저장, 모델 ID는 OpenRouter 목록으로 확인). */
+  updateSettings(
+    values: Record<string, string>,
+  ): Promise<WorkerResult<{ ok: true; changed: string[] }>>;
+  /** 저장한 깊이와 다른 깊이로 만든 종목의 키워드를 다시 만든다. 결과는 기다리지 않는다. */
+  rebuildKeywords(): Promise<WorkerResult<{ count: number }>>;
 };
 
 export function createWorkerApi(options: {
@@ -67,7 +73,11 @@ export function createWorkerApi(options: {
 }): WorkerApi {
   const call = async <T>(
     path: string,
-    init: { method: "POST" | "DELETE"; body?: unknown; timeoutMs: number },
+    init: {
+      method: "POST" | "PUT" | "DELETE";
+      body?: unknown;
+      timeoutMs: number;
+    },
   ): Promise<WorkerResult<T>> => {
     try {
       const response = await fetch(new URL(path, options.workerUrl), {
@@ -122,6 +132,11 @@ export function createWorkerApi(options: {
       call(`/stocks/${id}/keywords`, { method: "POST", timeoutMs: 10_000 }),
     startCollection: () =>
       call("/collect", { method: "POST", timeoutMs: 10_000 }),
+    // 모델을 바꾸면 worker가 OpenRouter 목록(최대 15초)을 확인하므로 넉넉하게 기다린다.
+    updateSettings: (values) =>
+      call("/settings", { method: "PUT", body: values, timeoutMs: 30_000 }),
+    rebuildKeywords: () =>
+      call("/keywords/rebuild", { method: "POST", timeoutMs: 10_000 }),
   };
 }
 
