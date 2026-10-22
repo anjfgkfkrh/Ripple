@@ -24,6 +24,7 @@ import {
 import { evaluatePending } from "@/server/evaluate/run";
 import { log, logError } from "@/server/log";
 import type { RssFeed } from "./feeds";
+import { pruneFeedHeadlines, saveFeedHeadlines } from "./feed-headlines";
 import type { FinnhubClient } from "./finnhub";
 import type { HttpClient } from "./http";
 import { createMatcher, type MatchStock, type StockMatch } from "./match";
@@ -59,6 +60,8 @@ export type Source = {
   id: string;
   label: string;
   group: string;
+  /** 받은 기사 제목을 시장 이슈 재료로 남길지(언론사 RSS·Finnhub 시장 뉴스, 10단계) */
+  keepHeadlines?: boolean;
   fetch(): Promise<CollectedItem[]>;
 };
 
@@ -156,6 +159,12 @@ async function collect(
     ),
   );
 
+  try {
+    pruneFeedHeadlines(deps.db, now());
+  } catch (error) {
+    logError("지난 피드 제목 지우기 실패", error);
+  }
+
   const failed = results.filter((r) => r.error).length;
   const status: RunStatus =
     failed === 0 ? "success" : failed === results.length ? "failed" : "partial";
@@ -206,6 +215,7 @@ function buildSources(
     id: feed.id,
     label: `${feed.publisher} ${feed.section}`,
     group: feed.publisher,
+    keepHeadlines: true,
     async fetch() {
       if (!(await deps.robots.allowed(feed.url))) {
         throw new Error(
@@ -255,6 +265,8 @@ function buildSources(
       id: "finnhub:general",
       label: "Finnhub 시장 뉴스",
       group: "Finnhub",
+      // 미국 종목별 뉴스는 한 종목으로 쏠리지 않게 남기지 않는다.
+      keepHeadlines: true,
       async fetch() {
         const news = await finnhub.generalNews();
         return news.map((n) => ({
@@ -298,6 +310,14 @@ async function runSource(
   try {
     const items = await source.fetch();
     result.fetched = items.length;
+    if (source.keepHeadlines) {
+      // 제목 보관이 실패해도 기사 수집·연결은 계속한다.
+      try {
+        saveFeedHeadlines(db, source.id, items, seenAt);
+      } catch (error) {
+        logError(`피드 제목 저장 실패: ${source.id}`, error);
+      }
+    }
     const keep: {
       item: CollectedItem;
       key: string;

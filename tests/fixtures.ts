@@ -136,27 +136,50 @@ export function fakeKeywordQueue(): KeywordQueue & { enqueued: number[] } {
   };
 }
 
-/** 깊이 2 키워드 트리 표본(LLM 출력 형식) */
-export function sampleKeywordTree(options: { english?: boolean } = {}) {
+/**
+ * 깊이 2 키워드 트리 표본(LLM 출력 형식). current면 1단계 '환율' 대신 시사 가지
+ * 'AI 서버 투자 → 빅테크 투자'를 넣는다(2단계 '애플' 자리, 단계마다 5개 유지).
+ */
+export function sampleKeywordTree(
+  options: { english?: boolean; current?: boolean } = {},
+) {
   const en = (text: string) => (options.english ? text : "");
   const level1 = [
     ["메모리 반도체", "Memory chips", "주력 사업"],
     ["HBM", "HBM", "AI 서버용 고대역폭 메모리"],
     ["스마트폰", "Smartphones", "완제품 사업"],
     ["파운드리", "Foundry", "위탁 생산 사업"],
-    ["환율", "Exchange rate", "수출 비중이 커 실적에 영향"],
+    options.current
+      ? [
+          "AI 서버 투자",
+          "AI server spending",
+          "AI 서버 투자 기대가 주가에 반영",
+        ]
+      : ["환율", "Exchange rate", "수출 비중이 커 실적에 영향"],
   ];
   const level2 = [
     ["엔비디아", "Nvidia", "HBM", "HBM 주요 고객"],
     ["SK하이닉스", "SK hynix", "HBM", "HBM 경쟁사"],
     ["D램 가격", "DRAM prices", "메모리 반도체", "메모리 실적을 좌우"],
     ["TSMC", "TSMC", "파운드리", "파운드리 1위 경쟁사"],
-    ["애플", "Apple", "스마트폰", "스마트폰 경쟁사"],
+    options.current
+      ? [
+          "빅테크 투자",
+          "Big Tech capex",
+          "AI 서버 투자",
+          "빅테크 설비 투자가 기대를 움직임",
+        ]
+      : ["애플", "Apple", "스마트폰", "스마트폰 경쟁사"],
   ];
+  const kindOf = (keyword: string) =>
+    options.current && (keyword === "AI 서버 투자" || keyword === "빅테크 투자")
+      ? ("current" as const)
+      : ("structure" as const);
   return {
     keywords: [
       ...level1.map(([keyword, keywordEn, reason]) => ({
         level: 1,
+        kind: kindOf(keyword),
         keyword,
         keywordEn: en(keywordEn),
         parent: "",
@@ -164,6 +187,7 @@ export function sampleKeywordTree(options: { english?: boolean } = {}) {
       })),
       ...level2.map(([keyword, keywordEn, parent, reason]) => ({
         level: 2,
+        kind: kindOf(keyword),
         keyword,
         keywordEn: en(keywordEn),
         parent,
@@ -171,6 +195,34 @@ export function sampleKeywordTree(options: { english?: boolean } = {}) {
       })),
     ],
   };
+}
+
+/** 시장 이슈 정리 표본(LLM 출력 형식) */
+export function sampleMarketIssues() {
+  return {
+    issues: [
+      {
+        name: "미국 금리 인하 기대",
+        summary: "연준 위원들이 연내 인하 가능성을 언급",
+        terms: ["연준", "금리 인하"],
+      },
+      {
+        name: "중동 긴장",
+        summary: "사우디 시설 공격 위협에 유가가 흔들림",
+        terms: ["사우디", "유가"],
+      },
+    ],
+  };
+}
+
+/** 요청 형식(schemaName)에 따라 시장 이슈 정리와 키워드 트리를 나눠 답하는 가짜 LLM */
+export function fakeKeywordLlm(
+  tree: () => unknown = () => sampleKeywordTree(),
+  issues: () => unknown = () => sampleMarketIssues(),
+) {
+  return fakeLlm((request) =>
+    request.schemaName === "market_issues" ? issues() : tree(),
+  );
 }
 
 /** 시작 요청만 기록하는 가짜 수집 실행기. finish()를 부르기 전까지는 '수집 중'이다. */

@@ -83,4 +83,38 @@ describe("monthUsageReport (FR-8)", () => {
     expect(report.limitUsd).toBe(0.04);
     expect(report.level).toBe("warn");
   });
+
+  it("시장 이슈 정리는 따로 보이고, 화면 이름이 같은 품질 확인은 제공자마다 한 줄로 합친다(10단계)", () => {
+    const db = testDb();
+    const log = (
+      provider: "openrouter" | "typesafe",
+      purpose: string,
+      costUsd: number,
+    ) =>
+      recordUsage(db, {
+        provider,
+        model: "m",
+        purpose,
+        usage: { inputTokens: 1, outputTokens: 1, costUsd },
+        at: NOW,
+      });
+    log("openrouter", "market_issues", 0.007);
+    log("openrouter", "keyword_generation_check", 0.003);
+    log("openrouter", "market_issues_check", 0.002);
+    log("openrouter", "model_compare", 0.001);
+    log("typesafe", "article_evaluation_check", 0.004);
+
+    expect(
+      monthUsageReport(db, NOW).rows.map((row) => [
+        row.provider,
+        row.label,
+        row.calls,
+        Number(row.costUsd.toFixed(6)),
+      ]),
+    ).toEqual([
+      ["openrouter", "시장 이슈 정리", 1, 0.007],
+      ["openrouter", "품질 확인(개발 중 직접 호출)", 3, 0.006],
+      ["typesafe", "품질 확인(개발 중 직접 호출)", 1, 0.004],
+    ]);
+  });
 });

@@ -8,6 +8,7 @@ import {
   articles,
   collectionRuns,
   evaluations,
+  feedHeadlines,
   stocks,
 } from "../db/schema";
 import { replaceKeywords } from "../keywords/generate";
@@ -80,6 +81,7 @@ function addStocks(db: Db, at: Date = NOW) {
         textKo: "HBM 메모리",
         textEn: null,
         reason: "r",
+        kind: "structure",
         path: "삼성전자 → HBM 메모리",
       },
       {
@@ -89,6 +91,7 @@ function addStocks(db: Db, at: Date = NOW) {
         textKo: "엔비디아",
         textEn: null,
         reason: "r",
+        kind: "structure",
         path: "삼성전자 → HBM 메모리 → 엔비디아",
       },
     ],
@@ -105,6 +108,7 @@ function addStocks(db: Db, at: Date = NOW) {
         textKo: "AI 가속기",
         textEn: "AI accelerator",
         reason: "r",
+        kind: "structure",
         path: "엔비디아 → AI 가속기",
       },
     ],
@@ -785,6 +789,54 @@ describe("Finnhub (미국 뉴스)", () => {
       // 이미 수집해 온 엔비디아는 회차 기준 시각(지난 회차 1시간 전)부터
       { symbol: "NVDA", from: ago(6) },
       { symbol: "TSLA", from: ago(25) },
+    ]);
+  });
+
+  it("종목에 안 걸린 기사도 제목을 남긴다: 언론사 RSS·시장 뉴스만, 미국 종목별 뉴스는 빼고(10단계)", async () => {
+    const db = testDb();
+    addStocks(db);
+    // 지난 회차에 남은 4일 전 제목은 이번 회차에 지운다.
+    db.insert(feedHeadlines)
+      .values({
+        titleKey: "지난제목",
+        title: "지난 제목",
+        publisher: "p",
+        feed: "rss:a:economy",
+        publishedAt: ago(96),
+        seenAt: ago(96),
+      })
+      .run();
+    const finnhub: FinnhubClient = {
+      async companyNews() {
+        return [news("Nvidia unveils chip", 11, 2)];
+      },
+      async generalNews() {
+        return [news("Oil prices fall", 12, 1)];
+      },
+    };
+    const { deps: d } = deps(
+      db,
+      {
+        "https://a.example/economy.xml": {
+          text: rss(
+            item("삼성전자 3분기 실적", "https://news.example/1", ago(2)),
+            item("한은 기준금리 동결", "https://news.example/2", ago(1)),
+          ),
+        },
+      },
+      { finnhub },
+    );
+    await run(d);
+
+    const kept = db
+      .select({ title: feedHeadlines.title, feed: feedHeadlines.feed })
+      .from(feedHeadlines)
+      .orderBy(asc(feedHeadlines.title))
+      .all();
+    expect(kept).toEqual([
+      { title: "Oil prices fall", feed: "finnhub:general" },
+      { title: "삼성전자 3분기 실적", feed: "rss:a:economy" },
+      { title: "한은 기준금리 동결", feed: "rss:a:economy" },
     ]);
   });
 

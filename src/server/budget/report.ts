@@ -21,9 +21,12 @@ export function budgetLevel(spentUsd: number, limitUsd: number): BudgetLevel {
 export const PURPOSE_LABEL: Record<string, string> = {
   stock_match: "종목 찾기",
   keyword_generation: "키워드 만들기",
+  market_issues: "시장 이슈 정리",
   article_evaluation: "기사 평가",
   keyword_generation_check: "품질 확인(개발 중 직접 호출)",
+  market_issues_check: "품질 확인(개발 중 직접 호출)",
   article_evaluation_check: "품질 확인(개발 중 직접 호출)",
+  model_compare: "품질 확인(개발 중 직접 호출)",
 };
 
 export type UsageRow = {
@@ -55,17 +58,25 @@ export function monthUsageReport(
     .where(gte(usageLogs.at, startOfSeoulMonth(now)))
     .groupBy(usageLogs.provider, usageLogs.purpose)
     .orderBy(desc(sql`sum(${usageLogs.costUsd})`))
-    .all()
-    .map((row) => ({
-      ...row,
-      calls: Number(row.calls),
-      costUsd: Number(row.costUsd),
-      label: PURPOSE_LABEL[row.purpose] ?? row.purpose,
-    }));
+    .all();
+  // 화면 이름이 같은 용도(개발 중 품질 확인 여러 가지)는 제공자마다 한 줄로 합친다.
+  const merged = new Map<string, UsageRow>();
+  for (const row of rows) {
+    const label = PURPOSE_LABEL[row.purpose] ?? row.purpose;
+    const key = `${row.provider}:${label}`;
+    const prev = merged.get(key);
+    merged.set(key, {
+      provider: row.provider,
+      purpose: prev?.purpose ?? row.purpose,
+      label,
+      calls: (prev?.calls ?? 0) + Number(row.calls),
+      costUsd: (prev?.costUsd ?? 0) + Number(row.costUsd),
+    });
+  }
   const totalUsd = monthSpendUsd(db, now);
   const limitUsd = readSetting(db, "budget.monthlyUsd");
   return {
-    rows,
+    rows: [...merged.values()].sort((a, b) => b.costUsd - a.costUsd),
     totalUsd,
     limitUsd,
     level: budgetLevel(totalUsd, limitUsd),

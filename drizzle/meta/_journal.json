@@ -43,6 +43,13 @@
       "when": 1792560119923,
       "tag": "0005_stock_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1792635066305,
+      "tag": "0006_market_issues",
+      "breakpoints": true
     }
   ]
 }

@@ -435,6 +435,7 @@ describe("worker 내부 API: 설정 (SPEC FR-8)", () => {
       textEn: null,
       reason: "r",
       path: `경로 ${key}`,
+      kind: "structure" as const,
     });
     // 삼성전자는 깊이 1, SK하이닉스는 깊이 2(기본)로 만들어져 있다.
     replaceKeywords(db, deep.stock.id, [node(1, 1, null)], new Date());

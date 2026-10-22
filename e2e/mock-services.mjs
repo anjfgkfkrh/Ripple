@@ -110,19 +110,56 @@ function finnhubNews(id, headline, base) {
   };
 }
 
-// 키워드 트리(깊이 2, 단계마다 5개). [키워드, 영어 표기, 부모, 이유]
+// 키워드 트리(깊이 2, 단계마다 5개). [단계, 키워드, 영어 표기, 부모, 이유, 종류]
+// '금리 인하 기대 → 연준 금리'는 시사 가지(10단계).
 const KEYWORD_TREE = [
-  [1, "AI 반도체", "AI chips", "", "AI 서버 수요와 직결"],
-  [1, "데이터센터", "Data centers", "", "주요 수요처"],
-  [1, "환율", "Exchange rates", "", "해외 매출 비중이 큼"],
-  [1, "금리", "Interest rates", "", "성장주 평가에 영향"],
-  [1, "공급망", "Supply chain", "", "부품 조달 위험"],
-  [2, "HBM", "HBM", "AI 반도체", "AI 반도체 핵심 부품"],
-  [2, "GPU", "GPUs", "AI 반도체", "AI 연산 장치"],
-  [2, "클라우드", "Cloud computing", "데이터센터", "데이터센터 최대 고객"],
-  [2, "전력 설비", "Power equipment", "데이터센터", "증설의 병목"],
-  [2, "원달러 환율", "USD/KRW", "환율", "원화 기준 실적 변동"],
+  [1, "AI 반도체", "AI chips", "", "AI 서버 수요와 직결", "structure"],
+  [1, "데이터센터", "Data centers", "", "주요 수요처", "structure"],
+  [1, "환율", "Exchange rates", "", "해외 매출 비중이 큼", "structure"],
+  [
+    1,
+    "금리 인하 기대",
+    "Rate cut hopes",
+    "",
+    "인하 기대가 주가에 반영",
+    "current",
+  ],
+  [1, "공급망", "Supply chain", "", "부품 조달 위험", "structure"],
+  [2, "HBM", "HBM", "AI 반도체", "AI 반도체 핵심 부품", "structure"],
+  [2, "GPU", "GPUs", "AI 반도체", "AI 연산 장치", "structure"],
+  [
+    2,
+    "클라우드",
+    "Cloud computing",
+    "데이터센터",
+    "데이터센터 최대 고객",
+    "structure",
+  ],
+  [2, "전력 설비", "Power equipment", "데이터센터", "증설의 병목", "structure"],
+  [
+    2,
+    "연준 금리",
+    "Fed rates",
+    "금리 인하 기대",
+    "연준 결정이 기대를 움직임",
+    "current",
+  ],
 ];
+/** 오늘의 시장 이슈 정리 답(피드 제목이 50개 이상일 때만 불린다) */
+const MARKET_ISSUES = {
+  issues: [
+    {
+      name: "미국 금리 인하 기대",
+      summary: "연준 인하 가능성 언급",
+      terms: ["연준", "금리 인하"],
+    },
+    {
+      name: "AI 투자 확대",
+      summary: "빅테크 설비 투자 늘어",
+      terms: ["AI", "투자"],
+    },
+  ],
+};
 /** 키워드를 만드는 동안의 화면(만드는 중)을 볼 수 있게 조금 늦게 답한다. */
 const KEYWORD_DELAY_MS = 800;
 /** 이 종목은 첫 키워드 생성만 실패시킨다(실패 표시와 다시 만들기 검사용). */
@@ -133,8 +170,9 @@ function keywordAnswer(user) {
   const us = user.includes("(미국,");
   return {
     keywords: KEYWORD_TREE.map(
-      ([level, keyword, keywordEn, parent, reason]) => ({
+      ([level, keyword, keywordEn, parent, reason, kind]) => ({
         level,
+        kind,
         keyword,
         keywordEn: us ? keywordEn : "",
         parent,
@@ -268,6 +306,14 @@ createServer(async (request, response) => {
     for await (const chunk of request) body += chunk;
     const { model, messages, response_format } = JSON.parse(body);
     const user = messages.at(-1)?.content ?? "";
+
+    if (response_format?.json_schema?.name === "market_issues") {
+      return sendJson(response, 200, {
+        model,
+        choices: [{ message: { content: JSON.stringify(MARKET_ISSUES) } }],
+        usage: { prompt_tokens: 60000, completion_tokens: 1500, cost: 0.0068 },
+      });
+    }
 
     if (response_format?.json_schema?.name === "keyword_tree") {
       await new Promise((resolve) => setTimeout(resolve, KEYWORD_DELAY_MS));

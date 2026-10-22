@@ -21,6 +21,13 @@ export const KEYWORD_STATUSES = [
 ] as const;
 export type KeywordStatus = (typeof KEYWORD_STATUSES)[number];
 
+/**
+ * 키워드 종류 (10단계, 2026-10-22 결정): 구조(제품·사업·고객 등 잘 바뀌지 않는 요인) /
+ * 시사(지금 시장이 주가에 반영하는 기대·우려와 그것을 움직이는 사건·인물의 사슬)
+ */
+export const KEYWORD_KINDS = ["structure", "current"] as const;
+export type KeywordKind = (typeof KEYWORD_KINDS)[number];
+
 /** 설정 키-값 (SPEC FR-8). value는 JSON 문자열. */
 export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
@@ -96,9 +103,54 @@ export const keywords = sqliteTable(
     reason: text("reason").notNull(),
     /** 종목에서 이 키워드까지의 트리 경로(예: 삼성전자 → 메모리 → 엔비디아) */
     path: text("path").notNull(),
+    /** 구조/시사. 시사 가지는 1단계 키워드의 종류를 따른다(10단계) */
+    kind: text("kind", { enum: KEYWORD_KINDS }).notNull().default("structure"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
   (table) => [index("keywords_stock").on(table.stockId)],
+);
+
+/**
+ * 수집한 피드의 기사 제목 (10단계, 2026-10-22 결정). 종목에 걸리지 않은 기사도 제목·언론사·피드·시각만
+ * 3일 동안 둔다(요약·본문 없음). 하루 한 번 시장 이슈를 정리하는 재료다.
+ */
+export const feedHeadlines = sqliteTable(
+  "feed_headlines",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    /** 같은 제목은 한 줄(공백·대소문자를 정리한 제목) */
+    titleKey: text("title_key").notNull(),
+    title: text("title").notNull(),
+    publisher: text("publisher").notNull(),
+    /** 처음 받은 피드 id(언론사·분야, 예: rss:sbs:international) */
+    feed: text("feed").notNull(),
+    /** 피드에 발행 시각이 없으면 처음 받은 시각 */
+    publishedAt: integer("published_at", { mode: "timestamp_ms" }).notNull(),
+    seenAt: integer("seen_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("feed_headlines_title_key").on(table.titleKey),
+    index("feed_headlines_published").on(table.publishedAt),
+  ],
+);
+
+/** 시장 이슈 하나: 이름, 한 줄 설명, 기사에 쓰인 낱말 */
+export type MarketIssue = { name: string; summary: string; terms: string[] };
+
+/**
+ * 하루 한 번 정리한 오늘의 시장 이슈 (10단계). 모든 종목의 키워드 트리를 만들 때 함께 넣는다.
+ * 가장 최근 것만 쓰고, 지난 것은 확인용으로 잠시 둔다.
+ */
+export const marketIssues = sqliteTable(
+  "market_issues",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    /** 정리에 넣은 제목 수 */
+    headlineCount: integer("headline_count").notNull(),
+    issues: text("issues", { mode: "json" }).$type<MarketIssue[]>().notNull(),
+  },
+  (table) => [index("market_issues_created").on(table.createdAt)],
 );
 
 /** 공식 종목 목록 (D-12). worker가 주 1회 통째로 갈아 끼운다. */

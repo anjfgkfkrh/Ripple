@@ -1,4 +1,6 @@
+import { cn } from "cn";
 import { ChevronRightIcon, LoaderCircleIcon } from "lucide-react";
+import { badgeVariants } from "@/components/ui/badge";
 import type { KeywordStatus } from "@/server/db/schema";
 import type { Keyword } from "@/server/keywords/read";
 import type { Stock } from "@/server/stocks/repository";
@@ -92,7 +94,10 @@ function toTree(keywords: Keyword[]): KeywordNode[] {
   return roots;
 }
 
-/** 들여쓰기가 곧 경로다(예: 삼성전자 → 메모리 → 엔비디아). 마우스를 올리면 경로 글자도 보인다. */
+/**
+ * 들여쓰기가 곧 경로다(예: 삼성전자 → 메모리 → 엔비디아). 마우스를 올리면 경로 글자도 보인다.
+ * 시사 가지는 맨 위 키워드에 '시사'를 붙인다(아래 키워드는 같은 가지라 붙이지 않음, 10단계).
+ */
 function KeywordTree({ nodes }: { nodes: KeywordNode[] }) {
   return (
     <ul className="space-y-2">
@@ -103,6 +108,17 @@ function KeywordTree({ nodes }: { nodes: KeywordNode[] }) {
             {node.textEn && (
               <span className="ml-1.5 text-xs text-muted-foreground">
                 {node.textEn}
+              </span>
+            )}
+            {node.kind === "current" && node.parentId === null && (
+              <span
+                className={cn(
+                  badgeVariants({ variant: "outline" }),
+                  "ml-1.5 align-text-bottom",
+                )}
+                data-testid="current-badge"
+              >
+                시사
               </span>
             )}
           </p>

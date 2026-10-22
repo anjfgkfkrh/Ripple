@@ -158,6 +158,35 @@ describe("OpenRouter 클라이언트", () => {
     await expectLlmError(client.generateObject(request), "timeout");
   });
 
+  it("요청에 timeoutMs가 있으면 그 요청만 그만큼 기다린다", async () => {
+    const fetchImpl = ((_: unknown, init?: RequestInit) =>
+      new Promise((resolve, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(init.signal?.reason),
+        );
+        // 클라이언트 기본(50ms)보다 늦게, 요청의 제한 시간(500ms)보다 먼저 답한다.
+        setTimeout(
+          () =>
+            resolve(
+              Response.json({
+                model: "m",
+                choices: [{ message: { content: '{"answer":"늦은 답"}' } }],
+                usage: { prompt_tokens: 1, completion_tokens: 1, cost: 0 },
+              }),
+            ),
+          150,
+        );
+      })) as typeof fetch;
+    const client = createOpenRouterClient({
+      apiKey: "sk-test",
+      fetchImpl,
+      timeoutMs: 50,
+    });
+    await expectLlmError(client.generateObject(request), "timeout");
+    const result = await client.generateObject({ ...request, timeoutMs: 500 });
+    expect(result.value).toEqual({ answer: "늦은 답" });
+  });
+
   it("API 키가 없으면 요청하지 않고 no_api_key", async () => {
     const { fetchImpl, calls } = fakeFetch(() => ok("{}"));
     const client = createOpenRouterClient({ apiKey: undefined, fetchImpl });

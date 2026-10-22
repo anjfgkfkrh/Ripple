@@ -53,6 +53,19 @@ test.describe("키워드 생성·트리 보기 (SPEC FR-3, D-13~D-16, D-37)", ()
       branch.getByTitle(`${target.name} → AI 반도체 → HBM`, { exact: true }),
     ).toBeVisible();
     await expect(item.getByTestId("keyword")).toHaveCount(10);
+    // 시사 가지는 맨 위 키워드에만 '시사'를 붙이고, 아래 키워드는 그 가지 안에 든다(10단계).
+    const current = item.getByTestId("keyword").filter({
+      has: page.getByTitle(`${target.name} → 금리 인하 기대`, { exact: true }),
+    });
+    await expect(item.getByTestId("current-badge")).toHaveCount(1);
+    await expect(current.getByTestId("current-badge").first()).toHaveText(
+      "시사",
+    );
+    await expect(
+      current.getByTitle(`${target.name} → 금리 인하 기대 → 연준 금리`, {
+        exact: true,
+      }),
+    ).toBeVisible();
     // 영어 표기는 미국 종목에만 있다(D-14).
     await expect(item.getByText("AI chips")).toHaveCount(
       target.english ? 1 : 0,

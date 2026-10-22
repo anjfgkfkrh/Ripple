@@ -18,6 +18,8 @@ export type StructuredRequest<T> = {
   /** 구조화 출력 스키마 이름(영문·숫자·밑줄) */
   schemaName: string;
   maxTokens: number;
+  /** 이 요청만 응답을 더 오래 기다릴 때(밀리초). 없으면 클라이언트 기본값 */
+  timeoutMs?: number;
 };
 
 export type LlmUsage = {

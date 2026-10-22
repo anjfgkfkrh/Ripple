@@ -6,8 +6,26 @@
 
 ## 1. 지금 상태
 
-마지막 갱신: 2026-10-21 (한국 시간), v0.1.0 릴리스
+마지막 갱신: 2026-10-22 (한국 시간), 10단계 완료·커밋, 11단계 시작
 
+- **10단계 완료(2026-10-22 배포): 키워드 트리에 시사 반영**(SPEC 10장, 결정은 12장 "10단계 …" 줄, 2026-10-22 사용자 결정 "1~8 A").
+  - 설계: 수집 회차마다 피드 제목을 모두 3일 보관 → 매일 06:00에 LLM 1번으로 "오늘의 시장 이슈" 10~15개 정리(모든 종목 공용) → 종목마다 트리를 만들 때 종목 기사 제목과 함께 넣어, 1단계 5개 중 최대 2개를 시사 가지(테마 → 사건 → 동인 사슬)로 만든다. 키워드에 구조/시사 구분 저장, 트리 화면에 '시사' 표시.
+  - [x] 결정 기록(SPEC 12장), 릴리스 묶음 변경 커밋(`0e73b4e`)
+  - [x] 실측(승인 약 $0.03, 실제 $0.0281) → SPEC 11장 "시사 반영 키워드 실측". 3단계 누락 원인(LLM이 2단계를 부모마다 5개씩 만들고 3단계를 안 만듦)을 찾았고 새 프롬프트는 4번 모두 5·5·5. 시사 연결 40건은 사람·Jev 모두 기준 미만이라 시사용 Jev 문구는 두지 않음(SPEC 12장)
+  - [x] 구현(작은 결정은 SPEC 12장 "10단계 … — 구현 중 정함")
+    - DB: `keywords.kind`(구조/시사), `feed_headlines`(제목 3일), `market_issues`(하루 한 번 정리). 마이그레이션 `drizzle/0006_market_issues.sql`(표 추가·열 추가뿐)
+    - 수집: `src/server/collect/feed-headlines.ts`, `run.ts`의 `Source.keepHeadlines`(RSS·Finnhub 시장 뉴스)
+    - 시장 이슈: `src/server/keywords/market-issues.ts`의 `ensureMarketIssues`(오늘 06:00 뒤 정리가 없으면 한 번, 제목 50개 미만이면 건너뜀, 실패는 빈 정리로 1시간)
+    - 트리: `tree.ts`(새 프롬프트, 종류, 시사 사슬, 부모별 고르게 남기기), `generate.ts`(시장 이슈 넣기, 최대 토큰 8,000, 대기 60초, 원문 로그), LLM `timeoutMs`
+    - 화면: 트리의 시사 가지 맨 위 키워드에 '시사'. 사용량 표: '시장 이슈 정리', 같은 이름 합치기
+  - [x] 테스트·전체 검사: 단위 357 통과(22개 늘어남), E2E 30 통과(4개는 설계상 건너뜀), lint·타입·포맷·빌드 통과. 트리 화면 캡처 확인(데스크톱·모바일)
+  - [x] README·SPEC 본문(FR-3·FR-4·6.2·7장) 고침
+  - [x] 무료 실제 확인: 시험용 Docker에 오늘 04:00 백업 사본, AI 키·터널 없이 → 마이그레이션 적용, 제목 3,346건 보관(SPEC 11장). 확인 뒤 모두 지움
+  - [x] 완료 보고 → 사용자 선택 B(시험용 Docker에서 실제 AI 확인 뒤 배포)
+  - [x] 실제 AI 확인($0.0132, SPEC 11장): worker 안에서 제목 보관 → 시장 이슈 13개 → 현대건설 시사 가지 생김. 두산에너빌리티는 LLM이 규칙을 어겨(23개, 시사 사슬을 구조 가지 아래에) 구조 13개만 남음. 사용량은 본 DB에 `*_check`로 옮김
+  - [x] 본 Docker 배포(2026-10-22 14:03): 마이그레이션 7개 적용, 기존 키워드는 '구조', 터널 주소 그대로. 피드 제목은 다음 정기 수집부터 쌓이고, 트리는 다음 06:00(또는 사용자가 "키워드 다시 만들기")에 새 방식으로 바뀐다
+  - [ ] 사용자에게 물은 것: 시사 사슬을 따로 받는 출력 형식으로 바꿀지(두산 같은 규칙 위반 대책, 실측 약 $0.01), 시장 전체 기사 수집 아이디어(새 단계 후보)
+  - [ ] 커밋은 다음 단계를 시작할 때(규칙)
 - **MVP 완료, v0.1.0 릴리스(2026-10-21).** 0~9단계 모두 끝났고, 휴대폰에서 임시 주소 접속·로그인을 사용자가 확인했다.
 - 9단계에서 할 일
   - [x] compose에 `tunnel` 서비스(cloudflared `2026.10.0`, Quick Tunnel, `--metrics 0.0.0.0:20241`)
@@ -21,8 +39,8 @@
   - [x] 완료 보고, 휴대폰 접속 확인(사용자)
 - 본 Docker는 9단계 이미지로 돌고 있으며 휴대폰에서 접속이 확인되었다.
 - 릴리스 이미지 배포(2026-10-21 사용자 요청): `scripts/release.sh`로 arm64·amd64 이미지 압축 파일과 설치용 파일을 `release-dist/`에 만든다(README 7장, SPEC 12장 "배포 방식"). 만들기까지 했고 GitHub 릴리스 페이지 업로드는 사용자가 직접 한다. 스크립트·INSTALL.md·README·SPEC 변경은 10단계를 시작하기 전에 커밋했다(2026-10-22).
-- 사용자 답을 기다리는 질문: 없음
-- 다음: MVP 범위 밖(SPEC 2.2)의 기능(요약, 외부 알림, 고정 도메인 등)은 새 단계로 정해서 시작한다.
+- 사용자 답을 기다리는 질문: 시사 사슬 출력 형식 변경 여부, 시장 전체 기사 수집 아이디어(2026-10-22 보고에서 물음)
+- 다음: 10단계 보고와 사용자 확인. 그 뒤 MVP 범위 밖(SPEC 2.2)의 기능(요약, 외부 알림, 고정 도메인 등)은 새 단계로 정해서 시작한다.
 
 ## 2. 단계별 현황
 
@@ -34,6 +52,8 @@
 | 7 | 타임라인과 필터 | 완료 | `53e0df7` |
 | 8 | 설정 화면, 사용량, 비용 한도 | 완료 | `b121a23` |
 | 9 | Cloudflare Tunnel, 실행 안내, 백업 | 완료 | `f972e3c` |
+| - | v0.1.0 릴리스 준비, 릴리스 묶음 스크립트 | 완료 | `575bef2`, `0e73b4e` |
+| 10 | 키워드 트리에 시사 반영 | 완료(2026-10-22 배포) | 11단계 시작 커밋 |
 
 릴리스: **v0.1.0 (MVP)**, 태그 `v0.1.0`.
 
@@ -73,8 +93,9 @@ E2E에서 알아 둘 것
 ## 5. 데이터·비용 메모
 
 - 본 Docker DB(2026-10-21 17:49 조회): 사용자 종목 두산에너빌리티(id 4). 시험 종목 삼성전자·엔비디아·현대건설(id 1~3)은 숨김 상태(deleted_at 1792465169686·…692·…693). 시험에 다시 쓰지 않는다.
-- 이번 달 AI 사용: $0.0595(한도 $5, 개발 중 시험 호출 포함).
-- 단계별 실제 API 사용: 2단계 OpenRouter 약 20회, 3단계 약 $0.016(누적), 5단계 Jev $0.0195(548회), 6단계 $0.0205(OpenRouter 15회, Jev 339회), 7·8단계 0원.
+- 본 Docker DB(2026-10-22 조회): 사용자 종목 현대건설(id 3, 2026-10-21 저녁 다시 등록)·두산에너빌리티(id 4), 깊이 3. 삼성전자·엔비디아(id 1·2)는 숨김.
+- 이번 달 AI 사용: $0.1104(2026-10-22 14:05, 한도 $5, 개발 중 시험 호출 포함).
+- 단계별 실제 API 사용: 2단계 OpenRouter 약 20회, 3단계 약 $0.016(누적), 5단계 Jev $0.0195(548회), 6단계 $0.0205(OpenRouter 15회, Jev 339회), 7·8단계 0원, 10단계 실측 $0.0281(OpenRouter 10회, Jev 80회)과 실제 AI 확인 $0.0132(OpenRouter 3회, Jev 88회), 둘 다 본 DB 사용량 기록에 `*_check`로 넣음.
 
 ## 6. 다시 잴 때의 방법
 
@@ -83,6 +104,8 @@ E2E에서 알아 둘 것
 - **Jev 지시문 언어·모델 버전 비교(5단계, D-23)**: 시험 종목과 키워드를 새 임시 DB에 넣고 `startCollectionRun`(decider 없이)으로 실제 기사를 모은다 → 연결을 연결 방식·단계별로 섞어 50건 뽑는다 → 사람이 관련도(0~5)·호재/악재를 먼저 판정한다 → `createTypeSafeDecider`로 언어 2 × 버전 2를 부른다 → 6점 기준 일치, 평균 오차, 호재·악재 일치, 입력 토큰, 지연을 비교한다. 사용량은 `article_evaluation_check`로 본 DB에 옮긴다.
 - **키워드 프롬프트 비교(6단계)**: 같은 DB를 둘로 복사해 한쪽에만 평가를 넣고(최근 기사 제목이 생기게) `generateKeywordsForStock`을 종목마다 두 번씩 부른다 → 트리를 나란히 비교한다. 사용량은 `keyword_generation_check`.
 - **피드에 담긴 기간(4·6단계, D-01 근거)**: 피드마다 받은 기사 중 가장 최근과 가장 오래된 발행 시각의 차이를 잰다. 바쁜 피드는 약 2시간치다.
+- **시사 반영 키워드(10단계)**: ① 무료: `RSS_FEEDS`·`createHttpClient`·`createRobotsChecker`·`parseFeed`·`createFinnhubClient().generalNews()`로 피드를 한 번 받아 제목·요약·주소·발행 시각을 파일로 둔다(저장소·DB에 쓰지 않음). 본 DB에서 종목 정보와 `recentHeadlines` 규칙의 제목을 읽기 전용으로 꺼낸다(`docker compose exec -T worker node - < 스크립트`, better-sqlite3 `readonly`). ② 유료: 최근 24시간 제목(같은 제목 하나, 최근순 1,500개)으로 `buildMarketIssueMessages` 2번, 종목마다 `git show <이전 커밋>:src/server/keywords/tree.ts`로 꺼낸 지금 프롬프트와 새 `buildKeywordMessages`를 2번씩(`createOpenRouterClient`, 응답 대기 넉넉히). 비용 합계가 상한을 넘으면 멈추게 한다. ③ 무료: 키워드마다 `createMatcher`로 최근 48시간 기사 적중 수를 센다. ④ 시사 키워드로 걸린 기사를 경로마다 고르게 40건 뽑아 **먼저** 사람 판정(0~5)을 파일로 남기고, `createTypeSafeDecider`(지금 문구)와 SDK `systemOne`(link.how만 바꾼 문구)으로 묻는다. ⑤ 사용량은 본 DB `usage_logs`에 `market_issues_check`·`keyword_generation_check`·`article_evaluation_check`로 넣는다(쓰기 연결, busy_timeout 5초, 한 트랜잭션). 스크립트는 세션 임시 폴더에 두고 `.mts`로 쓴다(프로젝트가 ESM). 패키지는 `node_modules/...` 절대 경로로 가져온다.
+- **worker 안 실제 AI 확인(10단계)**: ① `WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups docker compose -p ripple-check build` ② `docker compose -p ripple-check run --rm --no-deps -v "$PWD/backups":/restore:ro worker sh -c '<백업 복사와 node 스크립트>'`로 백업 사본을 `/data/ripple.db`에 넣고, 같은 자리에서 settings `keywords.autoRegeneratedAt`을 지금 시각으로 바꾼다(켜자마자 06:00 재생성이 돌면 제목이 쌓이기 전이라 시장 이슈가 빠짐) ③ `docker compose -p ripple-check up -d migrate worker web`(터널을 빼서 공개 주소 없음, 실제 키는 `.env`) ④ 첫 수집이 끝나면 worker 컨테이너 안에서 `fetch('http://127.0.0.1:4000/stocks/<id>/keywords', {method: 'POST', headers: {authorization: 'Bearer ' + process.env.WORKER_API_TOKEN}})`로 다시 만들기(토큰을 밖으로 꺼내지 않음) ⑤ 지난 기사까지 보려면 시험 DB의 `stocks.backfill_from`을 24시간 전으로 두고 `POST /collect` ⑥ `market_issues`·`keywords`·`article_matches`·`evaluations`를 읽기 전용으로 조회 ⑦ 시험 DB의 이번 `usage_logs`를 용도 끝에 `_check`를 붙여 본 DB에 옮기고 `down -v`, `.check-backups`·시험 이미지를 지운다.
 
 ## 7. 남은 일·알려진 문제
 
@@ -90,6 +113,8 @@ E2E에서 알아 둘 것
 - 최근 기사 제목을 넣으면 LLM이 단계별 5개를 넘겨 답하는 일이 있다(검증에서 버려 트리는 정상, 출력 토큰만 낭비).
 - 같은 소식을 다른 제목으로 낸 기사는 묶이지 않는다(완전히 같은 제목만 묶음).
 - 새로 등록한 종목의 지난 24시간 기사 연결은 그 회차에 실패한 소스에서는 놓칠 수 있다.
+- (10단계) 시장 이슈 정리는 회사 한 곳의 큰 소식(실적·신차)도 넣고, 기사가 흩어진 주제(예: 트럼프 기사 하루 43건)는 이슈로 따로 잡지 않기도 한다. 시사 키워드 중 넓은 말('기준금리 동결' 하루 17건, 'AI 투자 우려' 15.5건)은 연결이 많지만 대부분 기준 미만이다. 큰 사건 때 시사 연결이 6점을 넘는지는 아직 재지 못했다(SPEC 11장).
+- (10단계 중 발견, 범위 밖) 국민일보 피드에 발행 시각이 받은 시각보다 5~11시간 늦은 기사가 있다(예약 기사로 보임, 본 DB 2건). 하루를 넘지 않는 미래 시각은 받아 두므로 그 시각까지 타임라인 맨 위에 보일 수 있다.
 - MVP 범위 밖(SPEC 2.2): 요약, 외부 알림, 미국 증권사 리포트, 다중 사용자, 종목별 수집 간격, 고정 도메인.
 
 ## 8. 코드 지도
@@ -98,5 +123,6 @@ E2E에서 알아 둘 것
 - worker 시작과 의존성 조립: `src/worker/index.ts`, 내부 API: `src/worker/server.ts`
 - 정기 작업: `src/server/schedule/`(plan = 다음 시각 계산, scheduler = 1분 루프)
 - 수집: `src/server/collect/run.ts`, 평가: `src/server/evaluate/run.ts`, Jev: `src/server/ai/decider/`
+- 키워드: `src/server/keywords/`(tree = 프롬프트·검증, market-issues = 오늘의 시장 이슈, generate = 생성·저장, queue = 대기열), 피드 제목 보관: `src/server/collect/feed-headlines.ts`
 - 화면: `src/app/(app)/`(page = 타임라인, status/, stocks/, settings/)
 - 설정 값 기본: `src/server/settings.ts`, 설정 화면 검사·저장: `src/server/settings-form.ts`

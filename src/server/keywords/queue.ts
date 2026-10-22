@@ -49,8 +49,10 @@ export function createKeywordQueue(deps: {
             result.headlines > 0
               ? `, 기사 제목 ${result.headlines}개 참고`
               : "";
+          const issues =
+            result.issues > 0 ? `, 시장 이슈 ${result.issues}개 참고` : "";
           log(
-            `키워드 생성: 종목 id ${stockId}, ${result.count}개(깊이 ${result.depth}${dropped}${headlines}), ${seconds}초`,
+            `키워드 생성: 종목 id ${stockId}, ${result.count}개(깊이 ${result.depth}${dropped}${headlines}${issues}), ${seconds}초`,
           );
         } else {
           log(

@@ -3,9 +3,10 @@ import { LlmError, type LlmClient } from "@/server/ai/llm/types";
 import { BudgetExceededError, generateWithBudget } from "@/server/budget/usage";
 import type { Db } from "@/server/db/client";
 import { keywords, stocks, type KeywordStatus } from "@/server/db/schema";
-import { logError } from "@/server/log";
+import { log, logError } from "@/server/log";
 import { readSetting } from "@/server/settings";
 import { recentHeadlines } from "./headlines";
+import { ensureMarketIssues } from "./market-issues";
 import {
   buildKeywordMessages,
   buildKeywordTree,
@@ -17,6 +18,11 @@ import {
 /** LLM은 답했지만 규칙에 맞는 키워드가 하나도 없을 때 */
 class NoUsableKeywordsError extends Error {}
 
+/** 2026-10-22 실측: 깊이 3에 14~16초. 깊이 4와 느린 때를 생각해 넉넉히 둔다. */
+const KEYWORD_TIMEOUT_MS = 60_000;
+/** 규칙에 안 맞는 답을 볼 때 로그에 남기는 LLM 원문 길이 */
+const RAW_LOG_MAX_CHARS = 6000;
+
 /** 실패 이유(error)는 화면에 "키워드를 만들지 못했습니다." 뒤에 붙여 보여 준다. */
 export type GenerateResult =
   | {
@@ -27,6 +33,8 @@ export type GenerateResult =
       dropped: number;
       /** 참고로 넣은 최근 기사 제목 수 */
       headlines: number;
+      /** 참고로 넣은 오늘의 시장 이슈 수(10단계) */
+      issues: number;
     }
   | { ok: false; error: string };
 
@@ -49,21 +57,32 @@ export async function generateKeywordsForStock(
   setKeywordStatus(db, stockId, "generating");
   const depth = clampDepth(readSetting(db, "keywords.depth"));
   const headlines = recentHeadlines(db, stockId, now());
+  // 하루 한 번 정리하는 시장 이슈(모든 종목 공용). 실패해도 던지지 않고 빈 목록이다.
+  const issues = await ensureMarketIssues(db, llm, now);
   try {
     const { value } = await generateWithBudget(
       db,
       llm,
       {
         model: readSetting(db, "llm.model"),
-        messages: buildKeywordMessages(stock, depth, headlines),
+        messages: buildKeywordMessages(stock, depth, { headlines, issues }),
         schema: keywordTreeSchema,
         schemaName: "keyword_tree",
-        // 추론 토큰과 함께 쓴다. 깊이 4(20개)에도 넉넉하다.
-        maxTokens: 4000,
+        // 추론 토큰과 함께 쓴다. 깊이 3에 실측 약 3,000개(2026-10-22)라 깊이 4에도 넉넉하게.
+        maxTokens: 8000,
+        timeoutMs: KEYWORD_TIMEOUT_MS,
       },
       { purpose: "keyword_generation", now },
     );
     const tree = buildKeywordTree(stock, value.keywords, depth);
+    const dropped = value.keywords.length - tree.length;
+    const deepest = Math.max(0, ...tree.map((node) => node.level));
+    if (dropped > 0 || deepest < depth) {
+      // 규칙에 맞지 않는 답(단계 누락 등)의 원인을 볼 수 있게 원문을 남긴다(10단계 결정).
+      log(
+        `키워드 LLM 원문(종목 id ${stockId}, 버림 ${dropped}개, 깊이 ${deepest}/${depth}): ${JSON.stringify(value.keywords).slice(0, RAW_LOG_MAX_CHARS)}`,
+      );
+    }
     if (tree.length === 0) {
       throw new NoUsableKeywordsError();
     }
@@ -72,8 +91,9 @@ export async function generateKeywordsForStock(
       ok: true,
       count: tree.length,
       depth,
-      dropped: value.keywords.length - tree.length,
+      dropped,
       headlines: headlines.length,
+      issues: issues.length,
     };
   } catch (error) {
     // 화면에는 짧은 이유만 보이므로, 자세한 내용은 worker 로그에 남긴다.
@@ -108,6 +128,7 @@ export function replaceKeywords(
           textEn: node.textEn,
           reason: node.reason,
           path: node.path,
+          kind: node.kind,
           createdAt: at,
         })
         .returning({ id: keywords.id })

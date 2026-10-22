@@ -70,7 +70,7 @@ export function createOpenRouterClient({
             "Content-Type": "application/json",
           },
           body: JSON.stringify(body),
-          signal: AbortSignal.timeout(timeoutMs),
+          signal: AbortSignal.timeout(request.timeoutMs ?? timeoutMs),
         });
       } catch (error) {
         if (error instanceof Error && error.name === "TimeoutError") {

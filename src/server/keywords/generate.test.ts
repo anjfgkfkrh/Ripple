@@ -1,7 +1,8 @@
 import { asc, eq } from "drizzle-orm";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTestDbFile } from "../../../tests/db";
 import {
+  fakeKeywordLlm,
   fakeLlm,
   insertLink,
   sampleKeywordTree,
@@ -9,8 +10,9 @@ import {
 } from "../../../tests/fixtures";
 import { LlmError, type LlmClient } from "../ai/llm/types";
 import { recordUsage } from "../budget/usage";
+import { saveFeedHeadlines } from "../collect/feed-headlines";
 import { openDb, type Db } from "../db/client";
-import { keywords, stocks, usageLogs } from "../db/schema";
+import { keywords, marketIssues, stocks, usageLogs } from "../db/schema";
 import { writeSetting } from "../settings";
 import { deleteStock, registerStock } from "../stocks/repository";
 import { generateKeywordsForStock, stocksAwaitingKeywords } from "./generate";
@@ -29,7 +31,22 @@ function testDb(): Db {
 afterEach(() => {
   opened.splice(0).forEach((db) => db.$client.close());
   cleanups.splice(0).forEach((cleanup) => cleanup());
+  vi.restoreAllMocks();
 });
+
+/** 시장 이슈를 정리할 만큼(50개 이상) 최근 피드 제목을 넣는다. */
+function seedHeadlines(db: Db, at: Date, count = 60) {
+  saveFeedHeadlines(
+    db,
+    "rss:test:economy",
+    Array.from({ length: count }, (_, i) => ({
+      title: `경제 기사 ${i + 1}`,
+      publisher: "테스트",
+      publishedAt: new Date(at.getTime() - i * 60_000),
+    })),
+    at,
+  );
+}
 
 const NOW = new Date("2026-10-20T03:00:00Z");
 const LATER = new Date("2026-10-21T03:00:00Z");
@@ -79,12 +96,15 @@ describe("generateKeywordsForStock (SPEC FR-3)", () => {
       depth: 2,
       dropped: 0,
       headlines: 0,
+      issues: 0,
     });
+    // 피드 제목이 없으면 시장 이슈는 정리하지 않는다(LLM은 트리 1번만).
     expect(llm.calls).toHaveLength(1);
     expect(llm.calls[0]).toMatchObject({
       model: "anthropic/claude-haiku-5.5",
       schemaName: "keyword_tree",
-      maxTokens: 4000,
+      maxTokens: 8000,
+      timeoutMs: 60_000,
     });
     expect(stockRow(db, id)).toMatchObject({
       keywordsStatus: "ready",
@@ -132,6 +152,107 @@ describe("generateKeywordsForStock (SPEC FR-3)", () => {
     expect(llm.calls[0].messages[1].content).toContain("- 삼성전자 노조 협상");
   });
 
+  it("오늘의 시장 이슈를 하루 한 번 정리해 모든 종목의 트리에 함께 넣는다(10단계)", async () => {
+    const db = testDb();
+    const samsung = register(db);
+    const nvidia = register(db, "US");
+    seedHeadlines(db, LATER);
+    const llm = fakeKeywordLlm();
+
+    const first = await generateKeywordsForStock(db, llm, samsung, {
+      now: () => LATER,
+    });
+    expect(first).toMatchObject({ ok: true, issues: 2 });
+    expect(llm.calls.map((call) => call.schemaName)).toEqual([
+      "market_issues",
+      "keyword_tree",
+    ]);
+    expect(llm.calls[0].messages[1].content).toContain("- 경제 기사 1");
+    expect(llm.calls[1].messages[1].content).toContain(
+      "오늘의 시장 이슈(참고 자료):\n- 미국 금리 인하 기대: 연준 위원들이 연내 인하 가능성을 언급 (기사 낱말: 연준, 금리 인하)",
+    );
+
+    // 같은 날 다른 종목은 정리한 것을 그대로 쓴다(LLM은 트리만).
+    const second = await generateKeywordsForStock(db, llm, nvidia, {
+      now: () => new Date(LATER.getTime() + 60_000),
+    });
+    expect(second).toMatchObject({ ok: true, issues: 2 });
+    expect(llm.calls.map((call) => call.schemaName)).toEqual([
+      "market_issues",
+      "keyword_tree",
+      "keyword_tree",
+    ]);
+    expect(db.select().from(marketIssues).all()).toHaveLength(1);
+    expect(
+      db
+        .select({ purpose: usageLogs.purpose })
+        .from(usageLogs)
+        .all()
+        .map((row) => row.purpose),
+    ).toEqual(["market_issues", "keyword_generation", "keyword_generation"]);
+  });
+
+  it("시장 이슈 정리가 실패해도 트리는 만든다", async () => {
+    const db = testDb();
+    const id = register(db);
+    seedHeadlines(db, LATER);
+    const llm = fakeKeywordLlm(
+      () => sampleKeywordTree(),
+      () => ({ wrong: true }),
+    );
+    const result = await generateKeywordsForStock(db, llm, id, {
+      now: () => LATER,
+    });
+    expect(result).toMatchObject({ ok: true, count: 10, issues: 0 });
+    expect(llm.calls[1].messages[1].content).not.toContain("오늘의 시장 이슈");
+  });
+
+  it("시사 가지는 종류를 함께 저장한다(10단계)", async () => {
+    const db = testDb();
+    const id = register(db);
+    await generateKeywordsForStock(
+      db,
+      fakeLlm(() => sampleKeywordTree({ current: true })),
+      id,
+    );
+    const rows = keywordRows(db, id);
+    expect(
+      rows.filter((row) => row.kind === "current").map((row) => row.path),
+    ).toEqual([
+      "삼성전자 → AI 서버 투자",
+      "삼성전자 → AI 서버 투자 → 빅테크 투자",
+    ]);
+    expect(rows.filter((row) => row.kind === "structure")).toHaveLength(8);
+  });
+
+  it("규칙에 안 맞아 버리거나 단계가 모자라면 LLM 원문을 로그에 남긴다", async () => {
+    const db = testDb();
+    const id = register(db);
+    const logs: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((line: string) => {
+      logs.push(line);
+    });
+    // 깊이 2인데 1단계만 준다.
+    await generateKeywordsForStock(
+      db,
+      fakeLlm(() => ({
+        keywords: sampleKeywordTree().keywords.filter((k) => k.level === 1),
+      })),
+      id,
+    );
+    expect(logs.join("\n")).toContain(
+      "키워드 LLM 원문(종목 id 1, 버림 0개, 깊이 1/2)",
+    );
+
+    logs.length = 0;
+    await generateKeywordsForStock(
+      db,
+      fakeLlm(() => sampleKeywordTree()),
+      id,
+    );
+    expect(logs.join("\n")).not.toContain("키워드 LLM 원문");
+  });
+
   it("만드는 동안에는 상태가 '만드는 중'이다", async () => {
     const db = testDb();
     const id = register(db);
@@ -170,6 +291,7 @@ describe("generateKeywordsForStock (SPEC FR-3)", () => {
       depth: 1,
       dropped: 5,
       headlines: 0,
+      issues: 0,
     });
     expect(llm.calls[0].messages.at(-1)?.content).toContain("깊이: 1");
 
@@ -189,7 +311,14 @@ describe("generateKeywordsForStock (SPEC FR-3)", () => {
     );
     const replacement = {
       keywords: [
-        { level: 1, keyword: "반도체", keywordEn: "", parent: "", reason: "r" },
+        {
+          level: 1,
+          kind: "structure",
+          keyword: "반도체",
+          keywordEn: "",
+          parent: "",
+          reason: "r",
+        },
       ],
     };
     await generateKeywordsForStock(
@@ -293,6 +422,7 @@ describe("generateKeywordsForStock (SPEC FR-3)", () => {
       keywords: [
         {
           level: 1,
+          kind: "structure",
           keyword: "삼성전자",
           keywordEn: "",
           parent: "",
