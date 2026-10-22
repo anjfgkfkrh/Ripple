@@ -11,6 +11,7 @@ import {
   buildKeywordMessages,
   buildKeywordTree,
   clampDepth,
+  countRawKeywords,
   keywordTreeSchema,
   type KeywordNode,
 } from "./tree";
@@ -74,13 +75,13 @@ export async function generateKeywordsForStock(
       },
       { purpose: "keyword_generation", now },
     );
-    const tree = buildKeywordTree(stock, value.keywords, depth);
-    const dropped = value.keywords.length - tree.length;
+    const tree = buildKeywordTree(stock, value, depth);
+    const dropped = countRawKeywords(value) - tree.length;
     const deepest = Math.max(0, ...tree.map((node) => node.level));
     if (dropped > 0 || deepest < depth) {
       // 규칙에 맞지 않는 답(단계 누락 등)의 원인을 볼 수 있게 원문을 남긴다(10단계 결정).
       log(
-        `키워드 LLM 원문(종목 id ${stockId}, 버림 ${dropped}개, 깊이 ${deepest}/${depth}): ${JSON.stringify(value.keywords).slice(0, RAW_LOG_MAX_CHARS)}`,
+        `키워드 LLM 원문(종목 id ${stockId}, 버림 ${dropped}개, 깊이 ${deepest}/${depth}): ${JSON.stringify(value).slice(0, RAW_LOG_MAX_CHARS)}`,
       );
     }
     if (tree.length === 0) {

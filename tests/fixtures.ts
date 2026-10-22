@@ -137,8 +137,8 @@ export function fakeKeywordQueue(): KeywordQueue & { enqueued: number[] } {
 }
 
 /**
- * 깊이 2 키워드 트리 표본(LLM 출력 형식). current면 1단계 '환율' 대신 시사 가지
- * 'AI 서버 투자 → 빅테크 투자'를 넣는다(2단계 '애플' 자리, 단계마다 5개 유지).
+ * 깊이 2 키워드 트리 표본(LLM 출력 형식). current면 구조 키워드 '환율'(1단계)·'애플'(2단계) 대신
+ * 시사 사슬 'AI 서버 투자 → 빅테크 투자'를 넣는다(단계마다 5개 유지).
  */
 export function sampleKeywordTree(
   options: { english?: boolean; current?: boolean } = {},
@@ -149,37 +149,23 @@ export function sampleKeywordTree(
     ["HBM", "HBM", "AI 서버용 고대역폭 메모리"],
     ["스마트폰", "Smartphones", "완제품 사업"],
     ["파운드리", "Foundry", "위탁 생산 사업"],
-    options.current
-      ? [
-          "AI 서버 투자",
-          "AI server spending",
-          "AI 서버 투자 기대가 주가에 반영",
-        ]
-      : ["환율", "Exchange rate", "수출 비중이 커 실적에 영향"],
+    ...(options.current
+      ? []
+      : [["환율", "Exchange rate", "수출 비중이 커 실적에 영향"]]),
   ];
   const level2 = [
     ["엔비디아", "Nvidia", "HBM", "HBM 주요 고객"],
     ["SK하이닉스", "SK hynix", "HBM", "HBM 경쟁사"],
     ["D램 가격", "DRAM prices", "메모리 반도체", "메모리 실적을 좌우"],
     ["TSMC", "TSMC", "파운드리", "파운드리 1위 경쟁사"],
-    options.current
-      ? [
-          "빅테크 투자",
-          "Big Tech capex",
-          "AI 서버 투자",
-          "빅테크 설비 투자가 기대를 움직임",
-        ]
-      : ["애플", "Apple", "스마트폰", "스마트폰 경쟁사"],
+    ...(options.current
+      ? []
+      : [["애플", "Apple", "스마트폰", "스마트폰 경쟁사"]]),
   ];
-  const kindOf = (keyword: string) =>
-    options.current && (keyword === "AI 서버 투자" || keyword === "빅테크 투자")
-      ? ("current" as const)
-      : ("structure" as const);
   return {
     keywords: [
       ...level1.map(([keyword, keywordEn, reason]) => ({
         level: 1,
-        kind: kindOf(keyword),
         keyword,
         keywordEn: en(keywordEn),
         parent: "",
@@ -187,13 +173,30 @@ export function sampleKeywordTree(
       })),
       ...level2.map(([keyword, keywordEn, parent, reason]) => ({
         level: 2,
-        kind: kindOf(keyword),
         keyword,
         keywordEn: en(keywordEn),
         parent,
         reason,
       })),
     ],
+    currentChains: options.current
+      ? [
+          {
+            steps: [
+              {
+                keyword: "AI 서버 투자",
+                keywordEn: en("AI server spending"),
+                reason: "AI 서버 투자 기대가 주가에 반영",
+              },
+              {
+                keyword: "빅테크 투자",
+                keywordEn: en("Big Tech capex"),
+                reason: "빅테크 설비 투자가 기대를 움직임",
+              },
+            ],
+          },
+        ]
+      : [],
   };
 }
 

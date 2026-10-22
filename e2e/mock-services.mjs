@@ -110,39 +110,22 @@ function finnhubNews(id, headline, base) {
   };
 }
 
-// 키워드 트리(깊이 2, 단계마다 5개). [단계, 키워드, 영어 표기, 부모, 이유, 종류]
-// '금리 인하 기대 → 연준 금리'는 시사 가지(10단계).
+// 키워드 트리(깊이 2, 단계마다 5개). 구조 키워드 [단계, 키워드, 영어 표기, 부모, 이유]와
+// 시사 사슬 '금리 인하 기대 → 연준 금리'(10단계, 사슬마다 [키워드, 영어 표기, 이유])
 const KEYWORD_TREE = [
-  [1, "AI 반도체", "AI chips", "", "AI 서버 수요와 직결", "structure"],
-  [1, "데이터센터", "Data centers", "", "주요 수요처", "structure"],
-  [1, "환율", "Exchange rates", "", "해외 매출 비중이 큼", "structure"],
+  [1, "AI 반도체", "AI chips", "", "AI 서버 수요와 직결"],
+  [1, "데이터센터", "Data centers", "", "주요 수요처"],
+  [1, "환율", "Exchange rates", "", "해외 매출 비중이 큼"],
+  [1, "공급망", "Supply chain", "", "부품 조달 위험"],
+  [2, "HBM", "HBM", "AI 반도체", "AI 반도체 핵심 부품"],
+  [2, "GPU", "GPUs", "AI 반도체", "AI 연산 장치"],
+  [2, "클라우드", "Cloud computing", "데이터센터", "데이터센터 최대 고객"],
+  [2, "전력 설비", "Power equipment", "데이터센터", "증설의 병목"],
+];
+const CURRENT_CHAINS = [
   [
-    1,
-    "금리 인하 기대",
-    "Rate cut hopes",
-    "",
-    "인하 기대가 주가에 반영",
-    "current",
-  ],
-  [1, "공급망", "Supply chain", "", "부품 조달 위험", "structure"],
-  [2, "HBM", "HBM", "AI 반도체", "AI 반도체 핵심 부품", "structure"],
-  [2, "GPU", "GPUs", "AI 반도체", "AI 연산 장치", "structure"],
-  [
-    2,
-    "클라우드",
-    "Cloud computing",
-    "데이터센터",
-    "데이터센터 최대 고객",
-    "structure",
-  ],
-  [2, "전력 설비", "Power equipment", "데이터센터", "증설의 병목", "structure"],
-  [
-    2,
-    "연준 금리",
-    "Fed rates",
-    "금리 인하 기대",
-    "연준 결정이 기대를 움직임",
-    "current",
+    ["금리 인하 기대", "Rate cut hopes", "인하 기대가 주가에 반영"],
+    ["연준 금리", "Fed rates", "연준 결정이 기대를 움직임"],
   ],
 ];
 /** 오늘의 시장 이슈 정리 답(피드 제목이 50개 이상일 때만 불린다) */
@@ -170,15 +153,21 @@ function keywordAnswer(user) {
   const us = user.includes("(미국,");
   return {
     keywords: KEYWORD_TREE.map(
-      ([level, keyword, keywordEn, parent, reason, kind]) => ({
+      ([level, keyword, keywordEn, parent, reason]) => ({
         level,
-        kind,
         keyword,
         keywordEn: us ? keywordEn : "",
         parent,
         reason,
       }),
     ),
+    currentChains: CURRENT_CHAINS.map((steps) => ({
+      steps: steps.map(([keyword, keywordEn, reason]) => ({
+        keyword,
+        keywordEn: us ? keywordEn : "",
+        reason,
+      })),
+    })),
   };
 }
 

@@ -237,6 +237,7 @@ describe("generateKeywordsForStock (SPEC FR-3)", () => {
       db,
       fakeLlm(() => ({
         keywords: sampleKeywordTree().keywords.filter((k) => k.level === 1),
+        currentChains: [],
       })),
       id,
     );
@@ -313,13 +314,13 @@ describe("generateKeywordsForStock (SPEC FR-3)", () => {
       keywords: [
         {
           level: 1,
-          kind: "structure",
           keyword: "반도체",
           keywordEn: "",
           parent: "",
           reason: "r",
         },
       ],
+      currentChains: [],
     };
     await generateKeywordsForStock(
       db,
@@ -422,13 +423,13 @@ describe("generateKeywordsForStock (SPEC FR-3)", () => {
       keywords: [
         {
           level: 1,
-          kind: "structure",
           keyword: "삼성전자",
           keywordEn: "",
           parent: "",
           reason: "",
         },
       ],
+      currentChains: [],
     }));
     expect(await generateKeywordsForStock(db, llm, id)).toEqual({
       ok: false,
@@ -485,6 +486,7 @@ describe("listKeywordsByStock", () => {
       db,
       fakeLlm(() => ({
         keywords: [...sampleKeywordTree().keywords].reverse(),
+        currentChains: [],
       })),
       samsung,
     );
