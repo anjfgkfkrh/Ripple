@@ -48,6 +48,8 @@ next-env.d.ts
 # DB 백업(개인 데이터라 커밋하지 않음)
 /backups/
 /.check-backups/
+# 릴리스 묶음(이미지 압축 파일, scripts/release.sh가 만듦)
+/release-dist/
 
 # playwright
 /test-results/

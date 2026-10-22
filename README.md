@@ -135,7 +135,29 @@ docker compose up -d --build
 - 회차당 최대 200건(설정). 넘는 것은 다음 회차로, 종목 이름·직접 연결 먼저, 최근 기사부터, 최근 7일 기사만.
 - 키가 없거나 맞지 않을 때, 예산을 다 썼을 때, 연달아 3번 실패했을 때는 그 회차 평가를 멈추고 다음 회차에 이어서 한다.
 
-## 7. 개발
+## 7. 다른 사용자에게 배포하기(릴리스 이미지)
+
+저장소를 그대로 받아 `docker compose up -d --build`로 설치하는 방법 말고, 미리 만든 이미지를 GitHub 릴리스 페이지에 파일로 올려 배포할 수 있다. 받는 사람은 빌드 없이 `docker load` → `.env` 채움 → `docker compose up -d`만 하면 된다. GitHub Actions·ghcr.io는 쓰지 않는다.
+
+```bash
+scripts/release.sh            # release-dist/ 에 만든다(약 5분, arm64·amd64 두 종류)
+ARCHS=arm64 scripts/release.sh   # 한 종류만 다시 만들 때
+```
+
+`release-dist/`에 생기는 파일(git에는 올라가지 않음)을 릴리스 페이지에 **직접** 올린다(`gh`가 없음).
+
+| 파일 | 설명 |
+|---|---|
+| `ripple-버전-images-arm64.tar.gz` | Apple Silicon Mac용(web·worker 이미지) |
+| `ripple-버전-images-amd64.tar.gz` | Intel·AMD PC(Windows, Linux, Intel Mac)용 |
+| `docker-compose.yml` | 설치용(본 compose에서 `build:`를 `image:`로 자동 변환) |
+| `env.example`, `INSTALL.md`, `SHA256SUMS` | 환경변수 예시(`.env.example`과 같은 내용, GitHub 릴리스가 점으로 시작하는 이름의 점을 지워서 점 없이 올림), 받는 사람용 설치 안내(`release/INSTALL.md`가 원본), 체크섬 |
+
+스크립트가 이미지 안을 검사한다: 종류(arm64/amd64)가 맞는지, 환경변수·`.env`·DB 파일이 없는지, 내 `.env`의 비밀 값이 이미지 어디에도 없는지, 그 종류에서 마이그레이션이 실제로 도는지. 하나라도 어긋나면 멈춘다.
+
+한계: amd64 이미지는 이 Mac에서 에뮬레이션으로 만들고 마이그레이션까지만 확인했다. 실제 amd64 PC에서 전체를 켜 본 것은 아니다.
+
+## 8. 개발
 
 자세한 현황·규칙·검사 절차는 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
