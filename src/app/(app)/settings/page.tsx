@@ -4,7 +4,7 @@ import { monthUsageReport } from "@/server/budget/report";
 import { getWebDb } from "@/server/db/web";
 import { stocksWithOtherDepth } from "@/server/keywords/read";
 import { readSetting } from "@/server/settings";
-import { readSettingsForm } from "@/server/settings-form";
+import { readSettingsForm, settingsFormText } from "@/server/settings-form";
 import { SETTINGS_FIELDS, type SettingsValues } from "./fields";
 import { RebuildKeywordsButton } from "./rebuild-keywords-button";
 import { SettingsForm } from "./settings-form";
@@ -34,8 +34,9 @@ async function Settings() {
   await requireSession();
   const db = getWebDb();
   const form = readSettingsForm(db);
+  const text = settingsFormText(form);
   const initial = Object.fromEntries(
-    SETTINGS_FIELDS.map((field) => [field, String(form[field])]),
+    SETTINGS_FIELDS.map((field) => [field, text[field]]),
   ) as SettingsValues;
   const rebuild = stocksWithOtherDepth(db).length;
 
@@ -49,8 +50,8 @@ async function Settings() {
         <h2 className="text-base font-semibold">키워드 다시 만들기</h2>
         <p className="text-sm text-muted-foreground">
           {rebuild > 0
-            ? `지금 깊이(${form.keywordsDepth}단계)와 다르게 만든 종목이 ${rebuild}개 있습니다. 누르면 바로 다시 만듭니다(종목당 약 $0.0006).`
-            : `모든 종목의 키워드가 지금 깊이(${form.keywordsDepth}단계)로 만들어져 있습니다.`}
+            ? `지금 깊이(${form.keywordsDepth}단계)와 다르게 만든 종목·시장·주제가 ${rebuild}개 있습니다. 누르면 바로 다시 만듭니다(후보 트리와 Jev 평가, 하나에 약 $0.003).`
+            : `모든 종목·시장·주제의 키워드가 지금 깊이(${form.keywordsDepth}단계)로 만들어져 있습니다.`}
         </p>
         <RebuildKeywordsButton count={rebuild} />
       </section>

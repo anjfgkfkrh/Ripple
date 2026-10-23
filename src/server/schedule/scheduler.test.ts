@@ -9,7 +9,7 @@ import {
 import type { CollectionRunner } from "../collect/runner";
 import { openDb, type Db } from "../db/client";
 import { collectionRuns, stocks } from "../db/schema";
-import { readSetting } from "../settings";
+import { readSetting, writeSetting } from "../settings";
 import { registerStock } from "../stocks/repository";
 import { startScheduler, type Scheduler } from "./scheduler";
 
@@ -39,6 +39,7 @@ function setup(
     jobsEnabled?: boolean;
     collector?: CollectionRunner;
     backup?: (now: Date) => Promise<{ file: string; bytes: number }>;
+    refreshTopics?: () => Promise<boolean>;
   } = {},
 ) {
   const db = testDb();
@@ -71,6 +72,7 @@ function setup(
       },
       jobsEnabled: options.jobsEnabled,
       backup: options.backup,
+      refreshTopics: options.refreshTopics,
       now: () => now,
       // 테스트에서는 tick()을 직접 부른다.
       tickMs: 24 * 60 * MIN,
@@ -85,6 +87,7 @@ function setup(
     keywordQueue,
     listingChecks,
     start,
+    now: () => now,
     advance(minutes: number) {
       now = new Date(now.getTime() + minutes * MIN);
     },
@@ -217,5 +220,70 @@ describe("startScheduler (SPEC FR-6, D-31)", () => {
     await new Promise((resolve) => setImmediate(resolve));
     expect(calls).toBe(2);
     expect(readSetting(t.db, "backup.lastAt")).toBe(0);
+  });
+
+  it("토픽 갱신(11단계): 처음이면 바로, 그 뒤에는 간격마다. 실패하면 30분 뒤에 다시 하고, 도는 동안은 겹쳐 시작하지 않는다", async () => {
+    let ok = false;
+    let finish: (() => void) | null = null;
+    const calls: Date[] = [];
+    // 실제 갱신처럼 시작·끝(성공 또는 실패)을 설정에 남긴다.
+    const t = setup({
+      refreshTopics: () => {
+        const at = t.now();
+        calls.push(at);
+        writeSetting(t.db, "topics.startedAt", at.getTime());
+        return new Promise<boolean>((resolve) => {
+          finish = () => {
+            writeSetting(
+              t.db,
+              ok ? "topics.refreshedAt" : "topics.failedAt",
+              at.getTime(),
+            );
+            resolve(ok);
+          };
+        });
+      },
+    });
+    const flush = () => new Promise((resolve) => setImmediate(resolve));
+    const scheduler = t.start();
+    expect(calls).toEqual([NOW]);
+    // 도는 동안에는 다시 시작하지 않는다.
+    t.advance(1);
+    scheduler.tick();
+    expect(calls).toHaveLength(1);
+    finish!();
+    await flush();
+
+    // 실패: 30분이 지나야 다시 한다.
+    t.advance(28);
+    scheduler.tick();
+    expect(calls).toHaveLength(1);
+    t.advance(1);
+    scheduler.tick();
+    expect(calls).toHaveLength(2);
+    ok = true;
+    finish!();
+    await flush();
+
+    // 성공 뒤에는 간격(기본 3시간)마다
+    t.advance(179);
+    scheduler.tick();
+    expect(calls).toHaveLength(2);
+    t.advance(1);
+    scheduler.tick();
+    expect(calls).toHaveLength(3);
+  });
+
+  it("토픽 갱신을 끄면(간격 0·시각 없음) 하지 않는다", () => {
+    const calls: Date[] = [];
+    const t = setup({
+      refreshTopics: async () => {
+        calls.push(new Date());
+        return true;
+      },
+    });
+    writeSetting(t.db, "topics.intervalHours", 0);
+    t.start();
+    expect(calls).toEqual([]);
   });
 });

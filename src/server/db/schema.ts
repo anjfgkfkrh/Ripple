@@ -21,6 +21,10 @@ export const KEYWORD_STATUSES = [
 ] as const;
 export type KeywordStatus = (typeof KEYWORD_STATUSES)[number];
 
+/** 항목 종류: 종목 / 시장(한국·미국 증시) / 주제(사용자 주제·자동 토픽) (11단계) */
+export const ITEM_KINDS = ["stock", "market", "topic"] as const;
+export type ItemKind = (typeof ITEM_KINDS)[number];
+
 /**
  * 키워드 종류 (10단계, 2026-10-22 결정): 구조(제품·사업·고객 등 잘 바뀌지 않는 요인) /
  * 시사(지금 시장이 주가에 반영하는 기대·우려와 그것을 움직이는 사건·인물의 사슬)
@@ -75,8 +79,49 @@ export const stocks = sqliteTable(
      * 그 회차가 끝나면(완료·일부 실패) 비운다(2026-10-21 결정, D-20 보완).
      */
     backfillFrom: integer("backfill_from", { mode: "timestamp_ms" }),
+    /** 종목·시장(한국·미국 증시)·주제(사용자 주제·자동 토픽, 켜진 증시마다 한 줄) (11단계) */
+    kind: text("kind", { enum: ITEM_KINDS }).notNull().default("stock"),
+    /** 주제 항목이 가리키는 토픽 */
+    topicId: integer("topic_id").references((): AnySQLiteColumn => topics.id),
   },
   (table) => [uniqueIndex("stocks_market_code").on(table.market, table.code)],
+);
+
+/** 토픽 출처: 토픽 갱신이 잡은 것 / 사용자가 넣은 주제 (11단계) */
+export const TOPIC_SOURCES = ["auto", "user"] as const;
+export type TopicSource = (typeof TOPIC_SOURCES)[number];
+export const TOPIC_STATUSES = ["active", "ended"] as const;
+export type TopicStatus = (typeof TOPIC_STATUSES)[number];
+
+/**
+ * 토픽(11단계): 정해진 때마다 AI가 갱신하는 자동 토픽과, 사용자가 넣은 주제.
+ * 판단은 켜진 증시마다 하므로 기사 연결·평가는 증시마다 하나씩인 주제 항목(stocks의 kind 'topic')이 맡는다.
+ */
+export const topics = sqliteTable(
+  "topics",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    source: text("source", { enum: TOPIC_SOURCES }).notNull(),
+    name: text("name").notNull(),
+    /** 자동 토픽: 지금 무슨 일이 있는지 한 줄 */
+    summary: text("summary"),
+    /** 자동 토픽: 기사를 찾는 검색어 */
+    terms: text("terms", { mode: "json" })
+      .$type<string[]>()
+      .notNull()
+      .default([]),
+    /** 자동 토픽: 마지막 갱신에서 AI가 다시 냈으면 active, 아니면 ended(새 기사를 걸지 않음) */
+    status: text("status", { enum: TOPIC_STATUSES })
+      .notNull()
+      .default("active"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    /** 자동 토픽: AI가 마지막으로 낸 갱신 시각 */
+    lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }),
+    endedAt: integer("ended_at", { mode: "timestamp_ms" }),
+    /** 사용자가 지운 주제 */
+    deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [index("topics_source_status").on(table.source, table.status)],
 );
 
 /**
@@ -105,6 +150,11 @@ export const keywords = sqliteTable(
     path: text("path").notNull(),
     /** 구조/시사. 시사 가지는 1단계 키워드의 종류를 따른다(10단계) */
     kind: text("kind", { enum: KEYWORD_KINDS }).notNull().default("structure"),
+    /** Jev가 매긴 관련도·영향도 0~10(11단계). 평가하지 못했으면 없음 */
+    relevance: real("relevance"),
+    magnitude: real("magnitude"),
+    /** 토픽 갱신이 붙인 시사 가지(11단계). 트리를 다시 만들어도 남고, 토픽 갱신이 떼어 낸다 */
+    topicId: integer("topic_id").references((): AnySQLiteColumn => topics.id),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
   (table) => [index("keywords_stock").on(table.stockId)],
@@ -112,7 +162,7 @@ export const keywords = sqliteTable(
 
 /**
  * 수집한 피드의 기사 제목 (10단계, 2026-10-22 결정). 종목에 걸리지 않은 기사도 제목·언론사·피드·시각만
- * 3일 동안 둔다(요약·본문 없음). 하루 한 번 시장 이슈를 정리하는 재료다.
+ * 3일 동안 둔다. 토픽 갱신의 재료이고, 새 토픽·붙인 가지에 지난 기사를 걸 때도 쓴다(11단계).
  */
 export const feedHeadlines = sqliteTable(
   "feed_headlines",
@@ -127,6 +177,13 @@ export const feedHeadlines = sqliteTable(
     /** 피드에 발행 시각이 없으면 처음 받은 시각 */
     publishedAt: integer("published_at", { mode: "timestamp_ms" }).notNull(),
     seenAt: integer("seen_at", { mode: "timestamp_ms" }).notNull(),
+    /**
+     * 원문 주소와 중복 판정용 주소, 요약(앞 300자). 새 토픽·붙인 가지에 지난 24시간 기사를 걸 때 쓴다
+     * (11단계 결정, 그 전에 보관한 제목에는 없음)
+     */
+    url: text("url"),
+    urlKey: text("url_key"),
+    summary: text("summary"),
   },
   (table) => [
     uniqueIndex("feed_headlines_title_key").on(table.titleKey),
@@ -138,8 +195,8 @@ export const feedHeadlines = sqliteTable(
 export type MarketIssue = { name: string; summary: string; terms: string[] };
 
 /**
- * 하루 한 번 정리한 오늘의 시장 이슈 (10단계). 모든 종목의 키워드 트리를 만들 때 함께 넣는다.
- * 가장 최근 것만 쓰고, 지난 것은 확인용으로 잠시 둔다.
+ * 오늘의 시장 이슈 (10단계, 11단계부터는 토픽 목록). 키워드 트리 재료였으나 2026-10-23 결정으로 트리에서
+ * 시사를 빼면서 더는 쓰지 않는다. 지난 기록만 남는다(표는 그대로 둠).
  */
 export const marketIssues = sqliteTable(
   "market_issues",
@@ -183,6 +240,8 @@ export const usageLogs = sqliteTable(
     outputTokens: integer("output_tokens").notNull(),
     /** 실제 청구액(달러). OpenRouter는 응답의 usage.cost (D-06) */
     costUsd: real("cost_usd").notNull(),
+    /** 어느 항목(종목·시장·주제)을 위한 호출인지. 여러 항목 공용이면 없음(11단계, 항목별 비용) */
+    stockId: integer("stock_id"),
   },
   (table) => [index("usage_logs_at").on(table.at)],
 );
@@ -319,8 +378,10 @@ export const collectionRuns = sqliteTable(
 export type EvaluationSummary = {
   /** 새로 평가한 기사–종목 연결 수 */
   evaluated: number;
-  /** 그중 표시 기준(관련도) 이상 */
+  /** 그중 표시 기준(관련도·영향도, 11단계) 이상 */
   relevant: number;
+  /** 같은 소식(비슷한 제목)의 앞선 평가를 그대로 쓴 수(Jev 호출 없음, 11단계). 없으면 0 */
+  copied?: number;
   /** 실패해 다음 회차로 미룬 수 */
   failed: number;
   /** 예산·키 문제 등으로 손대지 않고 남긴 수 */
@@ -356,6 +417,11 @@ export const evaluations = sqliteTable(
     /** 관련도 0~10(상황 6단계 기댓값 × 2) */
     relevance: real("relevance").notNull(),
     relevanceConfidence: real("relevance_confidence").notNull(),
+    /** 영향도 0~10(11단계). 그 전에 평가한 기사에는 없음 */
+    magnitude: real("magnitude"),
+    magnitudeConfidence: real("magnitude_confidence"),
+    /** 같은 소식(비슷한 제목)의 앞선 평가를 그대로 쓴 경우 그 평가(11단계, Jev를 부르지 않음) */
+    copiedFrom: integer("copied_from"),
     impact: text("impact", { enum: IMPACTS }).notNull(),
     impactConfidence: real("impact_confidence").notNull(),
     impactProbabilities: text("impact_probabilities", { mode: "json" })

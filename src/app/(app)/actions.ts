@@ -29,3 +29,15 @@ export async function collectNowAction(): Promise<CollectState> {
   refresh();
   return {};
 }
+
+export type TopicRefreshState = { error?: string; notice?: string };
+
+/** 11단계 "지금 갱신": worker에 자동 토픽 갱신을 맡기고 바로 돌아온다. 진행은 상태 화면이 다시 읽어 보여 준다. */
+export async function refreshTopicsAction(): Promise<TopicRefreshState> {
+  await requireSession();
+  const result = await webWorkerApi().refreshTopics();
+  if (!result.ok)
+    return { error: describeStockError(result.error, result.body) };
+  refresh();
+  return result.data.started ? {} : { notice: "이미 갱신 중입니다." };
+}

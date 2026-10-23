@@ -4,6 +4,8 @@ import type {
   Decider,
   Decision,
   DecisionInput,
+  LeadInput,
+  LeadRating,
 } from "../src/server/ai/decider/types";
 import {
   LlmError,
@@ -136,31 +138,22 @@ export function fakeKeywordQueue(): KeywordQueue & { enqueued: number[] } {
   };
 }
 
-/**
- * 깊이 2 키워드 트리 표본(LLM 출력 형식). current면 구조 키워드 '환율'(1단계)·'애플'(2단계) 대신
- * 시사 사슬 'AI 서버 투자 → 빅테크 투자'를 넣는다(단계마다 5개 유지).
- */
-export function sampleKeywordTree(
-  options: { english?: boolean; current?: boolean } = {},
-) {
+/** 깊이 2 키워드 트리 표본(LLM 출력 형식, 구조 키워드만 2026-10-23부터). 단계마다 5개 */
+export function sampleKeywordTree(options: { english?: boolean } = {}) {
   const en = (text: string) => (options.english ? text : "");
   const level1 = [
     ["메모리 반도체", "Memory chips", "주력 사업"],
     ["HBM", "HBM", "AI 서버용 고대역폭 메모리"],
     ["스마트폰", "Smartphones", "완제품 사업"],
     ["파운드리", "Foundry", "위탁 생산 사업"],
-    ...(options.current
-      ? []
-      : [["환율", "Exchange rate", "수출 비중이 커 실적에 영향"]]),
+    ["환율", "Exchange rate", "수출 비중이 커 실적에 영향"],
   ];
   const level2 = [
     ["엔비디아", "Nvidia", "HBM", "HBM 주요 고객"],
     ["SK하이닉스", "SK hynix", "HBM", "HBM 경쟁사"],
     ["D램 가격", "DRAM prices", "메모리 반도체", "메모리 실적을 좌우"],
     ["TSMC", "TSMC", "파운드리", "파운드리 1위 경쟁사"],
-    ...(options.current
-      ? []
-      : [["애플", "Apple", "스마트폰", "스마트폰 경쟁사"]]),
+    ["애플", "Apple", "스마트폰", "스마트폰 경쟁사"],
   ];
   return {
     keywords: [
@@ -179,53 +172,7 @@ export function sampleKeywordTree(
         reason,
       })),
     ],
-    currentChains: options.current
-      ? [
-          {
-            steps: [
-              {
-                keyword: "AI 서버 투자",
-                keywordEn: en("AI server spending"),
-                reason: "AI 서버 투자 기대가 주가에 반영",
-              },
-              {
-                keyword: "빅테크 투자",
-                keywordEn: en("Big Tech capex"),
-                reason: "빅테크 설비 투자가 기대를 움직임",
-              },
-            ],
-          },
-        ]
-      : [],
   };
-}
-
-/** 시장 이슈 정리 표본(LLM 출력 형식) */
-export function sampleMarketIssues() {
-  return {
-    issues: [
-      {
-        name: "미국 금리 인하 기대",
-        summary: "연준 위원들이 연내 인하 가능성을 언급",
-        terms: ["연준", "금리 인하"],
-      },
-      {
-        name: "중동 긴장",
-        summary: "사우디 시설 공격 위협에 유가가 흔들림",
-        terms: ["사우디", "유가"],
-      },
-    ],
-  };
-}
-
-/** 요청 형식(schemaName)에 따라 시장 이슈 정리와 키워드 트리를 나눠 답하는 가짜 LLM */
-export function fakeKeywordLlm(
-  tree: () => unknown = () => sampleKeywordTree(),
-  issues: () => unknown = () => sampleMarketIssues(),
-) {
-  return fakeLlm((request) =>
-    request.schemaName === "market_issues" ? issues() : tree(),
-  );
 }
 
 /** 시작 요청만 기록하는 가짜 수집 실행기. finish()를 부르기 전까지는 '수집 중'이다. */
@@ -251,11 +198,13 @@ export function fakeCollector(): CollectionRunner & {
   };
 }
 
-/** 기본 평가 결과(관련 7점·호재·입력 1000토큰) */
+/** 기본 평가 결과(관련 7점·영향 7점·호재·입력 1000토큰) */
 export function fakeDecision(overrides: Partial<Decision> = {}): Decision {
   return {
     relevance: 7,
     relevanceConfidence: 0.7,
+    magnitude: 7,
+    magnitudeConfidence: 0.7,
     impact: "positive",
     impactConfidence: 0.8,
     impactProbabilities: { positive: 0.8, negative: 0.1, neutral: 0.1 },
@@ -265,17 +214,45 @@ export function fakeDecision(overrides: Partial<Decision> = {}): Decision {
   };
 }
 
-/** 입력마다 정한 결과(또는 오류)를 돌려주는 가짜 Jev. 받은 입력과 모델을 calls에 남긴다. */
+/** 기본 키워드·토픽 평가(관련 7점·영향 6점·입력 500토큰) */
+export function fakeRating(overrides: Partial<LeadRating> = {}): LeadRating {
+  return {
+    relevance: 7,
+    relevanceConfidence: 0.7,
+    magnitude: 6,
+    magnitudeConfidence: 0.7,
+    model: "jev-1.13.0",
+    usage: { inputTokens: 500, outputTokens: 20 },
+    ...overrides,
+  };
+}
+
+/**
+ * 입력마다 정한 결과(또는 오류)를 돌려주는 가짜 Jev. 받은 입력과 모델을 calls(기사 평가)와
+ * rateCalls(키워드·토픽 평가, 11단계)에 남긴다.
+ */
 export function fakeDecider(
   answer: (input: DecisionInput) => Decision | Error = () => fakeDecision(),
-): Decider & { calls: { input: DecisionInput; model: string }[] } {
+  rateAnswer: (input: LeadInput) => LeadRating | Error = () => fakeRating(),
+): Decider & {
+  calls: { input: DecisionInput; model: string }[];
+  rateCalls: { input: LeadInput; model: string }[];
+} {
   const calls: { input: DecisionInput; model: string }[] = [];
+  const rateCalls: { input: LeadInput; model: string }[] = [];
   return {
     provider: "typesafe",
     calls,
+    rateCalls,
     async decide(input, model) {
       calls.push({ input, model });
       const result = answer(input);
+      if (result instanceof Error) throw result;
+      return result;
+    },
+    async rate(input, model) {
+      rateCalls.push({ input, model });
+      const result = rateAnswer(input);
       if (result instanceof Error) throw result;
       return result;
     },
@@ -298,6 +275,8 @@ export function insertLink(
     kind?: MatchKind;
     path?: string;
     relevance?: number;
+    /** 영향도(11단계). 주지 않으면 11단계 전 평가처럼 비운다 */
+    magnitude?: number;
     impact?: Impact;
   },
 ): { matchId: number; articleId: number } {
@@ -340,6 +319,8 @@ export function insertLink(
         stockId: link.stockId,
         relevance: link.relevance,
         relevanceConfidence: 0.7,
+        magnitude: link.magnitude ?? null,
+        magnitudeConfidence: link.magnitude === undefined ? null : 0.7,
         impact: link.impact ?? "neutral",
         impactConfidence: 0.7,
         impactProbabilities: { positive: 0.1, negative: 0.1, neutral: 0.8 },

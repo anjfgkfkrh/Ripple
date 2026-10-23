@@ -9,34 +9,39 @@ import {
 } from "@typesafe-ai/sdk";
 import { IMPACTS, type Impact } from "@/server/db/schema";
 import {
-  buildQuestions,
-  buildState,
+  buildArticleQuestions,
+  buildArticleState,
+  buildLeadQuestions,
+  buildLeadState,
   RELEVANCE_SCALE,
-  type QuestionLanguage,
 } from "./questions";
 import {
   DeciderError,
+  JUDGE_TARGETS,
   type Decider,
   type Decision,
   type DecisionInput,
+  type JudgeTarget,
+  type LeadInput,
+  type LeadRating,
 } from "./types";
 
 export const TYPESAFE_BASE_URL = "https://api.typesafe.ai";
 
 type Options = {
   apiKey: string | undefined;
-  language: QuestionLanguage;
   baseUrl?: string;
   fetchImpl?: typeof fetch;
 };
 
 /**
  * TypeSafe 공식 SDK로 Jev를 부른다(SPEC 12장: MVP는 TypeScript SDK로 직접 호출).
- * 관련도와 호재/악재를 한 요청에 묻는다(입력은 한 번만 센다). 제한 시간(시도마다 10초)과
- * 재시도(429·5xx·연결 오류는 두 번 더)는 SDK 기본값을 쓴다(실측 응답은 최대 0.6초).
+ * 기사는 관련도·영향도·호재/악재를, 키워드·토픽은 관련도·영향도를 한 요청에 묻는다(입력은 한 번만 센다).
+ * 제한 시간(시도마다 10초)과 재시도(429·5xx·연결 오류는 두 번 더)는 SDK 기본값을 쓴다(실측 응답은 최대 0.6초).
  */
 export function createTypeSafeDecider(options: Options): Decider {
-  const questions = buildQuestions(options.language);
+  const articleQuestions = byTarget(buildArticleQuestions);
+  const leadQuestions = byTarget(buildLeadQuestions);
   const client = options.apiKey
     ? new TypeSafeClient({
         apiKey: options.apiKey,
@@ -60,18 +65,19 @@ export function createTypeSafeDecider(options: Options): Decider {
       try {
         result = await client.systemOne({
           model,
-          state: buildState(input, options.language),
-          questions,
+          state: buildArticleState(input),
+          questions: articleQuestions[input.stock.kind],
         });
       } catch (error) {
         throw toDeciderError(error);
       }
       // SDK는 응답을 검사하지 않고 그대로 돌려주므로 저장 전에 모양을 확인한다.
       const relevance = result?.answers?.relevance;
+      const magnitude = result?.answers?.magnitude;
       const impact = result?.answers?.impact;
       if (
-        !isNumber(relevance?.score) ||
-        !isNumber(relevance?.confidence) ||
+        !isScore(relevance) ||
+        !isScore(magnitude) ||
         !(IMPACTS as readonly string[]).includes(impact?.choice) ||
         !isNumber(impact?.confidence) ||
         typeof result.model !== "string"
@@ -79,8 +85,10 @@ export function createTypeSafeDecider(options: Options): Decider {
         throw new DeciderError("Jev 응답 형식이 다릅니다.", "upstream");
       }
       return {
-        relevance: clamp(relevance.score * RELEVANCE_SCALE, 0, 10),
+        relevance: toTen(relevance.score),
         relevanceConfidence: relevance.confidence,
+        magnitude: toTen(magnitude.score),
+        magnitudeConfidence: magnitude.confidence,
         impact: impact.choice as Impact,
         impactConfidence: impact.confidence,
         impactProbabilities: Object.fromEntries(
@@ -94,7 +102,66 @@ export function createTypeSafeDecider(options: Options): Decider {
         },
       };
     },
+    async rate(input: LeadInput, model: string): Promise<LeadRating> {
+      if (!client) {
+        throw new DeciderError(
+          "TYPESAFE_API_KEY가 설정되지 않았습니다.",
+          "no_api_key",
+        );
+      }
+      let result;
+      try {
+        result = await client.systemOne({
+          model,
+          state: buildLeadState(input),
+          questions: leadQuestions[input.stock.kind],
+        });
+      } catch (error) {
+        throw toDeciderError(error);
+      }
+      const relevance = result?.answers?.relevance;
+      const magnitude = result?.answers?.magnitude;
+      if (
+        !isScore(relevance) ||
+        !isScore(magnitude) ||
+        typeof result.model !== "string"
+      ) {
+        throw new DeciderError("Jev 응답 형식이 다릅니다.", "upstream");
+      }
+      return {
+        relevance: toTen(relevance.score),
+        relevanceConfidence: relevance.confidence,
+        magnitude: toTen(magnitude.score),
+        magnitudeConfidence: magnitude.confidence,
+        model: result.model,
+        usage: {
+          inputTokens: result.usage?.input_tokens ?? 0,
+          outputTokens: result.usage?.output_tokens ?? 0,
+        },
+      };
+    },
   };
+}
+
+/** 대상마다 질문을 한 번만 만들어 둔다. */
+function byTarget<T>(
+  build: (target: JudgeTarget) => T,
+): Record<JudgeTarget, T> {
+  return Object.fromEntries(
+    JUDGE_TARGETS.map((target) => [target, build(target)]),
+  ) as Record<JudgeTarget, T>;
+}
+
+function isScore(
+  answer: unknown,
+): answer is { score: number; confidence: number } {
+  const value = answer as { score?: unknown; confidence?: unknown } | null;
+  return isNumber(value?.score) && isNumber(value?.confidence);
+}
+
+/** 0~5단계 기댓값을 0~10으로 */
+function toTen(value: number): number {
+  return clamp(value * RELEVANCE_SCALE, 0, 10);
 }
 
 function toDeciderError(error: unknown): DeciderError {

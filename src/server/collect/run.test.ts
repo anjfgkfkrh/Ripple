@@ -373,6 +373,39 @@ describe("수집 회차 (SPEC FR-4)", () => {
     expect(db.select().from(articleMatches).all()).toHaveLength(1);
   });
 
+  it("발행 시각이 받은 시각보다 10분 넘게 미래면(국민일보 지면 기사) 받은 시각으로 저장한다", async () => {
+    const db = testDb();
+    addStocks(db);
+    const { deps: d } = deps(db, {
+      "https://a.example/economy.xml": {
+        text: rss(
+          item(
+            "삼성전자 지면 기사",
+            "https://n.example/f1",
+            new Date(NOW.getTime() + 19 * HOUR),
+          ),
+          item(
+            "삼성전자 조금 빠른 시계",
+            "https://n.example/f2",
+            new Date(NOW.getTime() + 5 * 60_000),
+          ),
+        ),
+      },
+    });
+    await run(d);
+    const saved = new Map(
+      db
+        .select()
+        .from(articles)
+        .all()
+        .map((a) => [a.title, a.publishedAt]),
+    );
+    expect(saved.get("삼성전자 지면 기사")).toEqual(NOW);
+    expect(saved.get("삼성전자 조금 빠른 시계")).toEqual(
+      new Date(NOW.getTime() + 5 * 60_000),
+    );
+  });
+
   it("요약 자리에 본문이 통째로 와도 앞 300자까지만 보고 건다", async () => {
     const db = testDb();
     addStocks(db);

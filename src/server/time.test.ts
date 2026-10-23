@@ -3,7 +3,9 @@ import {
   formatSeoulDateTime,
   formatTimelineTime,
   lastSeoulBoundary,
+  lastSeoulClock,
   nextSeoulBoundary,
+  nextSeoulClock,
   seoulDateKey,
   startOfSeoulMonth,
   timelineDayLabel,
@@ -135,5 +137,29 @@ describe("타임라인 시각 (2026-10-21 결정)", () => {
       ),
     ).toBe("2025년 12월 31일(수)");
     expect(seoulDateKey(new Date("2026-10-20T15:10:00Z"))).toBe("2026-10-21");
+  });
+});
+
+describe("lastSeoulClock·nextSeoulClock (11단계 토픽 갱신 시각)", () => {
+  it("지금 이전(같은 시각 포함)의 마지막 한국 시간 HH:MM과 그다음", () => {
+    // 한국 시간 2026-10-22 15:00
+    const now = new Date("2026-10-22T06:00:00Z");
+    expect(lastSeoulClock(now, 8, 30)).toEqual(
+      new Date("2026-10-21T23:30:00Z"),
+    );
+    expect(lastSeoulClock(now, 15, 0)).toEqual(now);
+    expect(lastSeoulClock(now, 15, 1)).toEqual(
+      new Date("2026-10-21T06:01:00Z"),
+    );
+    expect(nextSeoulClock(now, 15, 0)).toEqual(
+      new Date("2026-10-23T06:00:00Z"),
+    );
+    expect(nextSeoulClock(now, 23, 59)).toEqual(
+      new Date("2026-10-22T14:59:00Z"),
+    );
+    // 한국 자정 직후(UTC로는 전날)
+    expect(nextSeoulClock(new Date("2026-10-22T15:10:00Z"), 0, 5)).toEqual(
+      new Date("2026-10-23T15:05:00Z"),
+    );
   });
 });

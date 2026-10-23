@@ -7,24 +7,23 @@ import {
   stocks,
 } from "@/server/db/schema";
 import { readSetting } from "@/server/settings";
+import { displayRule } from "@/server/timeline/read";
 import { EVALUATION_WINDOW_MS } from "./run";
 
-/** 평가한 연결 수와 표시 기준(설정 값) 이상인 수. web은 읽기만 한다. */
+/** 평가한 연결 수와 표시 기준(관련도·영향도 설정 값, 11단계) 이상인 수. web은 읽기만 한다. */
 export function evaluationTotals(db: Db): {
   evaluated: number;
   relevant: number;
   minRelevance: number;
+  minMagnitude: number;
 } {
-  const minRelevance = readSetting(db, "evaluation.minRelevance");
   return {
     evaluated: db.select({ n: count() }).from(evaluations).get()?.n ?? 0,
     relevant:
-      db
-        .select({ n: count() })
-        .from(evaluations)
-        .where(gte(evaluations.relevance, minRelevance))
-        .get()?.n ?? 0,
-    minRelevance,
+      db.select({ n: count() }).from(evaluations).where(displayRule(db)).get()
+        ?.n ?? 0,
+    minRelevance: readSetting(db, "evaluation.minRelevance"),
+    minMagnitude: readSetting(db, "evaluation.minMagnitude"),
   };
 }
 

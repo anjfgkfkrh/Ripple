@@ -65,6 +65,16 @@ export type WorkerApi = {
   ): Promise<WorkerResult<{ ok: true; changed: string[] }>>;
   /** 저장한 깊이와 다른 깊이로 만든 종목의 키워드를 다시 만든다. 결과는 기다리지 않는다. */
   rebuildKeywords(): Promise<WorkerResult<{ count: number }>>;
+  /** 11단계: 한국·미국 증시를 켜거나 끈다(켜면 키워드를 만들기 시작). */
+  setMarket(
+    market: Market,
+    enabled: boolean,
+  ): Promise<WorkerResult<{ ok: true }>>;
+  /** 11단계: 사용자 주제를 넣는다(invalid: 2~20자 아님, exists: 이미 있음). */
+  addTopic(name: string): Promise<WorkerResult<{ topicId: number }>>;
+  deleteTopic(id: number): Promise<WorkerResult<{ ok: true }>>;
+  /** 11단계: 자동 토픽을 지금 갱신한다. 결과는 기다리지 않는다(이미 하고 있으면 started false). */
+  refreshTopics(): Promise<WorkerResult<{ started: boolean }>>;
 };
 
 export function createWorkerApi(options: {
@@ -137,6 +147,18 @@ export function createWorkerApi(options: {
       call("/settings", { method: "PUT", body: values, timeoutMs: 30_000 }),
     rebuildKeywords: () =>
       call("/keywords/rebuild", { method: "POST", timeoutMs: 10_000 }),
+    setMarket: (market, enabled) =>
+      call(`/markets/${market}`, {
+        method: "PUT",
+        body: { enabled },
+        timeoutMs: 10_000,
+      }),
+    addTopic: (name) =>
+      call("/topics", { method: "POST", body: { name }, timeoutMs: 10_000 }),
+    deleteTopic: (id) =>
+      call(`/topics/${id}`, { method: "DELETE", timeoutMs: 10_000 }),
+    refreshTopics: () =>
+      call("/topics/refresh", { method: "POST", timeoutMs: 10_000 }),
   };
 }
 

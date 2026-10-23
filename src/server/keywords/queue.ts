@@ -1,3 +1,4 @@
+import type { Decider } from "@/server/ai/decider/types";
 import type { LlmClient } from "@/server/ai/llm/types";
 import type { Db } from "@/server/db/client";
 import { log, logError } from "@/server/log";
@@ -17,6 +18,8 @@ export type KeywordQueue = {
 export function createKeywordQueue(deps: {
   db: Db;
   llm: LlmClient;
+  /** 후보 키워드를 관련도·영향도로 고르는 Jev(11단계). 키가 없으면 null(자르지 않음) */
+  decider?: Decider | null;
   now?: () => Date;
 }): KeywordQueue {
   const waiting: number[] = [];
@@ -37,6 +40,7 @@ export function createKeywordQueue(deps: {
           stockId,
           {
             now: deps.now,
+            decider: deps.decider ?? null,
           },
         );
         const seconds = ((Date.now() - started) / 1000).toFixed(1);
@@ -49,10 +53,11 @@ export function createKeywordQueue(deps: {
             result.headlines > 0
               ? `, 기사 제목 ${result.headlines}개 참고`
               : "";
-          const issues =
-            result.issues > 0 ? `, 시장 이슈 ${result.issues}개 참고` : "";
+          const rated = result.unratedReason
+            ? `, 평가 못 해 자르지 않음: ${result.unratedReason}`
+            : `, Jev 평가 ${result.rated}개`;
           log(
-            `키워드 생성: 종목 id ${stockId}, ${result.count}개(깊이 ${result.depth}${dropped}${headlines}${issues}), ${seconds}초`,
+            `키워드 생성: 종목 id ${stockId}, 후보 ${result.candidates}개 → ${result.count}개(깊이 ${result.depth}${dropped}${rated}${headlines}), ${seconds}초`,
           );
         } else {
           log(

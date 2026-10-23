@@ -37,8 +37,8 @@ test.describe("키워드 생성·트리 보기 (SPEC FR-3, D-13~D-16, D-37)", ()
       animations: "disabled",
     });
 
-    // 화면이 스스로 다시 읽어 완료를 보여 준다.
-    const summary = item.getByText("키워드 10개");
+    // 화면이 스스로 다시 읽어 완료를 보여 준다. 후보 8개 가운데 Jev 관련도가 기준 미만인 '공급망'은 잘린다(11단계).
+    const summary = item.getByText("키워드 7개");
     await expect(summary).toBeVisible({ timeout: KEYWORDS_TIMEOUT });
     await expect(item).toContainText("깊이 2");
     await expect(item).not.toContainText("키워드를 만드는 중…");
@@ -52,20 +52,16 @@ test.describe("키워드 생성·트리 보기 (SPEC FR-3, D-13~D-16, D-37)", ()
     await expect(
       branch.getByTitle(`${target.name} → AI 반도체 → HBM`, { exact: true }),
     ).toBeVisible();
-    await expect(item.getByTestId("keyword")).toHaveCount(10);
-    // 시사 가지는 맨 위 키워드에만 '시사'를 붙이고, 아래 키워드는 그 가지 안에 든다(10단계).
-    const current = item.getByTestId("keyword").filter({
-      has: page.getByTitle(`${target.name} → 금리 인하 기대`, { exact: true }),
-    });
-    await expect(item.getByTestId("current-badge")).toHaveCount(1);
-    await expect(current.getByTestId("current-badge").first()).toHaveText(
-      "시사",
-    );
+    await expect(item.getByTestId("keyword")).toHaveCount(7);
     await expect(
-      current.getByTitle(`${target.name} → 금리 인하 기대 → 연준 금리`, {
-        exact: true,
-      }),
-    ).toBeVisible();
+      item.getByTitle(`${target.name} → 공급망`, { exact: true }),
+    ).toHaveCount(0);
+    // 키워드마다 Jev가 매긴 관련도·영향도를 보인다(11단계).
+    await expect(branch.getByTestId("keyword-scores").first()).toHaveText(
+      "관련 7.0 · 영향 6.0",
+    );
+    // 트리는 구조 키워드만 만든다(시사는 토픽 가지가 맡음, 2026-10-23).
+    await expect(item.getByTestId("current-badge")).toHaveCount(0);
     // 영어 표기는 미국 종목에만 있다(D-14).
     await expect(item.getByText("AI chips")).toHaveCount(
       target.english ? 1 : 0,
@@ -81,7 +77,7 @@ test.describe("키워드 생성·트리 보기 (SPEC FR-3, D-13~D-16, D-37)", ()
       .click();
     await expect(item).toContainText("키워드를 만드는 중…");
     // 다시 만드는 동안에도 이전 키워드는 보인다.
-    await expect(item.getByTestId("keyword")).toHaveCount(10);
+    await expect(item.getByTestId("keyword")).toHaveCount(7);
     await expect(item).not.toContainText("키워드를 만드는 중…", {
       timeout: KEYWORDS_TIMEOUT,
     });
@@ -114,7 +110,7 @@ test.describe("키워드 생성·트리 보기 (SPEC FR-3, D-13~D-16, D-37)", ()
     await item
       .getByRole("button", { name: "현대건설 키워드 다시 만들기" })
       .click();
-    await expect(item.getByText("키워드 10개")).toBeVisible({
+    await expect(item.getByText("키워드 7개")).toBeVisible({
       timeout: KEYWORDS_TIMEOUT,
     });
     await expect(item).not.toContainText("만들지 못했습니다");

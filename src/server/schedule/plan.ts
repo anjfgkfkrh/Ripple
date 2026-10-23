@@ -1,6 +1,6 @@
 import { and, desc, eq, gt, inArray, isNull } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
-import { collectionRuns, stocks } from "@/server/db/schema";
+import { collectionRuns, stocks, topics } from "@/server/db/schema";
 import { readSetting, SETTING_DEFAULTS } from "@/server/settings";
 import { lastSeoulBoundary, nextSeoulBoundary } from "@/server/time";
 
@@ -129,10 +129,14 @@ export function keywordPlan(db: Db, now: Date): KeywordPlan {
       id: stocks.id,
       status: stocks.keywordsStatus,
       generatedAt: stocks.keywordsGeneratedAt,
+      topicSource: topics.source,
     })
     .from(stocks)
+    .leftJoin(topics, eq(topics.id, stocks.topicId))
     .where(isNull(stocks.deletedAt))
-    .all();
+    .all()
+    // 자동 토픽 항목은 토픽 갱신이 검색어를 정한다(11단계).
+    .filter((s) => s.topicSource !== "auto");
   return {
     every,
     idle: active.length === 0,

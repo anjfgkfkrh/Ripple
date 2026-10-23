@@ -1,8 +1,10 @@
-import type { Market, MatchKind } from "@/server/db/schema";
+import type { ItemKind, Market, MatchKind } from "@/server/db/schema";
 
-/** 기사와 맞춰 볼 종목: 종목 이름과 키워드 트리 */
+/** 기사와 맞춰 볼 항목: 종목 이름과 키워드 트리. 시장·주제 항목은 이름으로 걸지 않는다(11단계). */
 export type MatchStock = {
   id: number;
+  /** 없으면 종목 */
+  kind?: ItemKind;
   market: Market;
   code: string;
   name: string;
@@ -45,15 +47,19 @@ export function createMatcher(
 ): (text: string) => StockMatch[] {
   const prepared = stocks.map((stock) => {
     const display = stock.nameKo ?? stock.name;
-    const terms: Term[] = [
-      {
-        words: toWords(display),
-        level: 0,
-        path: display,
-        reason: null,
-        kind: "name",
-      },
-    ];
+    // 시장(한국 증시)·주제는 이름이 아니라 키워드로만 건다(11단계 결정).
+    const terms: Term[] =
+      (stock.kind ?? "stock") === "stock"
+        ? [
+            {
+              words: toWords(display),
+              level: 0,
+              path: display,
+              reason: null,
+              kind: "name",
+            },
+          ]
+        : [];
     for (const keyword of stock.keywords) {
       const base = {
         level: keyword.level,

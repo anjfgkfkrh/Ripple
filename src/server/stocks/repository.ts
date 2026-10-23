@@ -7,12 +7,12 @@ export type Stock = typeof stocks.$inferSelect;
 
 export const MAX_NAME_KO_LENGTH = 50;
 
-/** 삭제하지 않은 종목, 등록한 순서대로 */
+/** 삭제하지 않은 종목(시장·주제 항목은 빼고, 11단계), 등록한 순서대로 */
 export function listActiveStocks(db: Db): Stock[] {
   return db
     .select()
     .from(stocks)
-    .where(isNull(stocks.deletedAt))
+    .where(and(isNull(stocks.deletedAt), eq(stocks.kind, "stock")))
     .orderBy(asc(stocks.createdAt), asc(stocks.id))
     .all();
 }

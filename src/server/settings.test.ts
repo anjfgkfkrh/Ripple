@@ -43,4 +43,15 @@ describe("settings", () => {
     db.update(settings).set({ value: "not json" }).run();
     expect(readSetting(db, "budget.monthlyUsd")).toBe(5);
   });
+
+  it("목록 설정(토픽 갱신 시각)은 글자 목록일 때만 쓰고 아니면 기본값(11단계)", () => {
+    const db = testDb();
+    expect(readSetting(db, "topics.times")).toEqual([]);
+    writeSetting(db, "topics.times", ["08:30", "15:40"]);
+    expect(readSetting(db, "topics.times")).toEqual(["08:30", "15:40"]);
+    db.update(settings).set({ value: "[8, 30]" }).run();
+    expect(readSetting(db, "topics.times")).toEqual([]);
+    db.update(settings).set({ value: '"08:30"' }).run();
+    expect(readSetting(db, "topics.times")).toEqual([]);
+  });
 });

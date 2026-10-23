@@ -31,6 +31,12 @@ test("상태 화면(/status): web이 DB(읽기 전용)와 worker 내부 API에 �
     );
     await expect(backup).toContainText("아직 없습니다");
   }
+  // 시장 토픽 갱신 상태와 "지금 갱신"(11단계)
+  const topics = page.getByTestId("topic-refresh");
+  await expect(topics).toContainText("토픽 갱신");
+  await expect(
+    topics.getByRole("button", { name: /지금 갱신|갱신 중…/ }),
+  ).toBeVisible();
   // 공개 URL로 노출되므로 검색엔진 수집을 막는다.
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute(
     "content",

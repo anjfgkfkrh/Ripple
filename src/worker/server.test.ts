@@ -7,8 +7,12 @@ import { ModelListError } from "@/server/ai/llm/models";
 import { recordUsage } from "@/server/budget/usage";
 import { openDb, type Db } from "@/server/db/client";
 import { replaceKeywords } from "@/server/keywords/generate";
+import { readSetting } from "@/server/settings";
 import { readSettingsForm } from "@/server/settings-form";
 import { listActiveStocks, registerStock } from "@/server/stocks/repository";
+import { listMarketItems, listUserTopicItems } from "@/server/topics/read";
+import type { TopicRefresher } from "@/server/topics/run";
+import { ensureDefaultMarket } from "@/server/topics/store";
 import { createTestDbFile } from "../../tests/db";
 import {
   fakeCollector,
@@ -28,6 +32,7 @@ async function start(
     llm?: LlmClient;
     seeded?: boolean;
     checkModel?: (id: string) => Promise<boolean>;
+    topicRefresher?: TopicRefresher;
   } = {},
 ) {
   const file = createTestDbFile();
@@ -44,6 +49,7 @@ async function start(
     keywordQueue,
     collector,
     checkModel: options.checkModel ?? (async () => true),
+    topicRefresher: options.topicRefresher,
   });
   servers.push(server);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -316,6 +322,11 @@ describe("worker 내부 API: 설정 (SPEC FR-8)", () => {
     keywordsDepth: "3",
     keywordsRegenerateEvery: "weekly",
     minRelevance: "6.5",
+    minMagnitude: "6",
+    keywordMinRelevance: "7",
+    keywordMinMagnitude: "5",
+    topicIntervalHours: "4",
+    topicTimes: "15:40, 8:30,08:30",
     maxPerRun: "150",
     monthlyBudgetUsd: "7.5",
     llmModel: "anthropic/claude-haiku-5.5",
@@ -341,6 +352,9 @@ describe("worker 내부 API: 설정 (SPEC FR-8)", () => {
         "keywordsDepth",
         "keywordsRegenerateEvery",
         "minRelevance",
+        "keywordMinRelevance",
+        "topicIntervalHours",
+        "topicTimes",
         "maxPerRun",
         "monthlyBudgetUsd",
       ],
@@ -350,6 +364,12 @@ describe("worker 내부 API: 설정 (SPEC FR-8)", () => {
       keywordsDepth: 3,
       keywordsRegenerateEvery: "weekly",
       minRelevance: 6.5,
+      minMagnitude: 6,
+      keywordMinRelevance: 7,
+      keywordMinMagnitude: 5,
+      topicIntervalHours: 4,
+      // 한 자리 시각은 두 자리로, 겹치는 시각은 하나로, 시각 순으로
+      topicTimes: ["08:30", "15:40"],
       maxPerRun: 150,
       monthlyBudgetUsd: 7.5,
       llmModel: "anthropic/claude-haiku-5.5",
@@ -366,6 +386,9 @@ describe("worker 내부 API: 설정 (SPEC FR-8)", () => {
         ...form,
         collectIntervalMinutes: "45",
         minRelevance: "11",
+        minMagnitude: "-1",
+        topicIntervalHours: "1.5",
+        topicTimes: "09:00, 25:00",
         llmModel: "모델",
       },
     });
@@ -375,6 +398,9 @@ describe("worker 내부 API: 설정 (SPEC FR-8)", () => {
       fields: {
         collectIntervalMinutes: "15·30·60·180분 중에서 고르세요.",
         minRelevance: "0~10 사이로 넣으세요.",
+        minMagnitude: "0~10 사이로 넣으세요.",
+        topicIntervalHours: "0~24 사이 정수로 넣으세요.",
+        topicTimes: "09:00, 15:30처럼 24시간제 HH:MM으로 넣으세요.",
         llmModel: "모델 ID 형식이 아닙니다(예: anthropic/claude-haiku-5.5).",
       },
     });
@@ -450,5 +476,110 @@ describe("worker 내부 API: 설정 (SPEC FR-8)", () => {
     expect(response.status).toBe(202);
     expect(await response.json()).toEqual({ count: 1 });
     expect(keywordQueue.enqueued).toEqual([deep.stock.id]);
+  });
+});
+
+describe("worker 내부 API: 시장·주제 (11단계)", () => {
+  it("PUT /markets/:market: 증시를 켜면 키워드를 만들고, 끄면 숨긴다", async () => {
+    const { baseUrl, db, keywordQueue } = await start();
+    const kr = ensureDefaultMarket(db, new Date())!;
+
+    const on = await call(baseUrl, "/markets/US", {
+      method: "PUT",
+      body: { enabled: true },
+    });
+    expect(on.status).toBe(200);
+    const markets = listMarketItems(db);
+    expect(markets.map((m) => [m.market, m.stock !== null])).toEqual([
+      ["KR", true],
+      ["US", true],
+    ]);
+    expect(keywordQueue.enqueued).toEqual([markets[1].stock!.id]);
+
+    const off = await call(baseUrl, "/markets/KR", {
+      method: "PUT",
+      body: { enabled: false },
+    });
+    expect(off.status).toBe(200);
+    expect(listMarketItems(db)[0].stock).toBeNull();
+    // 다시 켜면 같은 항목을 되살리고 트리를 새로 만든다.
+    await call(baseUrl, "/markets/KR", {
+      method: "PUT",
+      body: { enabled: true },
+    });
+    expect(listMarketItems(db)[0].stock?.id).toBe(kr);
+    expect(keywordQueue.enqueued.at(-1)).toBe(kr);
+
+    expect(
+      (
+        await call(baseUrl, "/markets/JP", {
+          method: "PUT",
+          body: { enabled: true },
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await call(baseUrl, "/markets/US", {
+          method: "PUT",
+          body: { enabled: "yes" },
+        })
+      ).status,
+    ).toBe(400);
+  });
+
+  it("POST /topics·DELETE /topics/:id: 주제를 넣으면 켜진 증시마다 트리를 만들고, 지우면 숨긴다", async () => {
+    const { baseUrl, db, keywordQueue } = await start();
+    ensureDefaultMarket(db, new Date());
+
+    const added = await call(baseUrl, "/topics", {
+      body: { name: " 부동산  시장 " },
+    });
+    expect(added.status).toBe(201);
+    const { topicId } = (await added.json()) as { topicId: number };
+    const [item] = listUserTopicItems(db);
+    expect(item.topic).toMatchObject({ id: topicId, name: "부동산 시장" });
+    expect(keywordQueue.enqueued).toEqual(item.lenses.map((lens) => lens.id));
+
+    const again = await call(baseUrl, "/topics", {
+      body: { name: "부동산시장" },
+    });
+    expect(again.status).toBe(409);
+    expect(await again.json()).toEqual({ error: "exists" });
+    const short = await call(baseUrl, "/topics", { body: { name: "가" } });
+    expect(short.status).toBe(400);
+    expect(await short.json()).toEqual({ error: "invalid" });
+
+    expect(
+      (await call(baseUrl, `/topics/${topicId}`, { method: "DELETE" })).status,
+    ).toBe(200);
+    expect(listUserTopicItems(db)).toEqual([]);
+    expect(
+      (await call(baseUrl, `/topics/${topicId}`, { method: "DELETE" })).status,
+    ).toBe(404);
+  });
+
+  it("POST /topics/refresh: 토픽 갱신을 시작하고 바로 돌아온다(이미 하고 있으면 started false)", async () => {
+    let running = false;
+    let calls = 0;
+    const topicRefresher: TopicRefresher = {
+      refresh() {
+        calls += 1;
+        running = true;
+        return Promise.resolve(true);
+      },
+      running: () => running,
+    };
+    const { baseUrl } = await start({ topicRefresher });
+    const first = await call(baseUrl, "/topics/refresh");
+    expect(first.status).toBe(202);
+    expect(await first.json()).toEqual({ started: true });
+    const second = await call(baseUrl, "/topics/refresh");
+    expect(await second.json()).toEqual({ started: false });
+    expect(calls).toBe(2);
+
+    const without = await start();
+    expect((await call(without.baseUrl, "/topics/refresh")).status).toBe(503);
+    expect(readSetting(without.db, "topics.refreshedAt")).toBe(0);
   });
 });

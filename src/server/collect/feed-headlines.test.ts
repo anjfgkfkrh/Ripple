@@ -9,6 +9,7 @@ import {
   pruneFeedHeadlines,
   recentFeedTitles,
   saveFeedHeadlines,
+  storedHeadlinesSince,
 } from "./feed-headlines";
 
 const opened: Db[] = [];
@@ -34,7 +35,7 @@ function rows(db: Db) {
 }
 
 describe("saveFeedHeadlines (10단계)", () => {
-  it("제목·언론사·피드·시각만 남기고, 같은 제목(공백·대소문자 무시)은 하나", () => {
+  it("제목·언론사·피드·시각을 남기고, 같은 제목(공백·대소문자 무시)은 하나", () => {
     const db = testDb();
     const added = saveFeedHeadlines(
       db,
@@ -62,6 +63,9 @@ describe("saveFeedHeadlines (10단계)", () => {
         feed: "rss:sbs:international",
         publishedAt: ago(1),
         seenAt: NOW,
+        url: null,
+        urlKey: null,
+        summary: null,
       },
       expect.objectContaining({ title: "Fed Holds Rates" }),
     ]);
@@ -100,6 +104,47 @@ describe("saveFeedHeadlines (10단계)", () => {
       [5, NOW],
       [300, ago(1)],
     ]);
+  });
+
+  it("원문 주소(중복 판정용 주소 포함)와 요약 앞 300자도 남긴다(11단계)", () => {
+    const db = testDb();
+    saveFeedHeadlines(
+      db,
+      "rss:test:all",
+      [
+        {
+          title: "주소 있는 기사",
+          publisher: "p",
+          publishedAt: ago(1),
+          url: " https://news.example/a?utm_source=x ",
+          summary: `  요약  ${"가".repeat(400)}`,
+        },
+        { title: "주소 없는 기사", publisher: "p", publishedAt: ago(1) },
+      ],
+      NOW,
+    );
+    const [withUrl] = rows(db);
+    expect(withUrl).toMatchObject({
+      url: "https://news.example/a?utm_source=x",
+      urlKey: "news.example/a",
+    });
+    expect(withUrl.summary).toHaveLength(300);
+    expect(withUrl.summary?.startsWith("요약 가")).toBe(true);
+    // 다시 걸 때는 주소가 있는 제목만 쓴다.
+    expect(storedHeadlinesSince(db, ago(24)).map((h) => h.title)).toEqual([
+      "주소 있는 기사",
+    ]);
+  });
+
+  it("받은 시각보다 10분 넘게 미래인 발행 시각은 받은 시각으로 둔다(2026-10-23 결정)", () => {
+    const db = testDb();
+    saveFeedHeadlines(
+      db,
+      "rss:kmib:all",
+      [{ title: "지면 기사", publisher: "국민일보", publishedAt: ago(-19) }],
+      NOW,
+    );
+    expect(rows(db)[0].publishedAt).toEqual(NOW);
   });
 
   it("headlineKey는 공백을 모두 빼고 소문자로", () => {

@@ -5,6 +5,7 @@ import { getWebDb } from "@/server/db/web";
 import { listKeywordsByStock } from "@/server/keywords/read";
 import { listActiveStocks } from "@/server/stocks/repository";
 import { DeleteStockButton } from "./delete-stock-button";
+import { MarketTopicSection } from "./market-topics";
 import { isMakingKeywords, StockKeywords } from "./stock-keywords";
 import { StockMeta } from "./stock-meta";
 import { StockSearch } from "./stock-search";
@@ -26,6 +27,21 @@ export default function StocksPage() {
           }
         >
           <StockList />
+        </Suspense>
+      </section>
+      <section className="mt-10" data-testid="market-topics">
+        <h2 className="text-base font-semibold">시장·주제</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          종목과 별개로 증시 전체와 직접 넣은 주제에 영향을 줄 기사를 모읍니다.
+          시장을 움직이는 토픽은 AI가 정해진 때마다 따로 잡아 타임라인 맨 위에
+          보입니다.
+        </p>
+        <Suspense
+          fallback={
+            <p className="mt-3 text-sm text-muted-foreground">불러오는 중…</p>
+          }
+        >
+          <MarketTopicSection />
         </Suspense>
       </section>
     </main>

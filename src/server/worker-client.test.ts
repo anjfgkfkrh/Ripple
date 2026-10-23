@@ -119,4 +119,30 @@ describe("web → worker 내부 API (SPEC D-36)", () => {
       error: "worker_unreachable",
     });
   });
+
+  it("시장 켜기·주제 넣기·지우기를 부르고, 토픽 갱신이 없으면 503을 그대로 돌려준다(11단계)", async () => {
+    const api = createWorkerApi({
+      workerUrl: await startWorker(),
+      token: TOKEN,
+    });
+    expect(await api.setMarket("US", true)).toEqual({
+      ok: true,
+      status: 200,
+      data: { ok: true },
+    });
+    const added = await api.addTopic("부동산 시장");
+    expect(added).toMatchObject({ ok: true, status: 201 });
+    expect(await api.addTopic("부동산 시장")).toMatchObject({
+      ok: false,
+      status: 409,
+      error: "exists",
+    });
+    if (!added.ok) return;
+    expect((await api.deleteTopic(added.data.topicId)).ok).toBe(true);
+    expect(await api.refreshTopics()).toMatchObject({
+      ok: false,
+      status: 503,
+      error: "unavailable",
+    });
+  });
 });

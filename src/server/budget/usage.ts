@@ -1,4 +1,5 @@
 import { gte, sql } from "drizzle-orm";
+import type { Decider, LeadInput, LeadRating } from "@/server/ai/decider/types";
 import {
   LlmError,
   type LlmClient,
@@ -41,6 +42,8 @@ export function recordUsage(
     purpose: string;
     usage: LlmUsage;
     at?: Date;
+    /** 어느 항목을 위한 호출인지(항목별 비용, 11단계). 여러 항목 공용이면 없음 */
+    stockId?: number | null;
   },
 ): void {
   db.insert(usageLogs)
@@ -52,6 +55,7 @@ export function recordUsage(
       inputTokens: entry.usage.inputTokens,
       outputTokens: entry.usage.outputTokens,
       costUsd: entry.usage.costUsd,
+      stockId: entry.stockId ?? null,
     })
     .run();
 }
@@ -71,7 +75,7 @@ export async function generateWithBudget<T>(
   db: Db,
   llm: LlmClient,
   request: StructuredRequest<T>,
-  options: { purpose: string; now?: () => Date },
+  options: { purpose: string; now?: () => Date; stockId?: number | null },
 ): Promise<StructuredResult<T>> {
   const now = options.now ?? (() => new Date());
   assertWithinBudget(db, now());
@@ -84,6 +88,7 @@ export async function generateWithBudget<T>(
       purpose: options.purpose,
       usage: result.usage,
       at: now(),
+      stockId: options.stockId,
     });
     return result;
   } catch (error) {
@@ -94,8 +99,36 @@ export async function generateWithBudget<T>(
         purpose: options.purpose,
         usage: error.usage,
         at: now(),
+        stockId: options.stockId,
       });
     }
     throw error;
   }
+}
+
+/**
+ * Jev로 키워드·토픽을 평가한다(11단계). AI 호출 원칙대로 월 한도 검사 → 호출 → 사용량 기록(입력 토큰 × 단가, D-06).
+ */
+export async function rateWithBudget(
+  db: Db,
+  decider: Decider,
+  input: LeadInput,
+  options: { purpose: string; now?: () => Date; stockId?: number | null },
+): Promise<LeadRating> {
+  const now = options.now ?? (() => new Date());
+  assertWithinBudget(db, now());
+  const rating = await decider.rate(input, readSetting(db, "jev.model"));
+  const costUsd =
+    (rating.usage.inputTokens *
+      readSetting(db, "jev.usdPerMillionInputTokens")) /
+    1_000_000;
+  recordUsage(db, {
+    provider: "typesafe",
+    model: rating.model,
+    purpose: options.purpose,
+    usage: { ...rating.usage, costUsd },
+    at: now(),
+    stockId: options.stockId,
+  });
+  return rating;
 }

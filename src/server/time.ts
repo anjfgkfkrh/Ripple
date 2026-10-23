@@ -70,6 +70,18 @@ export function nextSeoulBoundary(
   return new Date(last.getTime() + (weekly ? 7 : 1) * DAY_MS);
 }
 
+/** now 이전(같은 시각 포함)의 가장 최근 한국 시간 hour:minute (토픽 갱신 시각, 11단계) */
+export function lastSeoulClock(now: Date, hour: number, minute: number): Date {
+  let at = startOfSeoulDay(now) + (hour * 60 + minute) * 60 * 1000;
+  if (at > now.getTime()) at -= DAY_MS;
+  return new Date(at);
+}
+
+/** now 다음(같은 시각 제외)의 한국 시간 hour:minute */
+export function nextSeoulClock(now: Date, hour: number, minute: number): Date {
+  return new Date(lastSeoulClock(now, hour, minute).getTime() + DAY_MS);
+}
+
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
 /** 이 시각이 속한 날(한국 시간)의 0시 */

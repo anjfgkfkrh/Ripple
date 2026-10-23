@@ -14,11 +14,13 @@ import {
   articles,
   evaluations,
   stocks,
+  topics,
   usageLogs,
   type MatchKind,
 } from "../db/schema";
 import { writeSetting } from "../settings";
 import { deleteStock, registerStock } from "../stocks/repository";
+import { ensureDefaultMarket, syncTopicLenses } from "../topics/store";
 import { countPendingEvaluations, evaluationTotals } from "./read";
 import { evaluatePending, MAX_CONSECUTIVE_FAILURES } from "./run";
 
@@ -58,6 +60,21 @@ function addStocks(db: Db) {
     throw new Error("표본에 없음");
   return { samsung: samsung.stock.id, nvidia: nvidia.stock.id };
 }
+
+/**
+ * 서로 다른 소식의 제목. 같은 낱말이 많이 겹치면(예: '삼성전자 소식 1'·'삼성전자 소식 2') 같은 소식으로 보고
+ * 앞선 평가를 그대로 쓰므로(11단계) 평가 수를 세는 시험에는 이것을 쓴다.
+ */
+const DISTINCT = [
+  "반도체 수출 급증",
+  "노조 파업 협상",
+  "스마트폰 신제품 공개",
+  "파운드리 대형 수주",
+  "배당 확대 발표",
+  "환율 하락 영향",
+  "인도 공장 착공",
+  "특허 소송 승소",
+];
 
 let serial = 0;
 /** 기사 하나와 종목 연결 하나를 넣는다. */
@@ -151,11 +168,13 @@ describe("evaluatePending (SPEC FR-5)", () => {
       .get()!.name;
     expect(decider.calls[0].input).toEqual({
       stock: {
+        kind: "stock",
         name: "엔비디아",
         officialName: nvidiaName,
         market: "US",
         exchange: expect.any(String),
         code: "NVDA",
+        summary: null,
       },
       link: { kind: "name", path: "엔비디아", reason: null },
       article: { title: "엔비디아 신제품", summary: "엔비디아 신제품 요약" },
@@ -204,7 +223,7 @@ describe("evaluatePending (SPEC FR-5)", () => {
     const db = testDb();
     const ids = addStocks(db);
     for (let i = 0; i < 5; i += 1) {
-      addLink(db, ids.samsung, `삼성전자 소식 ${i}`, ago(i + 1));
+      addLink(db, ids.samsung, DISTINCT[i], ago(i + 1));
     }
     addLink(db, ids.samsung, "삼성전자 8일 전 소식", ago(8 * 24));
     writeSetting(db, "evaluation.maxPerRun", 3);
@@ -299,7 +318,7 @@ describe("evaluatePending (SPEC FR-5)", () => {
     const db = testDb();
     const ids = addStocks(db);
     for (let i = 0; i < 8; i += 1) {
-      addLink(db, ids.samsung, `삼성전자 소식 ${i}`, ago(i + 1));
+      addLink(db, ids.samsung, DISTINCT[i], ago(i + 1));
     }
     // 한 번에 $0.000042. 두 번째 호출 전에는 한도 아래, 세 번째 호출 전에는 한도 이상.
     writeSetting(db, "budget.monthlyUsd", 0.00005);
@@ -316,11 +335,11 @@ describe("evaluatePending (SPEC FR-5)", () => {
   it("그 밖의 오류는 실패로 세고 계속하며, 다음 회차에 다시 평가한다", async () => {
     const db = testDb();
     const ids = addStocks(db);
-    addLink(db, ids.samsung, "삼성전자 실적", ago(1));
-    addLink(db, ids.samsung, "삼성전자 투자", ago(2));
+    addLink(db, ids.samsung, DISTINCT[0], ago(1));
+    addLink(db, ids.samsung, DISTINCT[1], ago(2));
     let down = true;
     const decider = fakeDecider((input) =>
-      down && input.article.title === "삼성전자 투자"
+      down && input.article.title === DISTINCT[1]
         ? new DeciderError("TypeSafe 오류(HTTP 503)", "upstream")
         : fakeDecision(),
     );
@@ -342,7 +361,7 @@ describe("evaluatePending (SPEC FR-5)", () => {
     const db = testDb();
     const ids = addStocks(db);
     for (let i = 0; i < 6; i += 1) {
-      addLink(db, ids.samsung, `삼성전자 소식 ${i}`, ago(i + 1));
+      addLink(db, ids.samsung, DISTINCT[i], ago(i + 1));
     }
     const decider = fakeDecider(
       () =>
@@ -365,7 +384,7 @@ describe("evaluatePending (SPEC FR-5)", () => {
     const db = testDb();
     const ids = addStocks(db);
     for (let i = 0; i < 6; i += 1) {
-      addLink(db, ids.samsung, `삼성전자 소식 ${i}`, ago(i + 1));
+      addLink(db, ids.samsung, DISTINCT[i], ago(i + 1));
     }
     const decider = fakeDecider(
       () => new DeciderError("TypeSafe에 연결하지 못했습니다.", "upstream"),
@@ -402,8 +421,145 @@ describe("evaluationTotals", () => {
       evaluated: 3,
       relevant: 2,
       minRelevance: 6,
+      minMagnitude: 6,
     });
     writeSetting(db, "evaluation.minRelevance", 8);
     expect(evaluationTotals(db).relevant).toBe(1);
+    // 영향도 기준도 함께 본다(기본 결과는 영향도 7점).
+    writeSetting(db, "evaluation.minRelevance", 6);
+    writeSetting(db, "evaluation.minMagnitude", 7.5);
+    expect(evaluationTotals(db).relevant).toBe(0);
+  });
+});
+
+describe("evaluatePending: 11단계", () => {
+  it("영향도도 저장하고, 표시 기준은 관련도·영향도가 둘 다 기준 이상일 때다", async () => {
+    const db = testDb();
+    const ids = addStocks(db);
+    addLink(db, ids.samsung, DISTINCT[0], ago(1));
+    addLink(db, ids.samsung, DISTINCT[1], ago(2));
+    addLink(db, ids.samsung, DISTINCT[2], ago(3));
+    const scores: Record<string, [number, number]> = {
+      [DISTINCT[0]]: [8, 5.9], // 영향도 미달
+      [DISTINCT[1]]: [6, 6], // 경계값은 보인다
+      [DISTINCT[2]]: [5.9, 9], // 관련도 미달
+    };
+    const decider = fakeDecider((input) => {
+      const [relevance, magnitude] = scores[input.article.title];
+      return fakeDecision({ relevance, magnitude, magnitudeConfidence: 0.6 });
+    });
+
+    expect(await evaluate(db, decider)).toMatchObject({
+      evaluated: 3,
+      relevant: 1,
+      copied: 0,
+    });
+    expect(
+      db
+        .select({
+          magnitude: evaluations.magnitude,
+          confidence: evaluations.magnitudeConfidence,
+        })
+        .from(evaluations)
+        .orderBy(asc(evaluations.id))
+        .all(),
+    ).toEqual([
+      { magnitude: 5.9, confidence: 0.6 },
+      { magnitude: 6, confidence: 0.6 },
+      { magnitude: 9, confidence: 0.6 },
+    ]);
+    // 사용량은 그 항목의 것으로 남긴다(항목별 비용).
+    expect(
+      db
+        .select({ stockId: usageLogs.stockId })
+        .from(usageLogs)
+        .all()
+        .every((row) => row.stockId === ids.samsung),
+    ).toBe(true);
+  });
+
+  it("같은 항목에 24시간 안에 걸린 같은 소식은 앞선 평가를 그대로 쓰고 Jev를 부르지 않는다", async () => {
+    const db = testDb();
+    const ids = addStocks(db);
+    const title = "한은 기준금리 동결…연 2.5% 유지";
+    const copy = addLink(db, ids.samsung, title, ago(5));
+    addLink(db, ids.samsung, "[속보] 한은, 기준금리 동결…연 2.5% 유지", ago(4));
+    // 다른 항목이면 따로 평가한다.
+    addLink(db, ids.nvidia, title, ago(4), { path: "엔비디아" });
+    // 24시간 넘게 떨어지면 따로 평가한다.
+    addLink(db, ids.samsung, title, ago(40));
+    // 같은 소식 복사는 회차 한도에 세지 않는다.
+    writeSetting(db, "evaluation.maxPerRun", 3);
+    const decider = fakeDecider(() => fakeDecision({ relevance: 8 }));
+
+    const summary = await evaluate(db, decider);
+
+    expect(summary).toMatchObject({
+      evaluated: 3,
+      copied: 1,
+      relevant: 4,
+      remaining: 0,
+    });
+    expect(decider.calls).toHaveLength(3);
+    const copied = db
+      .select()
+      .from(evaluations)
+      .where(eq(evaluations.matchId, copy))
+      .get()!;
+    const original = db
+      .select()
+      .from(evaluations)
+      .where(eq(evaluations.id, copied.copiedFrom!))
+      .get()!;
+    expect(copied).toMatchObject({
+      relevance: original.relevance,
+      magnitude: original.magnitude,
+      impact: original.impact,
+      model: original.model,
+    });
+    expect(original.copiedFrom).toBeNull();
+    // 복사는 비용을 쓰지 않는다.
+    expect(db.select().from(usageLogs).all()).toHaveLength(3);
+  });
+
+  it("시장·주제 항목은 그 종류와 주제 설명을 Jev 입력에 넣는다", async () => {
+    const db = testDb();
+    const market = ensureDefaultMarket(db, NOW)!;
+    const topic = db
+      .insert(topics)
+      .values({
+        source: "auto",
+        name: "중동 긴장",
+        summary: "사우디 시설 공격 위협",
+        terms: ["사우디"],
+        createdAt: NOW,
+      })
+      .returning()
+      .get();
+    const [lens] = syncTopicLenses(db, topic, NOW);
+    addLink(db, market, DISTINCT[0], ago(1), {
+      kind: "keyword",
+      path: "한국 증시 → 수출",
+    });
+    addLink(db, lens, DISTINCT[1], ago(2), {
+      kind: "keyword",
+      path: "중동 긴장 → 사우디",
+    });
+    const decider = fakeDecider();
+
+    await evaluate(db, decider);
+
+    expect(decider.calls.map((c) => c.input.stock)).toEqual([
+      expect.objectContaining({
+        kind: "market",
+        name: "한국 증시",
+        market: "KR",
+      }),
+      expect.objectContaining({
+        kind: "topic",
+        name: "중동 긴장",
+        summary: "사우디 시설 공격 위협",
+      }),
+    ]);
   });
 });

@@ -93,4 +93,54 @@ describe("applyMigrations", () => {
     expect(Date.now() - startedAt).toBeLessThan(1000);
     expect(columnsOf(web, "settings")).toContain("extra");
   });
+
+  it("0008: 이미 저장한 미래 발행 시각(받은 시각 + 10분 초과)을 받은 시각으로 고친다", () => {
+    // 0007까지만 적용한 DB에 미래 시각 기사·제목을 넣고 나머지를 적용한다.
+    const folder = path.join(tempDir(), "drizzle");
+    cpSync(MIGRATIONS, folder, { recursive: true });
+    const journalPath = path.join(folder, "meta", "_journal.json");
+    const full = readFileSync(journalPath, "utf8");
+    const journal = JSON.parse(full) as { entries: { tag: string }[] };
+    journal.entries = journal.entries.filter(
+      (e) => e.tag < "0008_fix_future_published",
+    );
+    writeFileSync(journalPath, JSON.stringify(journal));
+    const dbPath = path.join(tempDir(), "ripple.db");
+    applyMigrations(dbPath, folder);
+
+    const seen = 1_792_000_000_000;
+    const raw = openDb(dbPath, "readwrite");
+    const insert = (url: string, published: number) =>
+      raw.$client
+        .prepare(
+          "insert into articles (url_key, url, title, publisher, feed, published_at, collected_at) values (?, ?, 't', 'p', 'f', ?, ?)",
+        )
+        .run(url, url, published, seen);
+    insert("a.example/future", seen + 19 * 3600_000);
+    insert("a.example/close", seen + 5 * 60_000);
+    insert("a.example/past", seen - 3600_000);
+    raw.$client
+      .prepare(
+        "insert into feed_headlines (title_key, title, publisher, feed, published_at, seen_at) values ('k', 't', 'p', 'f', ?, ?)",
+      )
+      .run(seen + 5 * 3600_000, seen);
+    raw.$client.close();
+
+    writeFileSync(journalPath, full);
+    applyMigrations(dbPath, folder);
+    const db = openDb(dbPath, "readonly");
+    opened.push(db);
+    expect(
+      db.$client
+        .prepare("select url_key, published_at from articles order by id")
+        .all(),
+    ).toEqual([
+      { url_key: "a.example/future", published_at: seen },
+      { url_key: "a.example/close", published_at: seen + 5 * 60_000 },
+      { url_key: "a.example/past", published_at: seen - 3600_000 },
+    ]);
+    expect(
+      db.$client.prepare("select published_at from feed_headlines").get(),
+    ).toEqual({ published_at: seen });
+  });
 });

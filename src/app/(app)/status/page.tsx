@@ -6,6 +6,7 @@ import { getSystemStatus } from "@/server/status";
 import { fetchTunnelStatus, type TunnelStatus } from "@/server/tunnel";
 import { formatSeoulDateTime } from "@/server/time";
 import { CollectionPanel } from "./collection-panel";
+import { TopicPanel } from "./topic-panel";
 
 // 시스템 상태와 기사 수집 확인 화면. 7단계에서 홈(타임라인)에서 옮겼다(D-28·D-29 결정 전까지 임시).
 export default function StatusPage() {
@@ -25,8 +26,9 @@ export default function StatusPage() {
       <section className="mt-10">
         <h2 className="text-base font-semibold">기사 수집</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          언론사 RSS와 Finnhub(미국 종목)에서 등록한 종목에 걸린 기사를 정해진
-          간격마다 모으고 Jev로 관련도(0~10)와 호재·악재를 평가합니다.
+          언론사 RSS와 Finnhub(미국 종목)에서 종목·시장·주제에 걸린 기사를
+          정해진 간격마다 모으고 Jev로 관련도·영향도(0~10)와 호재·악재를
+          평가합니다.
         </p>
         <Suspense
           fallback={
@@ -34,6 +36,21 @@ export default function StatusPage() {
           }
         >
           <CollectionPanel />
+        </Suspense>
+      </section>
+      <section className="mt-10">
+        <h2 className="text-base font-semibold">시장 토픽</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          수집한 기사 제목으로 AI가 지금 시장을 움직이는 토픽을 정해진 때마다
+          다시 잡고, 토픽마다 영향을 받을 내 종목을 Jev로 평가해 붙입니다(낮에
+          1번 약 $0.005).
+        </p>
+        <Suspense
+          fallback={
+            <p className="mt-3 text-sm text-muted-foreground">불러오는 중…</p>
+          }
+        >
+          <TopicPanel />
         </Suspense>
       </section>
     </main>

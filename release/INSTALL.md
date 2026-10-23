@@ -5,7 +5,7 @@
 ## 준비물
 
 - Docker Desktop(Mac·Windows) 또는 Docker Engine + compose v2(Linux)
-- API 키: OpenRouter(필수), TypeSafe(필수), Finnhub(선택). 비용은 각자 부담합니다(종목 3개 기준 한 달 약 $0.4).
+- API 키: OpenRouter(필수), TypeSafe(필수), Finnhub(선택). 비용은 각자 부담합니다(종목 3개 기준 한 달 약 $3).
 
 ## 받을 파일(릴리스 페이지에서)
 

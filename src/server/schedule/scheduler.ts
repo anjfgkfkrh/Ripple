@@ -4,6 +4,7 @@ import type { KeywordQueue } from "@/server/keywords/queue";
 import { backupPlan } from "@/server/backup";
 import { log, logError } from "@/server/log";
 import { writeSetting } from "@/server/settings";
+import { topicPlan } from "@/server/topics/plan";
 import { collectionPlan, keywordPlan } from "./plan";
 
 /** 할 일을 확인하는 간격(D-31) */
@@ -40,6 +41,8 @@ export function startScheduler(deps: {
   syncListings: () => Promise<void>;
   /** DB를 백업한다(D-27). 백업 폴더(BACKUP_DIR)를 정하지 않았으면 없다. */
   backup?: (now: Date) => Promise<{ file: string; bytes: number }>;
+  /** 자동 토픽을 갱신한다(11단계). 성공하면 true. 던지지 않아야 한다. */
+  refreshTopics?: () => Promise<boolean>;
   /** false면 정기 수집·키워드 자동 재생성을 하지 않는다(E2E용). 목록 확인은 한다. */
   jobsEnabled?: boolean;
   now?: () => Date;
@@ -50,6 +53,7 @@ export function startScheduler(deps: {
   let lastListingCheck = -Infinity;
   let backupRunning = false;
   let backupRetryAt = -Infinity;
+  let topicsRunning = false;
 
   const tick = () => {
     const at = now();
@@ -80,6 +84,20 @@ export function startScheduler(deps: {
         }
       } catch (error) {
         logError("키워드 자동 재생성 확인 실패", error);
+      }
+      // 자동 토픽 갱신(11단계): 간격·특정 시각이 되면 한 번. 실패하면 30분 뒤 다시(계획이 DB 기록으로 판단).
+      const refreshTopics = deps.refreshTopics;
+      if (refreshTopics && !topicsRunning) {
+        try {
+          if (topicPlan(deps.db, at).due) {
+            topicsRunning = true;
+            void refreshTopics().finally(() => {
+              topicsRunning = false;
+            });
+          }
+        } catch (error) {
+          logError("토픽 갱신 확인 실패", error);
+        }
       }
     }
     // 백업은 정기 작업을 꺼도(E2E) 폴더가 정해져 있으면 한다(D-27: 매일 04:00, 놓쳤으면 켜질 때).

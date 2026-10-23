@@ -120,4 +120,30 @@ describe("createMatcher (4단계 결정: 낱말이 모두 들어 있으면 연�
     expect(onlyName("HBM 메모리")).toEqual([]);
     expect(onlyName("삼성전자")).toHaveLength(1);
   });
+
+  it("시장·주제 항목은 이름으로 걸지 않고 키워드로만 건다(11단계)", () => {
+    const market = createMatcher([
+      {
+        id: 7,
+        kind: "market",
+        market: "KR",
+        code: "MARKET",
+        name: "한국 증시",
+        nameKo: "한국 증시",
+        keywords: [
+          {
+            level: 1,
+            textKo: "기준금리",
+            textEn: null,
+            path: "한국 증시 → 기준금리",
+            reason: "시장 금리",
+          },
+        ],
+      },
+    ]);
+    expect(market("한국 증시 마감 시황")).toEqual([]);
+    expect(market("한은 기준금리 동결")).toEqual([
+      byKeyword(7, "한국 증시 → 기준금리", "시장 금리", 1),
+    ]);
+  });
 });

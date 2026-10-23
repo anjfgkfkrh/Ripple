@@ -23,7 +23,15 @@ import {
   writeSettingsForm,
 } from "@/server/settings-form";
 import { readSetting } from "@/server/settings";
-import { MARKETS } from "@/server/db/schema";
+import { linkStoredHeadlines } from "@/server/collect/backfill";
+import { MARKETS, type Market } from "@/server/db/schema";
+import type { TopicRefresher } from "@/server/topics/run";
+import {
+  addUserTopic,
+  deleteUserTopic,
+  MARKET_ITEMS,
+  setMarketEnabled,
+} from "@/server/topics/store";
 import { listingCount } from "@/server/listings/sync";
 import { log, logError } from "@/server/log";
 import {
@@ -47,8 +55,16 @@ export type WorkerDeps = {
   collector: CollectionRunner;
   /** OpenRouter에 이 모델 ID가 있는지(설정 저장 때, 2026-10-21 결정). 확인하지 못하면 ModelListError */
   checkModel: (modelId: string) => Promise<boolean>;
+  /** 자동 토픽 갱신(11단계). "지금 갱신"이 쓴다 */
+  topicRefresher?: TopicRefresher;
   now?: () => Date;
 };
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const marketBody = z.object({ enabled: z.boolean() });
+
+const topicBody = z.object({ name: z.string().max(100) });
 
 const MAX_BODY_BYTES = 16 * 1024;
 
@@ -219,6 +235,79 @@ async function handle(
       log(`키워드 다시 만들기(깊이 변경): ${ids.length}개 종목`);
     }
     sendJson(response, 202, { count: ids.length });
+    return;
+  }
+
+  // 11단계: 시장(한국·미국 증시) 켜기/끄기
+  const marketPath = pathname.match(/^\/markets\/(KR|US)$/);
+  if (method === "PUT" && marketPath) {
+    const body = await readBody(request, response, marketBody);
+    if (!body) return;
+    const market = marketPath[1] as Market;
+    const now = deps.now?.() ?? new Date();
+    const { generate, created } = setMarketEnabled(
+      deps.db,
+      market,
+      body.enabled,
+      now,
+    );
+    for (const id of generate) deps.keywordQueue.enqueue(id);
+    if (created.length > 0) {
+      linkStoredHeadlines(
+        deps.db,
+        created,
+        new Date(now.getTime() - DAY_MS),
+        now,
+      );
+    }
+    log(`${MARKET_ITEMS[market].name} ${body.enabled ? "켬" : "끔"}`);
+    sendJson(response, 200, { ok: true });
+    return;
+  }
+
+  // 11단계: 사용자 주제 추가·삭제
+  if (method === "POST" && pathname === "/topics") {
+    const body = await readBody(request, response, topicBody);
+    if (!body) return;
+    const result = addUserTopic(deps.db, body.name, deps.now?.() ?? new Date());
+    if (!result.ok) {
+      sendJson(response, result.error === "exists" ? 409 : 400, {
+        error: result.error,
+      });
+      return;
+    }
+    for (const id of result.lensIds) deps.keywordQueue.enqueue(id);
+    log(`주제 추가: ${body.name.trim()}`);
+    sendJson(response, 201, { topicId: result.topicId });
+    return;
+  }
+
+  const topicPath = pathname.match(/^\/topics\/(\d+)$/);
+  if (method === "DELETE" && topicPath) {
+    const deleted = deleteUserTopic(
+      deps.db,
+      Number(topicPath[1]),
+      deps.now?.() ?? new Date(),
+    );
+    if (deleted) log(`주제 삭제(숨김): id ${topicPath[1]}`);
+    sendJson(
+      response,
+      deleted ? 200 : 404,
+      deleted ? { ok: true } : { error: "not_found" },
+    );
+    return;
+  }
+
+  // 11단계: 자동 토픽 지금 갱신(상태 화면). 이미 하고 있으면 그것을 기다린다.
+  if (method === "POST" && pathname === "/topics/refresh") {
+    if (!deps.topicRefresher) {
+      sendJson(response, 503, { error: "unavailable" });
+      return;
+    }
+    const running = deps.topicRefresher.running();
+    void deps.topicRefresher.refresh();
+    if (!running) log("토픽 갱신 시작(직접 실행)");
+    sendJson(response, 202, { started: !running });
     return;
   }
 

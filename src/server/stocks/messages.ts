@@ -27,6 +27,12 @@ export function describeStockError(
       return "공식 종목 목록에 없는 종목이라 등록할 수 없습니다.";
     case "not_found":
       return "이미 삭제된 종목입니다.";
+    case "invalid":
+      return "주제는 2~20자로 적으세요.";
+    case "exists":
+      return "이미 넣은 주제입니다.";
+    case "unavailable":
+      return "worker가 토픽 갱신을 준비하지 못했습니다. worker를 다시 켜 보세요.";
     case "worker_timeout":
       return "worker 응답이 늦습니다. 다시 시도하세요.";
     case "worker_unreachable":

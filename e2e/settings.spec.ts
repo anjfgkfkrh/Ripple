@@ -29,7 +29,27 @@ test.describe("설정 화면 (SPEC FR-8)", () => {
     const form = await openSettings(page);
     await expect(form.getByLabel("수집 간격")).toBeVisible();
     await expect(form.getByLabel("월 예산 한도(달러)")).toBeVisible();
+    // 11단계: 표시 기준(관련도·영향도), 키워드를 남길 기준, 토픽 갱신 간격·시각
+    await expect(form.getByLabel("관련도 표시 기준(0~10)")).toHaveValue("6");
+    await expect(form.getByLabel("영향도 표시 기준(0~10)")).toHaveValue("6");
+    await expect(form.getByLabel("키워드 남길 관련도(0~10)")).toHaveValue("6");
+    await expect(form.getByLabel("키워드 남길 영향도(0~10)")).toHaveValue("5");
+    await expect(form.getByLabel("토픽 갱신 간격(시간, 0~24)")).toHaveValue(
+      "3",
+    );
+    await expect(
+      form.getByLabel("토픽 갱신 특정 시각(한국 시간)"),
+    ).toBeVisible();
     await expect(page.getByTestId("usage")).toContainText("이번 달 AI 사용량");
+    // 기능별·항목별 비용과 비율(11단계). worker가 시작하며 한국 증시 트리를 만들므로 시장 비용이 생긴다.
+    await expect(async () => {
+      await page.reload();
+      await expect(page.getByTestId("usage-groups")).toContainText("시장", {
+        timeout: 1000,
+      });
+    }).toPass({ timeout: 20_000 });
+    await expect(page.getByTestId("usage-features")).toContainText("%");
+    await expect(page.getByTestId("usage-groups")).toContainText("%");
     await expect(page.getByText("jev-1.13.0")).toBeVisible();
     await expect(page.getByTestId("keyword-rebuild")).toBeVisible();
     await page.screenshot({
@@ -86,8 +106,28 @@ test.describe("설정 바꾸기와 예산 알림 (FR-8, D-07)", () => {
       animations: "disabled",
     });
 
-    // 원래 값으로 되돌린다(다른 테스트가 기본값을 쓴다).
+    // 토픽 갱신 특정 시각(11단계): 틀린 시각은 이유를 보이고, 한 자리 시는 두 자리로 맞춰 시각 순으로 남긴다.
     await model.fill("anthropic/claude-haiku-5.5");
+    const times = form.getByLabel("토픽 갱신 특정 시각(한국 시간)");
+    await times.fill("25:00");
+    await form.getByRole("button", { name: "저장" }).click();
+    await expect(page.getByTestId("topicTimes-error")).toHaveText(
+      "09:00, 15:30처럼 24시간제 HH:MM으로 넣으세요.",
+    );
+    await times.fill("15:40, 8:30");
+    await form.getByRole("button", { name: "저장" }).click();
+    await expect(form.getByRole("status")).toHaveText("저장했습니다.");
+    await page.reload();
+    form = page.getByTestId("settings-form");
+    await expect(form.getByLabel("토픽 갱신 특정 시각(한국 시간)")).toHaveValue(
+      "08:30, 15:40",
+    );
+    await form.getByLabel("토픽 갱신 특정 시각(한국 시간)").fill("");
+
+    // 원래 값으로 되돌린다(다른 테스트가 기본값을 쓴다).
+    await form
+      .getByLabel("키워드·종목 찾기 모델(OpenRouter)")
+      .fill("anthropic/claude-haiku-5.5");
     await form.getByLabel("수집 간격").selectOption("30");
     await form.getByLabel("자동 재생성 주기").selectOption("daily");
     await form.getByLabel("월 예산 한도(달러)").fill("5");

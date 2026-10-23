@@ -57,6 +57,28 @@ const ANSWERS = {
 };
 
 const HOUR = 60 * 60 * 1000;
+const FILLER_TITLES = [
+  "주말 나들이 인파",
+  "가을 축제 개막",
+  "프로야구 결승 진출",
+  "영화 관객 백만 돌파",
+  "공연 예매 시작",
+  "지역 도서관 개관",
+  "미술관 특별전",
+  "마라톤 대회 열려",
+  "단풍 절정 시기",
+  "교통 혼잡 예상",
+  "새 학기 준비물",
+  "드라마 시청률 상승",
+  "캠핑장 예약 몰려",
+  "음악 시상식 후보",
+  "독감 접종 시작",
+  "해돋이 명소 소개",
+  "요리 경연 우승",
+  "동물원 새 식구",
+  "등산로 안전 점검",
+  "시장 골목 축제",
+];
 const xml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
 
 /** 가짜 언론사 RSS. 발행 시각은 요청할 때마다 지금을 기준으로 만든다. */
@@ -73,6 +95,12 @@ function rssFeed(name, base) {
           ],
           ["SK하이닉스 오래된 기사", `${base}/news/old`, now - 72 * HOUR],
           ["주말 날씨", `${base}/news/3`, now - HOUR],
+          // 토픽 갱신에 넣을 제목이 20개 이상이 되게(11단계). 어느 키워드에도 걸리지 않는다.
+          ...FILLER_TITLES.map((title, i) => [
+            title,
+            `${base}/news/filler-${i}`,
+            now - (3 + i) * 60 * 1000,
+          ]),
         ]
       : [
           [
@@ -110,8 +138,7 @@ function finnhubNews(id, headline, base) {
   };
 }
 
-// 키워드 트리(깊이 2, 단계마다 5개). 구조 키워드 [단계, 키워드, 영어 표기, 부모, 이유]와
-// 시사 사슬 '금리 인하 기대 → 연준 금리'(10단계, 사슬마다 [키워드, 영어 표기, 이유])
+// 키워드 트리(깊이 2). 구조 키워드만 [단계, 키워드, 영어 표기, 부모, 이유](시사는 토픽이 맡음, 2026-10-23)
 const KEYWORD_TREE = [
   [1, "AI 반도체", "AI chips", "", "AI 서버 수요와 직결"],
   [1, "데이터센터", "Data centers", "", "주요 수요처"],
@@ -122,27 +149,6 @@ const KEYWORD_TREE = [
   [2, "클라우드", "Cloud computing", "데이터센터", "데이터센터 최대 고객"],
   [2, "전력 설비", "Power equipment", "데이터센터", "증설의 병목"],
 ];
-const CURRENT_CHAINS = [
-  [
-    ["금리 인하 기대", "Rate cut hopes", "인하 기대가 주가에 반영"],
-    ["연준 금리", "Fed rates", "연준 결정이 기대를 움직임"],
-  ],
-];
-/** 오늘의 시장 이슈 정리 답(피드 제목이 50개 이상일 때만 불린다) */
-const MARKET_ISSUES = {
-  issues: [
-    {
-      name: "미국 금리 인하 기대",
-      summary: "연준 인하 가능성 언급",
-      terms: ["연준", "금리 인하"],
-    },
-    {
-      name: "AI 투자 확대",
-      summary: "빅테크 설비 투자 늘어",
-      terms: ["AI", "투자"],
-    },
-  ],
-};
 /** 키워드를 만드는 동안의 화면(만드는 중)을 볼 수 있게 조금 늦게 답한다. */
 const KEYWORD_DELAY_MS = 800;
 /** 이 종목은 첫 키워드 생성만 실패시킨다(실패 표시와 다시 만들기 검사용). */
@@ -150,7 +156,8 @@ const FAIL_FIRST_KEYWORDS = "종목: 현대건설";
 let failedOnce = false;
 
 function keywordAnswer(user) {
-  const us = user.includes("(미국,");
+  // 미국 종목과 미국 증시 기준 항목(시장·주제)
+  const us = user.includes("(미국,") || user.includes("미국 증시");
   return {
     keywords: KEYWORD_TREE.map(
       ([level, keyword, keywordEn, parent, reason]) => ({
@@ -161,33 +168,41 @@ function keywordAnswer(user) {
         reason,
       }),
     ),
-    currentChains: CURRENT_CHAINS.map((steps) => ({
-      steps: steps.map(([keyword, keywordEn, reason]) => ({
-        keyword,
-        keywordEn: us ? keywordEn : "",
-        reason,
-      })),
-    })),
   };
 }
 
+const score = (value) => ({
+  type: "score",
+  score: value,
+  confidence: 0.7,
+  legend: {},
+  probabilities: {},
+});
+
 /**
- * 가짜 Jev 답(공식 API 응답 모양). 종목 이름으로 걸린 기사는 관련(4단계 → 8점), 그 밖은 1.5단계(3점).
- * 제목에 '확대'·'실적'·'rise'가 있으면 호재, 아니면 중립.
+ * 가짜 Jev 답(공식 API 응답 모양).
+ * - 기사: 종목 이름으로 걸린 기사와 주제·토픽 기사는 관련 4단계(8점)·영향 3.5단계(7점), 그 밖은 1.5단계(3점).
+ *   제목에 '확대'·'실적'·'rise'가 있으면 호재, 아니면 중립.
+ * - 키워드·토픽(11단계): 관련 3.5단계(7점)·영향 3단계(6점). '공급망'만 관련 2단계(4점)라 트리에서 잘린다.
  */
 function jevAnswer({ model, state }) {
-  const named = state.link.path === state.stock.name;
+  if (state.subject) {
+    const weak = state.subject.text === "공급망";
+    return {
+      model,
+      answers: { relevance: score(weak ? 2 : 3.5), magnitude: score(3) },
+      usage: { input_tokens: 400, output_tokens: 20 },
+    };
+  }
+  const strong =
+    Boolean(state.topic) ||
+    (state.stock !== undefined && state.link.path === state.stock.name);
   const positive = /확대|실적|rise/.test(state.article.title);
   return {
     model,
     answers: {
-      relevance: {
-        type: "score",
-        score: named ? 4 : 1.5,
-        confidence: 0.7,
-        legend: {},
-        probabilities: {},
-      },
+      relevance: score(strong ? 4 : 1.5),
+      magnitude: score(strong ? 3.5 : 1.5),
       impact: {
         type: "choice",
         choice: positive ? "positive" : "neutral",
@@ -271,11 +286,16 @@ createServer(async (request, response) => {
     let body = "";
     for await (const chunk of request) body += chunk;
     const parsed = JSON.parse(body);
+    // 기사는 관련도·영향도·호재/악재, 키워드·토픽은 관련도·영향도만 묻는다(11단계).
+    const lead = Boolean(parsed.state?.subject);
     if (
       !parsed.model ||
       parsed.questions?.relevance?.type !== "score" ||
-      parsed.questions?.impact?.type !== "choice" ||
-      !parsed.state?.article?.title
+      parsed.questions?.magnitude?.type !== "score" ||
+      (lead
+        ? parsed.questions?.impact !== undefined || !parsed.state.subject.text
+        : parsed.questions?.impact?.type !== "choice" ||
+          !parsed.state?.article?.title)
     ) {
       return sendJson(response, 422, { detail: "bad request" });
     }
@@ -296,11 +316,57 @@ createServer(async (request, response) => {
     const { model, messages, response_format } = JSON.parse(body);
     const user = messages.at(-1)?.content ?? "";
 
-    if (response_format?.json_schema?.name === "market_issues") {
+    // 자동 토픽 갱신(11단계): 토픽 둘. 내 종목에 SK하이닉스가 있으면 AI 투자 토픽의 관련 종목으로 낸다.
+    // 이전 토픽 가운데 '중동 긴장'(타임라인 시험이 넣음)은 이어지는 토픽으로 id를 그대로 돌려준다.
+    // 다른 시험의 "지금 갱신"이 그 토픽을 끝내거나 멜콘에 붙은 가지를 떼지 않게 하기 위함이다.
+    if (response_format?.json_schema?.name === "topic_refresh") {
+      const items = (user.match(/^내 종목: (.*)$/m)?.[1] ?? "").split(", ");
+      const mideast = [...user.matchAll(/^- (\d+): (.+?) — /gm)].find(
+        (match) => match[2] === "중동 긴장",
+      );
+      const continued = mideast
+        ? [
+            {
+              id: mideast[1],
+              name: "중동 긴장",
+              summary: "사우디 시설 공격 위협",
+              terms: ["사우디"],
+              related: items.includes("멜콘")
+                ? [{ item: "멜콘", reason: "중동 수주" }]
+                : [],
+            },
+          ]
+        : [];
       return sendJson(response, 200, {
         model,
-        choices: [{ message: { content: JSON.stringify(MARKET_ISSUES) } }],
-        usage: { prompt_tokens: 60000, completion_tokens: 1500, cost: 0.0068 },
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                topics: [
+                  {
+                    id: "",
+                    name: "AI 투자 확대",
+                    summary: "빅테크가 데이터센터 투자를 늘림",
+                    terms: ["데이터센터 투자"],
+                    related: items.includes("SK하이닉스")
+                      ? [{ item: "SK하이닉스", reason: "HBM 수요가 늘어남" }]
+                      : [],
+                  },
+                  {
+                    id: "",
+                    name: "미국 금리 인하 기대",
+                    summary: "연준 인하 가능성 언급",
+                    terms: ["금리 인하"],
+                    related: [],
+                  },
+                  ...continued,
+                ],
+              }),
+            },
+          },
+        ],
+        usage: { prompt_tokens: 40000, completion_tokens: 1200, cost: 0.0046 },
       });
     }
 

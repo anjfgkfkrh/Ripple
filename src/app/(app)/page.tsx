@@ -8,12 +8,20 @@ import { listActiveStocks } from "@/server/stocks/repository";
 import {
   parseTimelineParams,
   readTimeline,
+  readTopicCards,
   TIMELINE_PAGE_SIZE,
   type TimelineCard,
 } from "@/server/timeline/read";
 import { seoulDateKey, timelineDayLabel } from "@/server/time";
+import {
+  filterableTopicIds,
+  listMarketItems,
+  listUserTopicItems,
+  topicName,
+} from "@/server/topics/read";
 import { TimelineCardView } from "./timeline-card";
 import { TimelineFilters, timelineHref } from "./timeline-filters";
+import { TopicCards } from "./topic-cards";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -37,8 +45,22 @@ async function Timeline({ searchParams }: { searchParams: SearchParams }) {
   // 데이터에 닿기 전에 로그인을 한 번 더 확인한다(요청 시점 실행).
   await requireSession();
   const db = getWebDb();
+  const now = new Date();
   const stocks = listActiveStocks(db);
-  if (stocks.length === 0) {
+  const markets = listMarketItems(db).flatMap((m) =>
+    m.stock ? [{ id: m.stock.id, name: m.name }] : [],
+  );
+  const userTopics = listUserTopicItems(db).map(({ topic }) => ({
+    id: topic.id,
+    name: topic.name,
+  }));
+  const topicCards = readTopicCards(db, now);
+  if (
+    stocks.length === 0 &&
+    markets.length === 0 &&
+    userTopics.length === 0 &&
+    topicCards.length === 0
+  ) {
     return (
       <p className="mt-4 text-sm text-muted-foreground">
         등록한 종목이 없습니다.{" "}
@@ -51,25 +73,53 @@ async function Timeline({ searchParams }: { searchParams: SearchParams }) {
   }
   const { filter, limit } = parseTimelineParams(
     await searchParams,
-    stocks.map((stock) => stock.id),
+    [...stocks.map((stock) => stock.id), ...markets.map((m) => m.id)],
+    filterableTopicIds(db),
   );
-  const { cards, hasMore, minRelevance } = readTimeline(db, { filter, limit });
+  const { cards, hasMore, minRelevance, minMagnitude } = readTimeline(db, {
+    filter,
+    limit,
+  });
   const pending = countPendingEvaluations(db);
-  const now = new Date();
-  const filtered = filter.stockId !== null || filter.impact !== null;
+  const filtered =
+    filter.stockId !== null ||
+    filter.topicId !== null ||
+    filter.impact !== null;
+  // 자동 토픽은 칩이 없으므로 무엇을 보고 있는지 따로 알린다.
+  const autoTopic =
+    filter.topicId !== null &&
+    !userTopics.some((topic) => topic.id === filter.topicId)
+      ? topicName(db, filter.topicId)
+      : null;
 
   return (
     <>
       <p className="mt-1 text-sm text-muted-foreground">
-        관련도 {minRelevance}점 이상인 기사를 최신순으로 보여 줍니다.
+        관련도 {minRelevance}점·영향도 {minMagnitude}점 이상인 기사를 최신순으로
+        보여 줍니다.
       </p>
+      <TopicCards cards={topicCards} filter={filter} now={now} />
       <TimelineFilters
         stocks={stocks.map((stock) => ({
           id: stock.id,
           name: stock.nameKo ?? stock.name,
         }))}
+        markets={markets}
+        topics={userTopics}
         filter={filter}
       />
+      {autoTopic !== null && (
+        <p className="mt-3 text-sm" data-testid="topic-filter">
+          토픽 <strong>{autoTopic}</strong> 기사만 보는 중 ·{" "}
+          <Link
+            href={timelineHref({ ...filter, topicId: null })}
+            scroll={false}
+            className="text-muted-foreground underline underline-offset-2"
+          >
+            모두 보기
+          </Link>
+        </p>
+      )}
       {pending > 0 && (
         <p className="mt-4 text-sm text-muted-foreground">
           평가를 기다리는 기사 {pending}건은 평가가 끝나면 기준에 맞는 것만
@@ -83,7 +133,7 @@ async function Timeline({ searchParams }: { searchParams: SearchParams }) {
         >
           {filtered
             ? "조건에 맞는 기사가 없습니다."
-            : `아직 관련도 ${minRelevance}점 이상인 기사가 없습니다.`}
+            : `아직 관련도 ${minRelevance}점·영향도 ${minMagnitude}점 이상인 기사가 없습니다.`}
         </p>
       ) : (
         <DayGroups cards={cards} now={now} />

@@ -52,8 +52,7 @@ export async function CollectionPanel() {
           저장된 기사 {totals.articles}건 · 종목 연결 {totals.matches}건 ·{" "}
           {/* 좁은 화면에서 '(6점 이상 / 0건)'처럼 끊기지 않게 한 덩어리로 둔다. */}
           <span className="whitespace-nowrap">
-            평가 {evaluated.evaluated}건({evaluated.minRelevance}점 이상{" "}
-            {evaluated.relevant}건)
+            평가 {evaluated.evaluated}건(표시 기준 이상 {evaluated.relevant}건)
           </span>
         </p>
         <CollectNowButton running={running} />
@@ -64,7 +63,7 @@ export async function CollectionPanel() {
         now={now}
       />
       {run ? (
-        <RunView run={run} minRelevance={evaluated.minRelevance} />
+        <RunView run={run} />
       ) : (
         <p className="text-sm text-muted-foreground">
           아직 수집하지 않았습니다.
@@ -74,13 +73,7 @@ export async function CollectionPanel() {
   );
 }
 
-function RunView({
-  run,
-  minRelevance,
-}: {
-  run: CollectionRun;
-  minRelevance: number;
-}) {
+function RunView({ run }: { run: CollectionRun }) {
   const seconds = run.finishedAt
     ? Math.max(
         0,
@@ -125,12 +118,7 @@ function RunView({
         </p>
       )}
       {run.note && <p className="text-sm text-muted-foreground">{run.note}</p>}
-      {run.evaluation && (
-        <EvaluationView
-          evaluation={run.evaluation}
-          minRelevance={minRelevance}
-        />
-      )}
+      {run.evaluation && <EvaluationView evaluation={run.evaluation} />}
       {failures.length > 0 && (
         <ul
           className="space-y-1 text-sm text-destructive"
@@ -219,7 +207,7 @@ function ScheduleView({
 }
 
 /** 이미 지났으면 '곧 시작'(worker가 1분 안에 시작), 오늘이면 시각만, 아니면 날짜와 시각(한국 시간) */
-function next(at: Date, now: Date): string {
+export function next(at: Date, now: Date): string {
   if (at <= now) return "곧 시작";
   const target = formatSeoulDateTime(at);
   return `다음 ${
@@ -229,19 +217,14 @@ function next(at: Date, now: Date): string {
   }`;
 }
 
-/** 이번 회차의 Jev 평가 결과(SPEC FR-5) */
-function EvaluationView({
-  evaluation: e,
-  minRelevance,
-}: {
-  evaluation: EvaluationSummary;
-  minRelevance: number;
-}) {
+/** 이번 회차의 Jev 평가 결과(SPEC FR-5). 같은 소식의 앞선 평가를 쓴 수도 보인다(11단계). */
+function EvaluationView({ evaluation: e }: { evaluation: EvaluationSummary }) {
   return (
     <div className="space-y-1 text-sm" data-testid="collection-evaluation">
       <p>
-        평가 <strong>{e.evaluated}</strong>건 · {minRelevance}점 이상{" "}
-        <strong>{e.relevant}</strong>건
+        평가 <strong>{e.evaluated}</strong>건
+        {(e.copied ?? 0) > 0 && ` · 같은 소식 점수 재사용 ${e.copied}건`} · 표시
+        기준 이상 <strong>{e.relevant}</strong>건
         {e.failed > 0 && (
           <span className="text-destructive"> · 실패 {e.failed}건</span>
         )}

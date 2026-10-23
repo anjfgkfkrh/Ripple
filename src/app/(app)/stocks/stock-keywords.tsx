@@ -97,6 +97,7 @@ function toTree(keywords: Keyword[]): KeywordNode[] {
 /**
  * 들여쓰기가 곧 경로다(예: 삼성전자 → 메모리 → 엔비디아). 마우스를 올리면 경로 글자도 보인다.
  * 시사 가지는 맨 위 키워드에 '시사'를 붙인다(아래 키워드는 같은 가지라 붙이지 않음, 10단계).
+ * 토픽 갱신이 붙인 가지는 '토픽'을 붙이고, Jev가 매긴 관련도·영향도를 보인다(11단계).
  */
 function KeywordTree({ nodes }: { nodes: KeywordNode[] }) {
   return (
@@ -110,15 +111,37 @@ function KeywordTree({ nodes }: { nodes: KeywordNode[] }) {
                 {node.textEn}
               </span>
             )}
-            {node.kind === "current" && node.parentId === null && (
+            {node.parentId === null && node.topicId !== null ? (
               <span
                 className={cn(
-                  badgeVariants({ variant: "outline" }),
+                  badgeVariants({ variant: "secondary" }),
                   "ml-1.5 align-text-bottom",
                 )}
-                data-testid="current-badge"
+                data-testid="topic-badge"
               >
-                시사
+                토픽
+              </span>
+            ) : (
+              node.kind === "current" &&
+              node.parentId === null && (
+                <span
+                  className={cn(
+                    badgeVariants({ variant: "outline" }),
+                    "ml-1.5 align-text-bottom",
+                  )}
+                  data-testid="current-badge"
+                >
+                  시사
+                </span>
+              )
+            )}
+            {node.relevance !== null && node.magnitude !== null && (
+              <span
+                className="ml-1.5 text-xs whitespace-nowrap text-muted-foreground tabular-nums"
+                data-testid="keyword-scores"
+              >
+                관련 {node.relevance.toFixed(1)} · 영향{" "}
+                {node.magnitude.toFixed(1)}
               </span>
             )}
           </p>

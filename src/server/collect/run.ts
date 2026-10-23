@@ -16,6 +16,7 @@ import {
   collectionRuns,
   keywords,
   stocks,
+  topics,
   type EvaluationSummary,
   type RunStatus,
   type RunTrigger,
@@ -30,6 +31,7 @@ import type { HttpClient } from "./http";
 import { createMatcher, type MatchStock, type StockMatch } from "./match";
 import type { RobotsChecker } from "./robots";
 import { parseFeed } from "./rss";
+import { effectivePublishedAt } from "./published";
 import { urlKey } from "./url";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -60,7 +62,7 @@ export type Source = {
   id: string;
   label: string;
   group: string;
-  /** 받은 기사 제목을 시장 이슈 재료로 남길지(언론사 RSS·Finnhub 시장 뉴스, 10단계) */
+  /** 받은 기사 제목을 토픽 갱신 재료로 남길지(언론사 RSS·Finnhub 시장 뉴스, 10단계) */
   keepHeadlines?: boolean;
   fetch(): Promise<CollectedItem[]>;
 };
@@ -327,8 +329,8 @@ async function runSource(
     for (const item of items) {
       const key = urlKey(item.url);
       if (!key || !item.title.trim()) continue;
-      // 발행 시각이 없는 피드(한겨레 등)는 처음 받은 시각으로 본다.
-      const publishedAt = item.publishedAt ?? seenAt;
+      // 발행 시각이 없는 피드(한겨레 등)나 미래 시각(국민일보 지면 기사)은 처음 받은 시각으로 본다.
+      const publishedAt = effectivePublishedAt(item.publishedAt, seenAt);
       const fresh = publishedAt >= since;
       if (!fresh && !(backfillFrom && publishedAt >= backfillFrom)) continue;
       if (fresh) result.fresh += 1;
@@ -379,7 +381,8 @@ function mergeMatches(
   return [...byStock.values()];
 }
 
-function saveItems(
+/** 걸린 기사를 저장한다(같은 주소는 한 기사, D-19). 보관한 제목으로 지난 기사를 걸 때도 쓴다(11단계). */
+export function saveItems(
   db: Db,
   feedId: string,
   keep: {
@@ -440,12 +443,17 @@ function saveItems(
 
 /** 삭제하지 않은 종목과 키워드 트리 */
 export function loadMatchStocks(db: Db): MatchStock[] {
-  const active = db
-    .select()
+  const rows0 = db
+    .select({ stock: stocks, topicStatus: topics.status })
     .from(stocks)
+    .leftJoin(topics, eq(topics.id, stocks.topicId))
     .where(isNull(stocks.deletedAt))
     .orderBy(asc(stocks.id))
     .all();
+  // 끝난 자동 토픽(마지막 갱신에서 빠진 것)의 항목에는 새 기사를 걸지 않는다(11단계).
+  const active = rows0
+    .filter((row) => row.topicStatus !== "ended")
+    .map((row) => row.stock);
   if (active.length === 0) return [];
   const rows = db
     .select()
@@ -460,6 +468,7 @@ export function loadMatchStocks(db: Db): MatchStock[] {
     .all();
   return active.map((s) => ({
     id: s.id,
+    kind: s.kind,
     market: s.market,
     code: s.code,
     name: s.name,

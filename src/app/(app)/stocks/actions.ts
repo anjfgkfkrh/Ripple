@@ -107,3 +107,62 @@ export async function regenerateKeywordsAction(
   refresh();
   return {};
 }
+
+export type MarketState = { error?: string };
+
+/** 11단계: 한국·미국 증시 켜기/끄기. 켜면 worker가 시장 트리를 만든다. */
+export async function setMarketAction(
+  _previous: MarketState,
+  formData: FormData,
+): Promise<MarketState> {
+  await requireSession();
+  const market = String(formData.get("market"));
+  if (!(MARKETS as readonly string[]).includes(market)) {
+    return { error: describeStockError("invalid_request") };
+  }
+  const result = await workerApi().setMarket(
+    market as Market,
+    formData.get("enabled") === "true",
+  );
+  if (!result.ok) {
+    return { error: describeStockError(result.error, result.body) };
+  }
+  refresh();
+  return {};
+}
+
+export type TopicState = { added?: number; error?: string };
+
+/** 11단계: 사용자 주제 넣기(적은 그대로 2~20자). worker가 바로 트리를 만든다. */
+export async function addTopicAction(
+  previous: TopicState,
+  formData: FormData,
+): Promise<TopicState> {
+  await requireSession();
+  const name = String(formData.get("name") ?? "");
+  const result = await workerApi().addTopic(name);
+  if (!result.ok) {
+    return { error: describeStockError(result.error, result.body) };
+  }
+  refresh();
+  // 넣을 때마다 바뀌어 입력칸을 비운다.
+  return { added: (previous.added ?? 0) + 1 };
+}
+
+/** 11단계: 사용자 주제 지우기(항목은 숨기고 모은 기사는 보관) */
+export async function deleteTopicAction(
+  _previous: DeleteState,
+  formData: FormData,
+): Promise<DeleteState> {
+  await requireSession();
+  const id = Number(formData.get("id"));
+  if (!Number.isInteger(id) || id <= 0) {
+    return { error: describeStockError("invalid_request") };
+  }
+  const result = await workerApi().deleteTopic(id);
+  if (!result.ok && result.error !== "not_found") {
+    return { error: describeStockError(result.error, result.body) };
+  }
+  refresh();
+  return {};
+}

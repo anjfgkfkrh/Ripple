@@ -59,7 +59,7 @@ export function SettingsForm({ initial }: { initial: SettingsValues }) {
           >
             {[1, 2, 3, 4].map((depth) => (
               <option key={depth} value={String(depth)}>
-                {depth}단계({depth * 5}개)
+                {depth}단계
               </option>
             ))}
           </select>
@@ -80,6 +80,19 @@ export function SettingsForm({ initial }: { initial: SettingsValues }) {
             <option value="weekly">일주일 1회(월요일 06:00)</option>
           </select>
         </Field>
+        <ScoreField
+          id="keywordMinRelevance"
+          label="키워드 남길 관련도(0~10)"
+          help="AI가 낸 키워드 후보와 토픽–종목 쌍을 Jev가 매겨, 관련도와 영향도가 둘 다 기준 이상인 것만 남깁니다. 다음 트리 만들기·토픽 갱신부터 적용됩니다."
+          value={value("keywordMinRelevance")}
+          error={error("keywordMinRelevance")}
+        />
+        <ScoreField
+          id="keywordMinMagnitude"
+          label="키워드 남길 영향도(0~10)"
+          value={value("keywordMinMagnitude")}
+          error={error("keywordMinMagnitude")}
+        />
         <Field
           id="llmModel"
           label="키워드·종목 찾기 모델(OpenRouter)"
@@ -99,24 +112,20 @@ export function SettingsForm({ initial }: { initial: SettingsValues }) {
       </Section>
 
       <Section title="평가">
-        <Field
+        <ScoreField
           id="minRelevance"
           label="관련도 표시 기준(0~10)"
-          help="타임라인에 보일 최소 관련도. 기준 미만 기사도 지우지 않고 숨기기만 합니다."
+          help="얼마나 이 항목 얘기인가. 기준 미만 기사도 지우지 않고 숨기기만 합니다."
+          value={value("minRelevance")}
           error={error("minRelevance")}
-        >
-          <Input
-            id="minRelevance"
-            name="minRelevance"
-            type="number"
-            min={0}
-            max={10}
-            step={0.5}
-            inputMode="decimal"
-            defaultValue={value("minRelevance")}
-            aria-invalid={Boolean(error("minRelevance"))}
-          />
-        </Field>
+        />
+        <ScoreField
+          id="minMagnitude"
+          label="영향도 표시 기준(0~10)"
+          help="주가·시장을 얼마나 움직일까. 관련도와 영향도가 둘 다 기준 이상인 기사만 보입니다(영향도를 매기기 전 기사는 관련도만 봅니다)."
+          value={value("minMagnitude")}
+          error={error("minMagnitude")}
+        />
         <Field
           id="maxPerRun"
           label="회차당 최대 평가 수"
@@ -133,6 +142,44 @@ export function SettingsForm({ initial }: { initial: SettingsValues }) {
             inputMode="numeric"
             defaultValue={value("maxPerRun")}
             aria-invalid={Boolean(error("maxPerRun"))}
+          />
+        </Field>
+      </Section>
+
+      <Section title="시장 토픽">
+        <Field
+          id="topicIntervalHours"
+          label="토픽 갱신 간격(시간, 0~24)"
+          help="수집한 기사 제목으로 AI가 시장을 움직이는 토픽을 다시 정하는 간격입니다(낮에 1번 약 $0.005). 0이면 간격으로는 갱신하지 않습니다."
+          error={error("topicIntervalHours")}
+        >
+          <Input
+            id="topicIntervalHours"
+            name="topicIntervalHours"
+            type="number"
+            min={0}
+            max={24}
+            step={1}
+            inputMode="numeric"
+            defaultValue={value("topicIntervalHours")}
+            aria-invalid={Boolean(error("topicIntervalHours"))}
+          />
+        </Field>
+        <Field
+          id="topicTimes"
+          label="토픽 갱신 특정 시각(한국 시간)"
+          help="간격과 별개로 이 시각에도 갱신합니다. 쉼표로 구분(예: 08:30, 15:40), 12개까지. 간격 0에 시각도 비우면 토픽 갱신을 끕니다(토픽 카드와 종목에 붙은 토픽이 더 바뀌지 않음)."
+          error={error("topicTimes")}
+        >
+          <Input
+            id="topicTimes"
+            name="topicTimes"
+            defaultValue={value("topicTimes")}
+            placeholder="예: 08:30, 15:40"
+            maxLength={200}
+            autoComplete="off"
+            spellCheck={false}
+            aria-invalid={Boolean(error("topicTimes"))}
           />
         </Field>
       </Section>
@@ -185,6 +232,36 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
       <legend className="mb-3 text-base font-semibold">{title}</legend>
       {children}
     </fieldset>
+  );
+}
+
+/** 0~10 점수 기준 입력칸 */
+function ScoreField(props: {
+  id: SettingsFieldName;
+  label: string;
+  help?: string;
+  value: string;
+  error?: string;
+}) {
+  return (
+    <Field
+      id={props.id}
+      label={props.label}
+      help={props.help}
+      error={props.error}
+    >
+      <Input
+        id={props.id}
+        name={props.id}
+        type="number"
+        min={0}
+        max={10}
+        step={0.5}
+        inputMode="decimal"
+        defaultValue={props.value}
+        aria-invalid={Boolean(props.error)}
+      />
+    </Field>
   );
 }
 

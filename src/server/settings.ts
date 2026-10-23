@@ -16,6 +16,21 @@ export const SETTING_DEFAULTS: {
   "jev.usdPerMillionInputTokens": number;
   /** 화면에 보일 관련도 기준 0~10 (SPEC FR-5, 기본 6) */
   "evaluation.minRelevance": number;
+  /** 화면에 보일 영향도 기준 0~10. 관련도와 둘 다 넘어야 보인다(11단계, 기본 6) */
+  "evaluation.minMagnitude": number;
+  /** 키워드 후보를 남기고 토픽을 종목에 붙이는 기준 0~10(11단계, 기본 관련도 6·영향도 5) */
+  "keywords.minRelevance": number;
+  "keywords.minMagnitude": number;
+  /** 자동 토픽 갱신 간격(시간). 0이면 간격으로는 갱신하지 않는다(11단계, 기본 3) */
+  "topics.intervalHours": number;
+  /** 자동 토픽을 갱신할 특정 시각(한국 시간 "HH:MM", 11단계) */
+  "topics.times": string[];
+  /** 자동 토픽을 마지막으로 갱신한 시각(ms). 0이면 아직 없음 */
+  "topics.refreshedAt": number;
+  /** 마지막 갱신을 시작한 시각, 마지막으로 실패한 시각과 이유(상태 화면·30분 뒤 다시) */
+  "topics.startedAt": number;
+  "topics.failedAt": number;
+  "topics.error": string;
   /** 수집 회차 하나에서 평가할 최대 연결 수 (D-03, 기본 200) */
   "evaluation.maxPerRun": number;
   /** 정기 수집 간격(분): 15·30·60·180 (SPEC FR-6, D-01 기본 30) */
@@ -37,6 +52,15 @@ export const SETTING_DEFAULTS: {
   "jev.model": "jev-1.13.0",
   "jev.usdPerMillionInputTokens": 0.042,
   "evaluation.minRelevance": 6,
+  "evaluation.minMagnitude": 6,
+  "keywords.minRelevance": 6,
+  "keywords.minMagnitude": 5,
+  "topics.intervalHours": 3,
+  "topics.times": [],
+  "topics.refreshedAt": 0,
+  "topics.startedAt": 0,
+  "topics.failedAt": 0,
+  "topics.error": "",
   "evaluation.maxPerRun": 200,
   "collect.intervalMinutes": 30,
   "keywords.regenerateEvery": "daily",
@@ -59,6 +83,12 @@ export function readSetting<K extends SettingKey>(
   if (!row) return fallback;
   try {
     const value: unknown = JSON.parse(row.value);
+    if (Array.isArray(fallback)) {
+      return Array.isArray(value) &&
+        value.every((item) => typeof item === "string")
+        ? (value as (typeof SETTING_DEFAULTS)[K])
+        : fallback;
+    }
     return typeof value === typeof fallback
       ? (value as (typeof SETTING_DEFAULTS)[K])
       : fallback;

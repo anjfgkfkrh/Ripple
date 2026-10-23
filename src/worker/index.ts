@@ -1,4 +1,3 @@
-import { JEV_QUESTION_LANGUAGE } from "@/server/ai/decider/questions";
 import { createTypeSafeDecider } from "@/server/ai/decider/typesafe";
 import { createOpenRouterClient } from "@/server/ai/llm/openrouter";
 import { createFinnhubClient } from "@/server/collect/finnhub";
@@ -17,6 +16,8 @@ import { log, logError } from "@/server/log";
 import { isOpenRouterModel } from "@/server/ai/llm/models";
 import { backupDatabase } from "@/server/backup";
 import { startScheduler } from "@/server/schedule/scheduler";
+import { createTopicRefresher } from "@/server/topics/run";
+import { ensureDefaultMarket } from "@/server/topics/store";
 import { readWorkerConfig } from "./config";
 import { createWorkerServer } from "./server";
 
@@ -35,7 +36,14 @@ async function main(): Promise<void> {
     baseUrl: config.openRouterBaseUrl,
   });
 
-  const keywordQueue = createKeywordQueue({ db, llm });
+  // 기사 평가와 키워드·토픽 평가(11단계)에 함께 쓴다. 키가 없으면 평가를 미룬다.
+  const decider = config.typesafeApiKey
+    ? createTypeSafeDecider({
+        apiKey: config.typesafeApiKey,
+        baseUrl: config.typesafeBaseUrl,
+      })
+    : null;
+  const keywordQueue = createKeywordQueue({ db, llm, decider });
 
   const stale = closeStaleRuns(db);
   if (stale > 0) log(`도중에 멈춘 수집 회차 ${stale}개를 실패로 정리했습니다.`);
@@ -58,21 +66,18 @@ async function main(): Promise<void> {
           baseUrl: config.finnhubBaseUrl,
         })
       : null,
-    decider: config.typesafeApiKey
-      ? createTypeSafeDecider({
-          apiKey: config.typesafeApiKey,
-          baseUrl: config.typesafeBaseUrl,
-          language: JEV_QUESTION_LANGUAGE,
-        })
-      : null,
+    decider,
   });
 
+  // 자동 토픽 갱신(11단계): 정기 갱신과 "지금 갱신"이 같이 쓴다.
+  const topicRefresher = createTopicRefresher({ db, llm, decider });
   const server = createWorkerServer({
     db,
     apiToken: config.apiToken,
     llm,
     keywordQueue,
     collector,
+    topicRefresher,
     checkModel: (modelId) =>
       isOpenRouterModel(modelId, { baseUrl: config.openRouterBaseUrl }),
   });
@@ -82,6 +87,10 @@ async function main(): Promise<void> {
   });
   log(`내부 API 대기 중: http://${config.host}:${config.port}`);
 
+  // 한국 증시는 켠 채로 시작한다(11단계 결정). 한 번도 만든 적 없을 때만 만들고 키워드는 아래에서 만든다.
+  if (ensureDefaultMarket(db, new Date()) !== null) {
+    log("한국 증시 항목을 켰습니다(시장 전체 기사).");
+  }
   // 대기 중이었거나 만들다 멈춘(재시작 등) 키워드 생성을 이어서 한다.
   const resumed = stocksAwaitingKeywords(db);
   if (resumed.length > 0)
@@ -101,6 +110,7 @@ async function main(): Promise<void> {
     syncListings: createListingSync(db, config.listingSources),
     jobsEnabled: config.schedulerJobsEnabled,
     backup: backupDir ? (now) => backupDatabase(db, backupDir, now) : undefined,
+    refreshTopics: () => topicRefresher.refresh(),
   });
 
   let stopping = false;
