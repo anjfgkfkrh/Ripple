@@ -6,7 +6,13 @@
 
 ## 1. 지금 상태
 
-마지막 갱신: 2026-10-22 20:50 (한국 시간), 11단계 실제 AI 확인·본 Docker 배포 끝(커밋 전)
+마지막 갱신: 2026-10-23 17:20 (한국 시간), AI 비용 줄이기 조사(사용자 답 대기)
+
+- **AI 비용 줄이기 조사(2026-10-23, 사용자 요청 "월 $3는 많다", 무료 조사만, 구현 전)**: 본 DB 사용량(배포 뒤 약 20시간, 읽기 전용)으로 월 약 $2.6 추정. 기능별 월: Jev 기사 평가 $1.26(하루 약 990회 × 약 1,000토큰), 토픽 갱신(Haiku, 3시간마다) 약 $1.0, 키워드 생성 $0.18, 키워드·토픽 Jev $0.15. 시장·토픽 관련이 약 77%, 종목 2개는 약 $0.45.
+  - Jev 기사 평가 1회 입력 = 고정 약 720토큰(질문 문구 등) + 기사 내용 약 290토큰(호출과 평가를 같은 시각으로 짝지어 회귀, 오차 ±10토큰). 시장·토픽 평가 607회는 기사 383건에 해당(같은 기사를 항목마다 따로 물음). 종목 키워드 연결 224회는 표시 기준(6·6) 통과 0건.
+  - 토픽 갱신 제목 하루 약 5,500개 중 약 950개(17%)가 조선일보·조선비즈 '전체' 피드의 일본어판 기사. 비슷한 제목 묶기로는 13%만 줄어듦.
+  - OpenRouter 가격(공개 목록 2026-10-23): Haiku 5.5 $0.10/$0.50, `:batch` 반값(비동기, 최대 24시간), deepseek-v4-flash $0.0475/$0.157, glm-5.3-flash $0.0052/$0.1985, gpt-5-nano $0.05/$0.40(100만 토큰당 입력/출력).
+  - 사용자에게 물은 것: 토픽 갱신 모델 교체(품질 비교 유료), 일본어 제목 빼기, Jev 질문 문구 줄이기(유료 비교), 시장·토픽을 기사당 한 번에 묻기, 키워드 재생성 매주, 토픽 수·갱신 간격, 목표 금액. 답을 받으면 SPEC 12장에 적고 시작
 
 - **11단계 진행 중: 시장 전체 기사**(SPEC 10장, 결정은 12장 "11단계 …" 줄, 2026-10-22 사용자 결정 "A, 추천안대로 + 주제 직접 추가").
   - 설계: '한국 증시'(미국 증시는 켜고 끄기)와 사용자가 추가한 주제를 종목 표에 종류('시장'·'주제')로 넣고, 거시 키워드 트리(구조 + 오늘의 시장 이슈로 만든 시사 가지)로 모든 수집 기사에 건다(이름으로는 걸지 않음). Jev는 시장 전체 기준으로 판정. 같은 타임라인에 '시장'·주제 칩과 필터. 비슷한 제목은 한 카드로 묶는다(종목 기사에도).
@@ -138,6 +144,8 @@ E2E에서 알아 둘 것
 - **피드에 담긴 기간(4·6단계, D-01 근거)**: 피드마다 받은 기사 중 가장 최근과 가장 오래된 발행 시각의 차이를 잰다. 바쁜 피드는 약 2시간치다.
 - **시사 반영 키워드(10단계)**: ① 무료: `RSS_FEEDS`·`createHttpClient`·`createRobotsChecker`·`parseFeed`·`createFinnhubClient().generalNews()`로 피드를 한 번 받아 제목·요약·주소·발행 시각을 파일로 둔다(저장소·DB에 쓰지 않음). 본 DB에서 종목 정보와 `recentHeadlines` 규칙의 제목을 읽기 전용으로 꺼낸다(`docker compose exec -T worker node - < 스크립트`, better-sqlite3 `readonly`). ② 유료: 최근 24시간 제목(같은 제목 하나, 최근순 1,500개)으로 `buildMarketIssueMessages` 2번, 종목마다 `git show <이전 커밋>:src/server/keywords/tree.ts`로 꺼낸 지금 프롬프트와 새 `buildKeywordMessages`를 2번씩(`createOpenRouterClient`, 응답 대기 넉넉히). 비용 합계가 상한을 넘으면 멈추게 한다. ③ 무료: 키워드마다 `createMatcher`로 최근 48시간 기사 적중 수를 센다. ④ 시사 키워드로 걸린 기사를 경로마다 고르게 40건 뽑아 **먼저** 사람 판정(0~5)을 파일로 남기고, `createTypeSafeDecider`(지금 문구)와 SDK `systemOne`(link.how만 바꾼 문구)으로 묻는다. ⑤ 사용량은 본 DB `usage_logs`에 `market_issues_check`·`keyword_generation_check`·`article_evaluation_check`로 넣는다(쓰기 연결, busy_timeout 5초, 한 트랜잭션). 스크립트는 세션 임시 폴더에 두고 `.mts`로 쓴다(프로젝트가 ESM). 패키지는 `node_modules/...` 절대 경로로 가져온다.
 - **worker 안 실제 AI 확인(10단계)**: ① `WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups docker compose -p ripple-check build` ② `docker compose -p ripple-check run --rm --no-deps -v "$PWD/backups":/restore:ro worker sh -c '<백업 복사와 node 스크립트>'`로 백업 사본을 `/data/ripple.db`에 넣고, 같은 자리에서 settings `keywords.autoRegeneratedAt`을 지금 시각으로 바꾼다(켜자마자 06:00 재생성이 돌면 제목이 쌓이기 전이라 시장 이슈가 빠짐) ③ `docker compose -p ripple-check up -d migrate worker web`(터널을 빼서 공개 주소 없음, 실제 키는 `.env`) ④ 첫 수집이 끝나면 worker 컨테이너 안에서 `fetch('http://127.0.0.1:4000/stocks/<id>/keywords', {method: 'POST', headers: {authorization: 'Bearer ' + process.env.WORKER_API_TOKEN}})`로 다시 만들기(토큰을 밖으로 꺼내지 않음) ⑤ 지난 기사까지 보려면 시험 DB의 `stocks.backfill_from`을 24시간 전으로 두고 `POST /collect` ⑥ `market_issues`·`keywords`·`article_matches`·`evaluations`를 읽기 전용으로 조회 ⑦ 시험 DB의 이번 `usage_logs`를 용도 끝에 `_check`를 붙여 본 DB에 옮기고 `down -v`, `.check-backups`·시험 이미지를 지운다.
+
+- **AI 비용 나누기(2026-10-23, 무료)**: 본 DB를 `docker compose exec -T worker node - < 스크립트.cjs`(better-sqlite3 `readonly`)로 읽는다. 스크립트는 `/tmp`에 두면 패키지를 못 찾으므로 표준 입력으로 넘긴다. `usage_logs`를 용도·제공자·항목별로 묶고, 기사 평가는 `usage_logs.at = evaluations.evaluated_at`·`stock_id`가 같고 `copied_from`이 없는 평가와 짝지어 호출마다 입력 토큰과 state 글자 수(한글·그 밖)를 최소제곱으로 맞춰 고정분을 구한다. 토픽 갱신은 회차마다 `feed_headlines`의 그 기간 제목 수·언어를 센다. 모델 가격은 `https://openrouter.ai/api/v1/models`(공개, 키 없음).
 
 ## 7. 남은 일·알려진 문제
 

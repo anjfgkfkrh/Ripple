@@ -42,7 +42,7 @@ export const SAME_TITLE_WINDOW_MS = SAME_NEWS_WINDOW_MS;
 /** 기사를 이만큼씩 읽어 카드를 만든다. */
 const SCAN_BATCH = 200;
 const HOUR_MS = 60 * 60 * 1000;
-/** 자동 토픽: 새 기사가 이만큼 없으면 '지난 이슈'로 접고, 이만큼 지나면 숨긴다(11단계 결정) */
+/** 자동 토픽: 새 기사가 이만큼 없으면 '이전 이슈'로 접고, 이만큼 지나면 숨긴다(11단계 결정) */
 export const TOPIC_FADE_MS = 12 * HOUR_MS;
 export const TOPIC_HIDE_MS = 72 * HOUR_MS;
 
@@ -299,7 +299,7 @@ export type TopicCard = {
   topicId: number;
   name: string;
   summary: string | null;
-  /** 12시간 넘게 새 기사가 없어 '지난 이슈'로 접은 토픽 */
+  /** 12시간 넘게 새 기사가 없어 '이전 이슈'로 접은 토픽 */
   faded: boolean;
   lastArticleAt: Date;
   /** 표시 기준 이상인 기사 수(최근 24시간)와 전체 */
@@ -334,7 +334,7 @@ export function majorityImpact(items: ScoredImpact[]): Impact | null {
 
 /**
  * 타임라인 맨 위 '지금 시장 이슈'(11단계): 표시 기준 이상 기사가 하나라도 있는 자동 토픽을 그런 기사가 많은 순으로.
- * 12시간 동안 새 기사가 없으면 '지난 이슈'로 접고, 3일이 지나면 숨긴다.
+ * 12시간 동안 새 기사가 없으면 '이전 이슈'로 접고, 3일이 지나면 숨긴다.
  */
 export function readTopicCards(db: Db, now: Date = new Date()): TopicCard[] {
   const autoTopics = db

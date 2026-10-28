@@ -157,7 +157,7 @@ function seedTimeline(): { melcon: number; nano: number } {
           `insert into keywords (stock_id, level, text_ko, reason, path, kind, relevance, magnitude, topic_id, created_at)
            values (?, 1, '중동 긴장', '중동 수주', '멜콘 → 중동 긴장', 'current', 7, 6, ?, ?)`,
         ).run(melcon, mideast.topicId, now);
-        // 12시간 넘게 새 기사가 없는 토픽은 '지난 이슈'로 접는다.
+        // 12시간 넘게 새 기사가 없는 토픽은 '이전 이슈'로 접는다.
         const old = topic("옛 이슈", "지난 소식", "옛날");
         article("옛날 옛적 소식", 13 * 60, [
           [old.lens, 8, "neutral", 7, "옛 이슈 → 옛날"],
@@ -261,7 +261,7 @@ test.describe("타임라인 (SPEC FR-7, D-25, D-26)", () => {
     });
   });
 
-  test("맨 위 '지금 시장 이슈' 토픽 카드: 누르면 그 토픽 기사만, 식은 토픽은 '지난 이슈'로 접는다(11단계)", async ({
+  test("맨 위 '지금 시장 이슈' 토픽 카드: 누르면 그 토픽 기사만, 식은 토픽은 '이전 이슈'로 접는다(11단계)", async ({
     page,
   }, testInfo) => {
     await waitForListings();
@@ -286,7 +286,7 @@ test.describe("타임라인 (SPEC FR-7, D-25, D-26)", () => {
         .getByTestId("timeline-filters")
         .getByRole("link", { name: "중동 긴장" }),
     ).toHaveCount(0);
-    const faded = strip.getByText(/지난 이슈 \d+개/);
+    const faded = strip.getByText(/이전 이슈 \d+개/);
     await expect(faded).toBeVisible();
     await expect(
       strip.getByTestId("topic-card").filter({ hasText: "옛 이슈" }),

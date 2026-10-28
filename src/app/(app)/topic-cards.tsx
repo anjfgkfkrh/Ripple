@@ -8,7 +8,7 @@ import { timelineHref } from "./timeline-filters";
 
 /**
  * 타임라인 맨 위 '지금 시장 이슈'(11단계 결정): AI가 정해진 때마다 잡는 자동 토픽.
- * 카드를 누르면 그 토픽 기사만 보이고, 한 번 더 누르면 풀린다. 12시간 넘게 새 기사가 없으면 '지난 이슈'로 접는다.
+ * 카드를 누르면 그 토픽 기사만 보이고, 한 번 더 누르면 풀린다. 12시간 넘게 새 기사가 없으면 '이전 이슈'로 접는다.
  */
 export function TopicCards({
   cards,
@@ -46,7 +46,7 @@ export function TopicCards({
               className="size-3.5 transition-transform group-open:rotate-90"
               aria-hidden
             />
-            지난 이슈 {faded.length}개
+            이전 이슈 {faded.length}개
           </summary>
           <CardStrip cards={faded} filter={filter} now={now} />
         </details>
