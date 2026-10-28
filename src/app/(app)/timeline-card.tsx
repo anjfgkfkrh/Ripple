@@ -2,6 +2,7 @@ import { Fragment } from "react";
 import type { TimelineCard, TimelineStock } from "@/server/timeline/read";
 import { formatTimelineTime } from "@/server/time";
 import { ImpactBadge } from "./impact";
+import { ReadCard } from "./read-card";
 
 const KIND_LABEL = { market: "시장", topic: "주제" } as const;
 
@@ -9,6 +10,7 @@ const KIND_LABEL = { market: "시장", topic: "주제" } as const;
  * 기사 카드(SPEC FR-7): 제목, 출처, 시각, 관련 항목(점수·호재/악재·걸린 경위), 원문 링크(새 탭).
  * 11단계: 시장·주제 항목은 이름 앞에 작게 '시장'·'주제'를 붙이고 영향도도 보인다.
  * 같은 주제를 두 증시 기준으로 평가했으면 어느 증시 기준인지 붙인다.
+ * 12단계: 겉틀(ReadCard)이 읽음 표시를 맡고, 읽은 카드는 제목과 항목 이름을 흐린 글자색으로 보인다.
  */
 export function TimelineCardView({
   card,
@@ -24,8 +26,12 @@ export function TimelineCardView({
     }
   }
   return (
-    <article className="rounded-lg border p-4" data-testid="timeline-card">
-      <h3 className="leading-snug font-medium">
+    <ReadCard
+      articleIds={[card.articleId, ...card.others.map((o) => o.articleId)]}
+      title={card.title}
+      read={card.read}
+    >
+      <h3 className="leading-snug font-medium group-data-[read=true]:text-muted-foreground">
         <a
           href={card.url}
           target="_blank"
@@ -48,7 +54,7 @@ export function TimelineCardView({
           >
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <ImpactBadge impact={stock.impact} />
-              <span className="font-medium">
+              <span className="font-medium group-data-[read=true]:text-muted-foreground">
                 {stock.kind !== "stock" && (
                   <span className="mr-1 text-xs font-normal text-muted-foreground">
                     {KIND_LABEL[stock.kind]}
@@ -92,7 +98,7 @@ export function TimelineCardView({
           ))}
         </p>
       )}
-    </article>
+    </ReadCard>
   );
 }
 

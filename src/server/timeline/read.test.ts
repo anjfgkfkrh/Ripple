@@ -22,6 +22,7 @@ import {
   TIMELINE_PAGE_SIZE,
   type TimelineFilter,
 } from "./read";
+import { setArticlesRead } from "./reads";
 
 const opened: Db[] = [];
 const cleanups: (() => void)[] = [];
@@ -372,6 +373,77 @@ describe("readTimeline: 11단계", () => {
       name: "한국 증시",
       topicId: null,
     });
+  });
+});
+
+describe("readTimeline: 12단계 읽음 표시", () => {
+  it("카드에 묶인 기사 가운데 하나라도 읽었으면 읽은 카드, 읽음을 되돌리면 안 읽은 카드", () => {
+    const db = testDb();
+    const ids = addStocks(db);
+    const lone = insertLink(db, {
+      stockId: ids.samsung,
+      title: "삼성전자 새 공장",
+      publishedAt: ago(1),
+      relevance: 8,
+    });
+    const first = insertLink(db, {
+      stockId: ids.samsung,
+      title: "한은 기준금리 동결…연 2.5% 유지",
+      publisher: "가경제",
+      publishedAt: ago(2),
+      relevance: 7,
+    });
+    const second = insertLink(db, {
+      stockId: ids.samsung,
+      title: "[속보] 한은, 기준금리 동결…연 2.5% 유지",
+      publisher: "나일보",
+      publishedAt: ago(3),
+      relevance: 7,
+    });
+    const unread = () => read(db).cards.map((c) => [c.title, c.read]);
+
+    expect(unread()).toEqual([
+      ["삼성전자 새 공장", false],
+      ["한은 기준금리 동결…연 2.5% 유지", false],
+    ]);
+
+    // 묶인 기사 중 대표가 아닌 것만 읽어도 그 카드는 읽은 카드
+    setArticlesRead(db, [second.articleId], true);
+    expect(unread()).toEqual([
+      ["삼성전자 새 공장", false],
+      ["한은 기준금리 동결…연 2.5% 유지", true],
+    ]);
+
+    setArticlesRead(db, [lone.articleId], true);
+    expect(unread().map(([, isRead]) => isRead)).toEqual([true, true]);
+
+    setArticlesRead(db, [first.articleId, second.articleId], false);
+    expect(unread()).toEqual([
+      ["삼성전자 새 공장", true],
+      ["한은 기준금리 동결…연 2.5% 유지", false],
+    ]);
+  });
+
+  it("이미 읽은 기사와 같은 소식이 나중에 묶여 들어오면 읽은 카드로 보인다", () => {
+    const db = testDb();
+    const ids = addStocks(db);
+    const early = insertLink(db, {
+      stockId: ids.samsung,
+      title: "한은 기준금리 동결…연 2.5% 유지",
+      publishedAt: ago(5),
+      relevance: 7,
+    });
+    setArticlesRead(db, [early.articleId], true);
+    insertLink(db, {
+      stockId: ids.samsung,
+      title: "한은, 기준금리 동결…연 2.5% 유지 결정",
+      publisher: "나일보",
+      publishedAt: ago(1),
+      relevance: 7,
+    });
+    const { cards } = read(db);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].read).toBe(true);
   });
 });
 

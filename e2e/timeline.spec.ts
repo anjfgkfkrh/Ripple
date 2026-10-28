@@ -170,6 +170,79 @@ function seedTimeline(): { melcon: number; nano: number } {
   }
 }
 
+/**
+ * 읽음 표시(12단계) 시험용으로 프로젝트(데스크톱·모바일)마다 따로 종목 하나와 기사를 넣는다.
+ * 읽음 상태가 DB 하나를 같이 쓰므로, 두 프로젝트가 같은 기사를 건드리지 않게 하기 위함이다.
+ * 기사는 6시간 전이라 다른 시험의 맨 위 30개를 밀어내지 않고, 이 종목 칩으로만 본다.
+ */
+function seedReadFixtures(project: string): {
+  stockName: string;
+  groupTitle: string;
+  loneTitle: string;
+} {
+  const db = new Database(E2E_DB_PATH, { timeout: 10_000 });
+  const stockName = `읽음시험${project}`;
+  const groupTitle = `${project} 기준금리 동결 연 2.5% 유지`;
+  const loneTitle = `${project} 반도체 수출 호조 이어져`;
+  try {
+    db.transaction(() => {
+      const code = `READ-${project}`;
+      if (
+        db
+          .prepare("select id from stocks where market = 'KR' and code = ?")
+          .get(code)
+      ) {
+        return;
+      }
+      const now = Date.now();
+      const stock = Number(
+        db
+          .prepare(
+            `insert into stocks (market, code, name, name_ko, exchange, user_input, created_at, keywords_status, keywords_generated_at)
+             values ('KR', ?, ?, ?, 'KOSDAQ', ?, ?, 'ready', ?)`,
+          )
+          .run(code, stockName, stockName, stockName, now, now).lastInsertRowid,
+      );
+      const article = (title: string, hoursAgo: number, publisher: string) => {
+        const at = now - hoursAgo * 60 * MIN;
+        const key = `read.example/${project}/${hoursAgo}/${publisher}`;
+        const articleId = Number(
+          db
+            .prepare(
+              `insert into articles (url_key, url, title, publisher, feed, published_at, collected_at)
+               values (?, ?, ?, ?, 'rss:mock:economy', ?, ?)`,
+            )
+            .run(key, `https://${key}`, title, publisher, at, now)
+            .lastInsertRowid,
+        );
+        const matchId = Number(
+          db
+            .prepare(
+              `insert into article_matches (article_id, stock_id, keyword_path, match_kind, level, created_at)
+               values (?, ?, ?, 'name', 0, ?)`,
+            )
+            .run(articleId, stock, stockName, now).lastInsertRowid,
+        );
+        db.prepare(
+          `insert into evaluations (match_id, article_id, stock_id, relevance, relevance_confidence, magnitude, impact, impact_confidence, impact_probabilities, model, evaluated_at)
+           values (?, ?, ?, 8, 0.7, 7, 'positive', 0.8, '{}', 'jev-1.13.0', ?)`,
+        ).run(matchId, articleId, stock, now);
+      };
+      article(loneTitle, 6, "가짜경제");
+      // 비슷한 제목의 다른 언론사 기사 → 한 카드로 묶인다.
+      article(groupTitle, 7, "가짜경제");
+      article(
+        `${project} 한은 기준금리 동결 연 2.5% 유지 결정`,
+        7.5,
+        "가짜일보",
+      );
+    }).immediate();
+  } finally {
+    db.close();
+  }
+  return { stockName, groupTitle, loneTitle };
+}
+
 const cards = (page: import("@playwright/test").Page) =>
   page.getByTestId("timeline-card");
 const chip = (filters: Locator, group: string, name: string) =>
@@ -325,5 +398,74 @@ test.describe("타임라인 (SPEC FR-7, D-25, D-26)", () => {
     await expect(
       strip.getByTestId("topic-card").filter({ hasText: "옛 이슈" }),
     ).toBeVisible();
+  });
+  test("읽은 기사 표시: 링크를 누르면 묶인 카드째 읽음, 버튼으로 되돌리고, 새로 고쳐도 남는다(12단계)", async ({
+    page,
+    context,
+  }, testInfo) => {
+    await waitForListings();
+    const { stockName, groupTitle, loneTitle } = seedReadFixtures(
+      testInfo.project.name,
+    );
+    // 원문 링크는 새 탭으로 열린다. 가짜 주소라 외부로 나가지 않게 막는다.
+    await context.route("https://read.example/**", (route) =>
+      route.fulfill({ status: 200, contentType: "text/html", body: "원문" }),
+    );
+    await asClient(page, testInfo, "timeline-read");
+    await login(page, "/");
+    await chip(page.getByTestId("timeline-filters"), "항목", stockName).click();
+    await expect(cards(page)).toHaveCount(2);
+
+    const lone = cards(page).filter({ hasText: loneTitle });
+    const group = cards(page).filter({ hasText: groupTitle });
+    await expect(group).toContainText("외 1곳: 가짜일보");
+    await expect(lone).toHaveAttribute("data-read", "false");
+    await expect(lone.getByTestId("read-label")).toHaveCount(0);
+    await expect(lone.getByTestId("read-toggle")).toHaveText("읽음으로 표시");
+    await page.screenshot({
+      path: testInfo.outputPath("timeline-unread.png"),
+      fullPage: true,
+      animations: "disabled",
+    });
+
+    // 제목 링크를 누르면 새 탭이 열리고, 이 카드는 읽음이 된다. 다른 카드는 그대로다.
+    const popup = context.waitForEvent("page");
+    await lone.getByRole("link", { name: loneTitle }).click();
+    await (await popup).close();
+    await expect(lone).toHaveAttribute("data-read", "true");
+    await expect(lone.getByTestId("read-label")).toBeVisible();
+    await expect(lone.getByTestId("read-toggle")).toHaveText("안 읽음으로");
+    await expect(group).toHaveAttribute("data-read", "false");
+    // 순서는 그대로다(읽은 카드를 내리지 않는다).
+    await expect(cards(page).first()).toContainText(loneTitle);
+
+    // 새로 고쳐도(서버에 저장돼) 읽음으로 남고, 모양이 다르다(흐린 제목).
+    await page.reload();
+    await expect(lone).toHaveAttribute("data-read", "true");
+    await expect(group).toHaveAttribute("data-read", "false");
+    await page.screenshot({
+      path: testInfo.outputPath("timeline-read.png"),
+      fullPage: true,
+      animations: "disabled",
+    });
+
+    // 묶인 카드는 '외 N곳' 링크를 눌러도 카드 전체가 읽음이 된다. 버튼으로 되돌린다.
+    const other = context.waitForEvent("page");
+    await group.getByRole("link", { name: "가짜일보" }).click();
+    await (await other).close();
+    await expect(group).toHaveAttribute("data-read", "true");
+    await page.reload();
+    await expect(group).toHaveAttribute("data-read", "true");
+    await group.getByTestId("read-toggle").click();
+    await expect(group).toHaveAttribute("data-read", "false");
+    await page.reload();
+    await expect(group).toHaveAttribute("data-read", "false");
+    await expect(lone).toHaveAttribute("data-read", "true");
+
+    // 버튼으로 읽음 표시하면 링크를 열지 않아도 읽음이 된다.
+    await group.getByTestId("read-toggle").click();
+    await expect(group).toHaveAttribute("data-read", "true");
+    await page.reload();
+    await expect(group).toHaveAttribute("data-read", "true");
   });
 });

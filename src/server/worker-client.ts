@@ -75,6 +75,11 @@ export type WorkerApi = {
   deleteTopic(id: number): Promise<WorkerResult<{ ok: true }>>;
   /** 11단계: 자동 토픽을 지금 갱신한다. 결과는 기다리지 않는다(이미 하고 있으면 started false). */
   refreshTopics(): Promise<WorkerResult<{ started: boolean }>>;
+  /** 12단계: 카드에 묶인 기사들을 읽음/안 읽음으로 저장한다(changed: 바뀐 기사 수). */
+  setArticlesRead(
+    articleIds: number[],
+    read: boolean,
+  ): Promise<WorkerResult<{ changed: number }>>;
 };
 
 export function createWorkerApi(options: {
@@ -159,6 +164,12 @@ export function createWorkerApi(options: {
       call(`/topics/${id}`, { method: "DELETE", timeoutMs: 10_000 }),
     refreshTopics: () =>
       call("/topics/refresh", { method: "POST", timeoutMs: 10_000 }),
+    setArticlesRead: (articleIds, read) =>
+      call("/articles/read", {
+        method: "PUT",
+        body: { articleIds, read },
+        timeoutMs: 10_000,
+      }),
   };
 }
 

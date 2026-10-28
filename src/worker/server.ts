@@ -33,6 +33,7 @@ import {
   setMarketEnabled,
 } from "@/server/topics/store";
 import { listingCount } from "@/server/listings/sync";
+import { MAX_READ_BATCH, setArticlesRead } from "@/server/timeline/reads";
 import { log, logError } from "@/server/log";
 import {
   ListingsUnavailableError,
@@ -65,6 +66,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const marketBody = z.object({ enabled: z.boolean() });
 
 const topicBody = z.object({ name: z.string().max(100) });
+
+const articleReadBody = z.object({
+  articleIds: z.array(z.number().int().positive()).min(1).max(MAX_READ_BATCH),
+  read: z.boolean(),
+});
 
 const MAX_BODY_BYTES = 16 * 1024;
 
@@ -295,6 +301,20 @@ async function handle(
       deleted ? 200 : 404,
       deleted ? { ok: true } : { error: "not_found" },
     );
+    return;
+  }
+
+  // 12단계: 읽은 기사 표시(카드 하나에 묶인 기사들을 한꺼번에). 누를 때마다 부르므로 로그는 남기지 않는다.
+  if (method === "PUT" && pathname === "/articles/read") {
+    const body = await readBody(request, response, articleReadBody);
+    if (!body) return;
+    const changed = setArticlesRead(
+      deps.db,
+      body.articleIds,
+      body.read,
+      deps.now?.(),
+    );
+    sendJson(response, 200, { changed });
     return;
   }
 

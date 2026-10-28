@@ -280,6 +280,17 @@ export const articles = sqliteTable(
   ],
 );
 
+/**
+ * 읽은 기사(12단계). 기사당 한 줄이고, 읽음을 되돌리면 지운다.
+ * 소유자 칸은 없다(D-38, 다중 사용자 때 사용자 칸을 더한다).
+ */
+export const articleReads = sqliteTable("article_reads", {
+  articleId: integer("article_id")
+    .primaryKey()
+    .references(() => articles.id, { onDelete: "cascade" }),
+  readAt: integer("read_at", { mode: "timestamp_ms" }).notNull(),
+});
+
 /** 기사가 종목에 걸린 방식: 소스가 종목을 직접 지정 / 종목 이름 / 키워드 */
 export const MATCH_KINDS = ["direct", "name", "keyword"] as const;
 export type MatchKind = (typeof MATCH_KINDS)[number];

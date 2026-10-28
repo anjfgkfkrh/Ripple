@@ -26,6 +26,7 @@ import {
 } from "@/server/db/schema";
 import { PATH_SEPARATOR } from "@/server/keywords/tree";
 import { readSetting } from "@/server/settings";
+import { readArticleIds } from "./reads";
 import {
   isSameNews,
   SAME_NEWS_WINDOW_MS,
@@ -80,6 +81,8 @@ export type TimelineCard = {
   stocks: TimelineStock[];
   /** 같은 소식(비슷한 제목)의 다른 언론사 기사(24시간 안, 최근 것부터) */
   others: { articleId: number; publisher: string; url: string }[];
+  /** 12단계: 카드에 묶인 기사(대표 포함) 가운데 하나라도 읽었으면 읽은 카드 */
+  read: boolean;
 };
 
 /** 주소의 검색 값(stock, topic, impact, limit)을 읽는다. 없거나 맞지 않는 값은 무시한다. */
@@ -217,6 +220,7 @@ export function readTimeline(
         publishedAt: row.publishedAt,
         stocks: [],
         others: [],
+        read: false,
       };
       cards.push(card);
       features.set(card, mine);
@@ -230,6 +234,10 @@ export function readTimeline(
     const cardOf = new Map<number, TimelineCard>();
     for (const card of shown) {
       for (const id of members.get(card) ?? []) cardOf.set(id, card);
+    }
+    for (const id of readArticleIds(db, [...cardOf.keys()])) {
+      const card = cardOf.get(id);
+      if (card) card.read = true;
     }
     const rows = db
       .select({

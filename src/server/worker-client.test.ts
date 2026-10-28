@@ -120,6 +120,23 @@ describe("web → worker 내부 API (SPEC D-36)", () => {
     });
   });
 
+  it("카드에 묶인 기사들을 읽음·안 읽음으로 저장한다(12단계)", async () => {
+    const api = createWorkerApi({
+      workerUrl: await startWorker(),
+      token: TOKEN,
+    });
+    // 없는 기사 id는 건너뛰므로 바뀐 것이 없다.
+    expect(await api.setArticlesRead([1, 2], true)).toEqual({
+      ok: true,
+      status: 200,
+      data: { changed: 0 },
+    });
+    expect(await api.setArticlesRead([], true)).toMatchObject({
+      ok: false,
+      status: 400,
+    });
+  });
+
   it("시장 켜기·주제 넣기·지우기를 부르고, 토픽 갱신이 없으면 503을 그대로 돌려준다(11단계)", async () => {
     const api = createWorkerApi({
       workerUrl: await startWorker(),

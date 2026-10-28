@@ -7,6 +7,7 @@ import { ModelListError } from "@/server/ai/llm/models";
 import { recordUsage } from "@/server/budget/usage";
 import { openDb, type Db } from "@/server/db/client";
 import { replaceKeywords } from "@/server/keywords/generate";
+import { articleReads } from "@/server/db/schema";
 import { readSetting } from "@/server/settings";
 import { readSettingsForm } from "@/server/settings-form";
 import { listActiveStocks, registerStock } from "@/server/stocks/repository";
@@ -18,6 +19,7 @@ import {
   fakeCollector,
   fakeKeywordQueue,
   fakeStockLlm,
+  insertLink,
   seedListings,
 } from "../../tests/fixtures";
 import { createWorkerServer } from "./server";
@@ -557,6 +559,52 @@ describe("worker 내부 API: 시장·주제 (11단계)", () => {
     expect(
       (await call(baseUrl, `/topics/${topicId}`, { method: "DELETE" })).status,
     ).toBe(404);
+  });
+
+  it("PUT /articles/read: 묶인 기사들을 읽음·안 읽음으로 저장한다(12단계)", async () => {
+    const { baseUrl, db } = await start();
+    const registered = registerStock(db, {
+      market: "KR",
+      code: "005930",
+      userInput: "삼성전자",
+    });
+    if (registered.status === "not_listed") throw new Error("표본에 없음");
+    const ids = [1, 2].map(
+      (hour) =>
+        insertLink(db, {
+          stockId: registered.stock.id,
+          publishedAt: new Date(Date.UTC(2026, 9, 28, hour)),
+        }).articleId,
+    );
+    const put = (body: unknown, token?: string | null) =>
+      call(baseUrl, "/articles/read", { method: "PUT", body, token });
+
+    const marked = await put({ articleIds: [...ids, 9999], read: true });
+    expect(marked.status).toBe(200);
+    expect(await marked.json()).toEqual({ changed: 2 });
+    expect(db.select().from(articleReads).all()).toHaveLength(2);
+
+    const unmarked = await put({ articleIds: [ids[0]], read: false });
+    expect(await unmarked.json()).toEqual({ changed: 1 });
+    expect(db.select().from(articleReads).all()).toMatchObject([
+      { articleId: ids[1] },
+    ]);
+
+    // 로그인 토큰이 없으면 401, 본문이 틀리면 400이고 저장하지 않는다.
+    expect((await put({ articleIds: ids, read: true }, null)).status).toBe(401);
+    const tooMany = Array.from({ length: 201 }, (_, i) => i + 1);
+    for (const body of [
+      {},
+      { articleIds: [], read: true },
+      { articleIds: [0], read: true },
+      { articleIds: [1.5], read: true },
+      { articleIds: ["1"], read: true },
+      { articleIds: tooMany, read: true },
+      { articleIds: ids, read: "yes" },
+    ]) {
+      expect((await put(body)).status).toBe(400);
+    }
+    expect(db.select().from(articleReads).all()).toHaveLength(1);
   });
 
   it("POST /topics/refresh: 토픽 갱신을 시작하고 바로 돌아온다(이미 하고 있으면 started false)", async () => {
