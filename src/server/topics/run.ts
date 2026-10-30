@@ -16,6 +16,7 @@ import { readSetting, writeSetting } from "@/server/settings";
 import {
   buildTopicRefreshMessages,
   cleanTopicRefresh,
+  MAX_TOPICS,
   topicRefreshSchema,
   type RefreshedTopic,
 } from "./refresh";
@@ -25,10 +26,13 @@ import {
   attachedTopicsByStock,
   attachTopicToStock,
   detachTopicFromStock,
+  recentlyEndedAutoTopics,
   setAutoTopicTerms,
   syncTopicLenses,
+  topicArticleCounts,
   topicLenses,
   type Topic,
+  type TopicArticleCounts,
 } from "./store";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -43,6 +47,20 @@ export const MIN_REFRESH_TITLES = 20;
 export const MAX_REFRESH_TITLES = 1500;
 /** 새 토픽·붙인 가지에 거는 지난 기사 기간(11단계 결정) */
 const BACKFILL_MS = 24 * HOUR_MS;
+/** 토픽 유지 판단(2026-10-30 결정): 최근 이 기간에 걸린 기사 수를 센다 */
+const KEEP_WINDOW_MS = 24 * HOUR_MS;
+/**
+ * AI가 목록에서 뺀 토픽도 `KEEP_WINDOW_MS` 동안 이만큼 이상 걸리고 그중 화면 기준을 통과한 기사가 1건 이상이면
+ * 끝내지 않는다(2026-10-30 결정, 비교 뒤 통과 조건을 더함)
+ */
+export const KEEP_MIN_ARTICLES = 5;
+/** 끝난 지 이 기간 안의 토픽은 AI에 보여 주고 같은 주제면 같은 id로 되살린다 */
+const REVIVE_WINDOW_MS = 48 * HOUR_MS;
+/**
+ * 최대 출력 토큰. 6,000이던 것을 2026-10-30에 올렸다: 새 프롬프트가 제목 444개 입력에서 3번 중 2번 6,000에 닿아 잘렸다
+ * (본문은 약 1,800자라 숨은 추론 토큰이 먹은 것으로 보이나 확인하지 못함).
+ */
+export const MAX_REFRESH_OUTPUT_TOKENS = 10_000;
 /** 2026-10-22 실측: 제목 1,500개에 약 11초 */
 const REFRESH_TIMEOUT_MS = 120_000;
 
@@ -50,6 +68,10 @@ export type TopicRefreshSummary = {
   titles: number;
   topics: number;
   continued: number;
+  /** 끝난 토픽이 같은 주제로 다시 나와 되살아난 수(continued에도 포함) */
+  revived: number;
+  /** AI가 뺐지만 기사가 계속 걸려 끝내지 않은 수 */
+  kept: number;
   created: number;
   ended: number;
   attached: number;
@@ -82,6 +104,8 @@ export async function refreshTopics(deps: {
     titles: 0,
     topics: 0,
     continued: 0,
+    revived: 0,
+    kept: 0,
     created: 0,
     ended: 0,
     attached: 0,
@@ -94,34 +118,51 @@ export async function refreshTopics(deps: {
   );
   const titles = recentFeedTitles(db, since, MAX_REFRESH_TITLES);
   summary.titles = titles.length;
-  const previous = activeAutoTopics(db);
+  const active = activeAutoTopics(db);
   if (titles.length < MIN_REFRESH_TITLES) {
     writeSetting(db, "topics.refreshedAt", at.getTime());
-    summary.topics = previous.length;
+    summary.topics = active.length;
     summary.skipped = `새 제목이 ${titles.length}개라 토픽을 그대로 둡니다(${MIN_REFRESH_TITLES}개 미만).`;
     return summary;
   }
 
   const stocksNow = activeStocks(db);
   const itemNames = stocksNow.map((stock) => stock.nameKo ?? stock.name);
+  const minRelevance = readSetting(db, "keywords.minRelevance");
+  const minMagnitude = readSetting(db, "keywords.minMagnitude");
+  // 진행 중인 토픽과, 끝난 지 48시간 안의 토픽(되살릴 후보)에 최근 24시간 걸린 기사 수를 센다.
+  const recentlyEnded = recentlyEndedAutoTopics(
+    db,
+    new Date(at.getTime() - REVIVE_WINDOW_MS),
+  );
+  const candidates = [...active, ...recentlyEnded];
+  const counts = topicArticleCounts(
+    db,
+    candidates.map((topic) => topic.id),
+    new Date(at.getTime() - KEEP_WINDOW_MS),
+    { minRelevance, minMagnitude },
+  );
+  const endedIds = new Set(recentlyEnded.map((topic) => topic.id));
   const { value } = await generateWithBudget(
     db,
     deps.llm,
     {
       model: readSetting(db, "llm.model"),
       messages: buildTopicRefreshMessages({
-        previous: previous.map((topic) => ({
+        previous: candidates.map((topic) => ({
           id: String(topic.id),
           name: topic.name,
           summary: topic.summary ?? "",
           terms: topic.terms,
+          articles: counts.get(topic.id)?.matched ?? 0,
+          ended: endedIds.has(topic.id),
         })),
         titles,
         items: itemNames,
       }),
       schema: topicRefreshSchema,
       schemaName: "topic_refresh",
-      maxTokens: 6000,
+      maxTokens: MAX_REFRESH_OUTPUT_TOKENS,
       timeoutMs: REFRESH_TIMEOUT_MS,
     },
     { purpose: "topic_refresh", now },
@@ -129,11 +170,26 @@ export async function refreshTopics(deps: {
   const refreshed = continueTopics(
     cleanTopicRefresh(
       value,
-      new Set(previous.map((topic) => String(topic.id))),
+      new Set(candidates.map((topic) => String(topic.id))),
       itemNames,
     ),
-    previous,
+    candidates,
   );
+  // AI가 뺀 진행 중 토픽 가운데 기사가 계속 걸리는 것은 끝내지 않고 둔다(자리가 있을 만큼만).
+  const refreshedIds = new Set(
+    refreshed.flatMap((item) => (item.id === null ? [] : [Number(item.id)])),
+  );
+  const { carried } = retainDropped(
+    active
+      .filter((topic) => !refreshedIds.has(topic.id))
+      .map((topic) => ({
+        topic,
+        counts: counts.get(topic.id) ?? { matched: 0, shown: 0 },
+      })),
+    MAX_TOPICS - refreshed.length,
+  );
+  const carriedIds = new Set(carried.map((topic) => topic.id));
+  summary.kept = carried.length;
 
   // 토픽을 고치거나 만들고, 이번에 빠진 것은 끝낸다(끝난 토픽은 새 기사를 걸지 않는다).
   const newLenses: number[] = [];
@@ -151,12 +207,15 @@ export async function refreshTopics(deps: {
             summary: item.summary,
             terms: item.terms,
             lastSeenAt: at,
+            status: "active",
+            endedAt: null,
           })
           .where(eq(topics.id, id))
           .returning()
           .get();
         kept.add(id);
         summary.continued += 1;
+        if (endedIds.has(id)) summary.revived += 1;
         for (const lens of topicLenses(db, id)) {
           if (lens.deletedAt === null)
             setAutoTopicTerms(db, lens.id, topic, at);
@@ -179,8 +238,8 @@ export async function refreshTopics(deps: {
       newLenses.push(...syncTopicLenses(db, topic, at));
       current.push({ topic, refreshed: item });
     }
-    for (const topic of previous) {
-      if (kept.has(topic.id)) continue;
+    for (const topic of active) {
+      if (kept.has(topic.id) || carriedIds.has(topic.id)) continue;
       db.update(topics)
         .set({ status: "ended", endedAt: at })
         .where(eq(topics.id, topic.id))
@@ -188,14 +247,12 @@ export async function refreshTopics(deps: {
       summary.ended += 1;
     }
   });
-  summary.topics = current.length;
+  summary.topics = current.length + carried.length;
 
   // 토픽×종목: AI가 낸 관련 종목 후보를 Jev로 평가해 붙이거나 뗀다.
   const attachedBefore = attachedTopicsByStock(db);
   const wanted = new Map<number, Set<number>>();
   const newlyAttached = new Set<number>();
-  const minRelevance = readSetting(db, "keywords.minRelevance");
-  const minMagnitude = readSetting(db, "keywords.minMagnitude");
   let ratingStopped: string | undefined = deps.decider
     ? undefined
     : "TYPESAFE_API_KEY가 없습니다.";
@@ -271,6 +328,12 @@ export async function refreshTopics(deps: {
     }
   }
   if (ratingStopped) summary.ratingStopped = ratingStopped;
+  // 끝내지 않고 둔 토픽은 AI가 관련 종목을 다시 내지 않았으므로 붙은 가지를 그대로 둔다.
+  for (const [stockId, topicIds] of attachedBefore) {
+    for (const topicId of topicIds) {
+      if (carriedIds.has(topicId)) addTo(wanted, stockId, topicId);
+    }
+  }
   for (const [stockId, topicIds] of attachedBefore) {
     for (const topicId of topicIds) {
       if (wanted.get(stockId)?.has(topicId)) continue;
@@ -294,6 +357,39 @@ export async function refreshTopics(deps: {
   }
   writeSetting(db, "topics.refreshedAt", at.getTime());
   return summary;
+}
+
+/**
+ * AI가 목록에서 뺀 진행 중 토픽 가운데 최근 24시간 걸린 기사가 `KEEP_MIN_ARTICLES`건 이상이고 화면 기준을 통과한 기사가
+ * 있는 것을 끝내지 않고 둔다.
+ * 자리(`room`)가 모자라면 화면 기준을 통과한 기사가 적은 것(같으면 걸린 기사가 적은 것, 같으면 오래된 것)부터 끝낸다.
+ */
+export function retainDropped(
+  dropped: { topic: Topic; counts: TopicArticleCounts }[],
+  room: number,
+): { carried: Topic[]; ended: Topic[] } {
+  const eligible = dropped
+    .filter(
+      ({ counts }) => counts.matched >= KEEP_MIN_ARTICLES && counts.shown >= 1,
+    )
+    .sort(
+      (a, b) =>
+        b.counts.shown - a.counts.shown ||
+        b.counts.matched - a.counts.matched ||
+        b.topic.id - a.topic.id,
+    );
+  const slots = Math.max(0, room);
+  const carriedIds = new Set(
+    eligible.slice(0, slots).map(({ topic }) => topic.id),
+  );
+  return {
+    carried: dropped
+      .filter(({ topic }) => carriedIds.has(topic.id))
+      .map(({ topic }) => topic),
+    ended: dropped
+      .filter(({ topic }) => !carriedIds.has(topic.id))
+      .map(({ topic }) => topic),
+  };
 }
 
 /**
@@ -377,7 +473,7 @@ export async function refreshTopicsAndLog(deps: {
       log(`토픽 갱신 건너뜀: ${s.skipped}`);
     } else {
       log(
-        `토픽 갱신: 제목 ${s.titles}개 → 토픽 ${s.topics}개(이어짐 ${s.continued}, 새로 ${s.created}, 끝남 ${s.ended}), 종목에 붙임 ${s.attached}·뗌 ${s.detached}, 지난 기사 ${s.linked}건 연결${s.ratingStopped ? `, 관련 종목 평가 못 함: ${s.ratingStopped}` : ""}, ${seconds}초`,
+        `토픽 갱신: 제목 ${s.titles}개 → 토픽 ${s.topics}개(이어짐 ${s.continued}(되살림 ${s.revived}), 유지 ${s.kept}, 새로 ${s.created}, 끝남 ${s.ended}), 종목에 붙임 ${s.attached}·뗌 ${s.detached}, 지난 기사 ${s.linked}건 연결${s.ratingStopped ? `, 관련 종목 평가 못 함: ${s.ratingStopped}` : ""}, ${seconds}초`,
       );
     }
     return true;

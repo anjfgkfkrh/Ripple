@@ -19,6 +19,8 @@ const eslintConfig = defineConfig([
     "dist/**",
     "test-results/**",
     "playwright-report/**",
+    // 본 DB를 읽는 일회용 분석 스크립트(docker compose exec로 표준 입력에 넘기는 CJS)
+    "scripts/analysis/**",
   ]),
 ]);
 

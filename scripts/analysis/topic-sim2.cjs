@@ -1,10 +1,44 @@
-const Database=require('better-sqlite3');const db=new Database('/data/ripple.db',{readonly:true,fileMustExist:true});
-const H=3600e3, START=Date.parse('2026-10-23T00:00:00+09:00'), NOW=Date.now();
-const T=db.prepare("select id,name,created_at c,ended_at e from topics where source='auto' and created_at>=? order by created_at,id").all(START);
-const P=new Map(db.prepare(`select s.topic_id tid, sum(e.relevance>=6 and e.magnitude>=6) pass from evaluations e join stocks s on s.id=e.stock_id where s.kind='topic' group by 1`).all().map(r=>[r.tid,r.pass]));
-const fmt=t=>new Date(t+9*H).toISOString().slice(5,16).replace('T',' ');
-console.log('visible topics (>=1 passing article):');
-for(const t of T.filter(t=>(P.get(t.id)||0)>0)) console.log(`${t.id}\t${fmt(t.c)}\t${((t.e??NOW)-t.c)/H|0}h\tpass ${P.get(t.id)}\t${t.name}`);
-const times=[...new Set(T.map(t=>t.c))].sort();
-const cond=times.map(x=>T.filter(t=>t.c<=x&&(!t.e||(((P.get(t.id)||0)>0)?Math.max(t.e,t.c+24*H):t.e)>x)).length);
-console.log('active with min24h only for topics that had a passing article: avg',(cond.reduce((a,b)=>a+b,0)/cond.length).toFixed(1),'max',Math.max(...cond));
+const Database = require("better-sqlite3");
+const db = new Database("/data/ripple.db", {
+  readonly: true,
+  fileMustExist: true,
+});
+const H = 3600e3,
+  START = Date.parse("2026-10-23T00:00:00+09:00"),
+  NOW = Date.now();
+const T = db
+  .prepare(
+    "select id,name,created_at c,ended_at e from topics where source='auto' and created_at>=? order by created_at,id",
+  )
+  .all(START);
+const P = new Map(
+  db
+    .prepare(
+      `select s.topic_id tid, sum(e.relevance>=6 and e.magnitude>=6) pass from evaluations e join stocks s on s.id=e.stock_id where s.kind='topic' group by 1`,
+    )
+    .all()
+    .map((r) => [r.tid, r.pass]),
+);
+const fmt = (t) =>
+  new Date(t + 9 * H).toISOString().slice(5, 16).replace("T", " ");
+console.log("visible topics (>=1 passing article):");
+for (const t of T.filter((t) => (P.get(t.id) || 0) > 0))
+  console.log(
+    `${t.id}\t${fmt(t.c)}\t${(((t.e ?? NOW) - t.c) / H) | 0}h\tpass ${P.get(t.id)}\t${t.name}`,
+  );
+const times = [...new Set(T.map((t) => t.c))].sort();
+const cond = times.map(
+  (x) =>
+    T.filter(
+      (t) =>
+        t.c <= x &&
+        (!t.e ||
+          ((P.get(t.id) || 0) > 0 ? Math.max(t.e, t.c + 24 * H) : t.e) > x),
+    ).length,
+);
+console.log(
+  "active with min24h only for topics that had a passing article: avg",
+  (cond.reduce((a, b) => a + b, 0) / cond.length).toFixed(1),
+  "max",
+  Math.max(...cond),
+);

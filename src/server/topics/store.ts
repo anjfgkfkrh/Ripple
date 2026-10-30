@@ -1,6 +1,18 @@
-import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  sql,
+} from "drizzle-orm";
 import type { Db } from "@/server/db/client";
 import {
+  articleMatches,
+  articles,
+  evaluations,
   keywords,
   MARKETS,
   stocks,
@@ -418,6 +430,68 @@ export function activeAutoTopics(db: Db): Topic[] {
     )
     .orderBy(asc(topics.id))
     .all();
+}
+
+/** 끝난 지 `since` 이후인 자동 토픽(같은 주제가 다시 나오면 되살릴 후보) */
+export function recentlyEndedAutoTopics(db: Db, since: Date): Topic[] {
+  return db
+    .select()
+    .from(topics)
+    .where(
+      and(
+        eq(topics.source, "auto"),
+        eq(topics.status, "ended"),
+        isNull(topics.deletedAt),
+        gte(topics.endedAt, since),
+      ),
+    )
+    .orderBy(asc(topics.id))
+    .all();
+}
+
+export type TopicArticleCounts = {
+  /** `since` 이후 발행된 기사 가운데 이 토픽의 항목에 걸린 수(화면 기준 통과 여부와 무관) */
+  matched: number;
+  /** 그 가운데 관련도·영향도가 기준 이상인(타임라인에 나오는) 수. 영향도 없는 옛 평가는 관련도만 본다 */
+  shown: number;
+};
+
+/** 토픽마다 `since` 이후 걸린 기사 수. 기사가 없는 토픽도 0으로 채운다. */
+export function topicArticleCounts(
+  db: Db,
+  topicIds: number[],
+  since: Date,
+  thresholds: { minRelevance: number; minMagnitude: number },
+): Map<number, TopicArticleCounts> {
+  const counts = new Map<number, TopicArticleCounts>(
+    topicIds.map((id) => [id, { matched: 0, shown: 0 }]),
+  );
+  if (topicIds.length === 0) return counts;
+  const rows = db
+    .select({
+      topicId: stocks.topicId,
+      matched: sql<number>`count(distinct ${articleMatches.articleId})`,
+      shown: sql<number>`count(distinct case when ${evaluations.relevance} >= ${thresholds.minRelevance} and (${evaluations.magnitude} is null or ${evaluations.magnitude} >= ${thresholds.minMagnitude}) then ${articleMatches.articleId} end)`,
+    })
+    .from(articleMatches)
+    .innerJoin(articles, eq(articles.id, articleMatches.articleId))
+    .innerJoin(stocks, eq(stocks.id, articleMatches.stockId))
+    .leftJoin(evaluations, eq(evaluations.matchId, articleMatches.id))
+    .where(
+      and(
+        eq(stocks.kind, "topic"),
+        inArray(stocks.topicId, topicIds),
+        gte(articles.publishedAt, since),
+      ),
+    )
+    .groupBy(stocks.topicId)
+    .all();
+  for (const row of rows) {
+    if (row.topicId !== null) {
+      counts.set(row.topicId, { matched: row.matched, shown: row.shown });
+    }
+  }
+  return counts;
 }
 
 /** 이 토픽들의 항목 id */

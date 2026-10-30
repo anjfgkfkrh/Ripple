@@ -50,6 +50,10 @@ export type PreviousTopic = {
   name: string;
   summary: string;
   terms: string[];
+  /** 최근 24시간에 이 토픽의 검색어에 걸린 기사 수 */
+  articles: number;
+  /** 이미 끝난 토픽(최근 48시간 안). 같은 주제가 다시 나오면 id를 지켜 되살린다 */
+  ended?: boolean;
 };
 
 /** 갱신 결과 토픽 하나(정리한 것) */
@@ -73,8 +77,10 @@ export function buildTopicRefreshMessages(input: {
       role: "system",
       content: [
         "너는 한국·미국 주식 투자자를 위해 지금 시장을 움직이는 토픽을 관리한다.",
-        `이전 토픽 목록과 그 뒤에 새로 나온 뉴스 제목을 보고, 지금 여러 종목의 주가에 영향을 줄 만한 토픽을 10~${MAX_TOPICS}개 정한다.`,
+        `이전 토픽 목록과 그 뒤에 새로 나온 뉴스 제목을 보고, 지금 여러 종목의 주가에 영향을 줄 만한 토픽을 최대 ${MAX_TOPICS}개 정한다. 그만큼 없으면 적게 정해도 된다.`,
         "- 이전 토픽이 계속 이어지면 그 id를 그대로 쓰고, 설명과 검색어는 새 소식에 맞게 고친다. 더 이상 다뤄지지 않는 토픽은 목록에서 뺀다. 새 토픽은 id를 빈 문자열로 둔다.",
+        "- 이전 토픽 뒤의 '기사 N건'은 최근 24시간에 그 토픽 검색어에 걸린 기사 수다. 새 제목에 없어도 기사가 계속 나오는 토픽은 뺄지 신중히 정한다.",
+        "- '끝남'이 붙은 토픽은 이미 끝난 것이다. 같은 주제가 다시 다뤄지면 새 토픽을 만들지 말고 그 id를 쓴다. 다뤄지지 않으면 목록에 넣지 않는다.",
         "- 여러 언론사·여러 기사가 다루는 토픽을 먼저 고른다. 정치·외교·전쟁·무역·정책·금리·환율·원자재·산업 동향처럼 여러 업종에 퍼지는 것을 우선한다. 연예·스포츠·사건사고·생활 정보와 회사 한 곳의 작은 소식은 뺀다.",
         "- 토픽 고르기는 내 종목과 상관없이 시장 전체 기준으로 한다.",
         "- name: 토픽 이름(짧은 명사구). summary: 지금 무슨 일이 있는지 한국어 한 줄(60자 이내). 제목에 나온 사실만 쓰고 추측하지 않는다.",
@@ -90,10 +96,10 @@ export function buildTopicRefreshMessages(input: {
         "",
         input.previous.length > 0
           ? [
-              "이전 토픽(id: 이름 — 설명 [검색어]):",
+              "이전 토픽(id: 이름 — 설명 [검색어] · 24시간 기사 N건):",
               ...input.previous.map(
                 (topic) =>
-                  `- ${topic.id}: ${topic.name} — ${topic.summary} [${topic.terms.join(", ")}]`,
+                  `- ${topic.id}: ${topic.name} — ${topic.summary} [${topic.terms.join(", ")}] · 기사 ${topic.articles}건${topic.ended ? " · 끝남" : ""}`,
               ),
             ].join("\n")
           : "이전 토픽: (없음)",
