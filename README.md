@@ -2,8 +2,9 @@
 
 보유 주식과 시장 전체에 관련된 뉴스를 자동으로 모으고 Jev(TypeSafe AI)로 관련도·영향도와 호재·악재를 골라 웹으로 보여 주는 개인용 앱. 집 노트북의 Docker에서 돌고, 휴대폰에서는 Cloudflare 임시 주소로 접속한다.
 
-- 요구사항·결정 기록: [SPEC.md](SPEC.md)
+- 기능 명세: [SPEC.md](SPEC.md)
 - 개발 현황과 이어서 하는 방법: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
+- 구현 세부 결정·실측·진행 기록: [docs/DECISIONS.md](docs/DECISIONS.md)
 
 ## 하는 일
 
@@ -176,7 +177,7 @@ ARCHS=arm64 scripts/release.sh   # 한 종류만 다시 만들 때
 
 ## 8. 개발
 
-자세한 현황·규칙·검사 절차는 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+자세한 현황·규칙·검사 절차는 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Claude Code(터미널)로 개발한다. 규칙은 `CLAUDE.md`, 권한·hook·skill(`/check`, `/deploy` 등)은 `.claude/`(DEVELOPMENT.md 4장).
 
 ```bash
 pnpm install
@@ -198,6 +199,7 @@ pnpm dev              # 터미널 2: web     http://localhost:3000
 | `pnpm lint` / `pnpm typecheck` / `pnpm format:check` | 검사 |
 | `pnpm test` | Vitest 단위·통합 테스트(실제 마이그레이션으로 만든 임시 DB) |
 | `pnpm test:e2e` | Playwright(데스크톱·Pixel 7). 가짜 외부 서비스(4200)와 시험용 worker(4100)·web(3100)을 띄워 화면을 검사하고 `test-results/`에 캡처한다. 유료 API나 실제 언론사를 부르지 않는다 |
+| `node scripts/check-secrets.mjs` | 커밋 전: 스테이징한 변경에 `.env`의 비밀 값·흔한 키 형식이 없는지 본다(값은 출력하지 않음). 푸시 전에는 `--history`로 모든 커밋 기록 |
 
 처음 쓸 때는 `pnpm exec playwright install chromium`.
 
@@ -237,13 +239,14 @@ src/server/schedule/ 정기 작업(다음 시각 계산, 1분 루프)
 src/server/db/      스키마, 연결, 마이그레이션 적용
 src/worker/         worker 진입점, 내부 API, 마이그레이션 진입점
 drizzle/            마이그레이션 SQL(drizzle-kit이 생성)
-scripts/            worker 번들, Docker용 스크립트
+scripts/            worker 번들, Docker용 스크립트, 릴리스 묶음, 커밋 전 비밀 값 검사
 tests/  e2e/        테스트 도우미·표본 파일, Playwright 테스트와 가짜 외부 서비스
-docs/               개발 현황(DEVELOPMENT.md)
+docs/               개발 현황·작업 방법(DEVELOPMENT.md), 구현 세부 결정·실측·진행 기록(DECISIONS.md)
+.claude/            Claude Code 설정(권한, hook)과 skill
 ```
 
 ### 참고
 
-- `AGENTS.md`는 `next dev`가 AI 코딩 에이전트를 감지하면 만들거나 고치는 파일이다(Next.js 기본 동작).
+- `AGENTS.md`는 `next dev`가 AI 코딩 에이전트를 감지하면 만들거나 고치는 파일이다(Next.js 기본 동작). `CLAUDE.md`가 `@AGENTS.md`로 가져온다(CLAUDE.md가 있으면 Claude Code는 AGENTS.md를 따로 읽지 않는다).
 - Docker 이미지에서는 Next.js의 사용 통계 전송을 끈다.
 - 시간 표시와 스케줄은 한국 시간(Asia/Seoul)이다.

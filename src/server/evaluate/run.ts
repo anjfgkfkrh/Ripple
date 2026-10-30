@@ -41,7 +41,7 @@ type Pending = {
 
 /**
  * 아직 평가하지 않은 최근 7일 기사–항목 연결(D-05). 화면에 나올 가능성이 큰 종목 이름·Finnhub 직접 연결을
- * 먼저, 그다음 최근 기사부터(실측: 키워드 연결은 90건 중 1건만 6점 이상, SPEC 11장).
+ * 먼저, 그다음 최근 기사부터(실측: 키워드 연결은 90건 중 1건만 6점 이상, docs/DECISIONS.md 2장).
  */
 export function pendingEvaluations(db: Db, now: Date = new Date()): Pending[] {
   const rows = db

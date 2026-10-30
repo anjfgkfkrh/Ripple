@@ -61,7 +61,7 @@ describe("readAuthConfig", () => {
   });
 });
 
-describe("최소 길이 (SPEC 12장: 비밀번호 7자, 서명 키 32자)", () => {
+describe("최소 길이 (docs/DECISIONS.md: 비밀번호 7자, 서명 키 32자)", () => {
   it("비밀번호는 7자부터 받고 6자는 거부한다", () => {
     expect(MIN_PASSWORD_LENGTH).toBe(7);
     expect(() =>

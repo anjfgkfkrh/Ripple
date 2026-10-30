@@ -51,7 +51,13 @@ next-env.d.ts
 # 릴리스 묶음(이미지 압축 파일, scripts/release.sh가 만듦)
 /release-dist/
 
+# Claude Code 개인 설정(공용 설정 .claude/settings.json만 커밋)
+/.claude/settings.local.json
+
 # playwright
 /test-results/
 /playwright-report/
 /playwright/.cache/
+
+# vim 스왑 파일
+*.swp

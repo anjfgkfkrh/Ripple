@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# 한 Dockerfile에서 타깃별 이미지를 만든다: worker(마이그레이션 포함) / web (SPEC 12장)
+# 한 Dockerfile에서 타깃별 이미지를 만든다: worker(마이그레이션 포함) / web (docs/DECISIONS.md)
 
 # ── 공통 베이스 ─────────────────────────────────────
 FROM node:24-trixie-slim AS base

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "enabledPlugins": {
+    "superpowers@anthropic-plugin-directory": false
+  },
+  "permissions": {
+    "allow": [
+      "Bash(pnpm lint *)",
+      "Bash(pnpm typecheck *)",
+      "Bash(pnpm format:check *)",
+      "Bash(pnpm test *)",
+      "Bash(pnpm test:e2e *)",
+      "Bash(pnpm build *)",
+      "Bash(pnpm build:worker *)",
+      "Bash(pnpm exec vitest run *)",
+      "Bash(pnpm exec playwright test *)",
+      "Bash(pnpm exec prettier --check *)",
+      "Bash(node scripts/check-secrets.mjs *)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Bash(docker compose up *)",
+      "Bash(docker compose down *)",
+      "Bash(docker compose build *)",
+      "Bash(docker compose rm *)",
+      "Bash(docker compose stop *)",
+      "Bash(docker compose restart *)",
+      "Bash(docker volume rm *)"
+    ],
+    "deny": ["Read(./.env)"]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/block-env.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/format.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

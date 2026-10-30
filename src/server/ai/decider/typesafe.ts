@@ -35,7 +35,7 @@ type Options = {
 };
 
 /**
- * TypeSafe 공식 SDK로 Jev를 부른다(SPEC 12장: MVP는 TypeScript SDK로 직접 호출).
+ * TypeSafe 공식 SDK로 Jev를 부른다(docs/DECISIONS.md: MVP는 TypeScript SDK로 직접 호출).
  * 기사는 관련도·영향도·호재/악재를, 키워드·토픽은 관련도·영향도를 한 요청에 묻는다(입력은 한 번만 센다).
  * 제한 시간(시도마다 10초)과 재시도(429·5xx·연결 오류는 두 번 더)는 SDK 기본값을 쓴다(실측 응답은 최대 0.6초).
  */
