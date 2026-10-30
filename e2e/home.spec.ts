@@ -31,6 +31,13 @@ test("상태 화면(/status): web이 DB(읽기 전용)와 worker 내부 API에 �
     );
     await expect(backup).toContainText("아직 없습니다");
   }
+  // 주가 받기 상태(13단계). 로컬 E2E는 정기 작업을 꺼서 받은 적이 없다.
+  const prices = page.getByTestId("prices-status");
+  if (process.env.E2E_BASE_URL) {
+    await expect(prices).toBeVisible();
+  } else {
+    await expect(prices).toContainText("아직 받은 적이 없습니다");
+  }
   // 시장 토픽 갱신 상태와 "지금 갱신"(11단계)
   const topics = page.getByTestId("topic-refresh");
   await expect(topics).toContainText("토픽 갱신");

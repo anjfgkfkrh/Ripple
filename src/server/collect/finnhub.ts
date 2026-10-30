@@ -14,6 +14,18 @@ export type FinnhubNews = {
   datetime: number;
 };
 
+/** 미국 종목 현재가(`/quote`, 13단계). 무료 키로 받을 수 있다(2026-10-30 확인, 한국 종목은 403). */
+export type FinnhubQuote = {
+  /** 현재가 */
+  price: number;
+  /** 전일 종가 대비 */
+  change: number;
+  /** 전일 대비 등락률(%) */
+  changePercent: number;
+  /** 시세 시각 */
+  quotedAt: Date;
+};
+
 export class FinnhubError extends Error {}
 
 export type FinnhubClient = {
@@ -23,14 +35,19 @@ export type FinnhubClient = {
   generalNews(): Promise<FinnhubNews[]>;
 };
 
+export type FinnhubQuoteClient = {
+  /** 값이 없으면(현재가 0) null. 무료 키로 못 받는 티커(모르는 티커·한국 종목)는 403으로 던진다(2026-10-30 확인) */
+  quote(symbol: string): Promise<FinnhubQuote | null>;
+};
+
 export function createFinnhubClient(options: {
   http: HttpClient;
   apiKey: string;
   baseUrl?: string;
-}): FinnhubClient {
+}): FinnhubClient & FinnhubQuoteClient {
   const base = (options.baseUrl ?? FINNHUB_BASE_URL).replace(/\/+$/, "");
 
-  async function get(path: string): Promise<FinnhubNews[]> {
+  async function get(path: string): Promise<unknown> {
     const response = await options.http.get(`${base}${path}`, {
       "X-Finnhub-Token": options.apiKey,
     });
@@ -49,6 +66,11 @@ export function createFinnhubClient(options: {
     } catch {
       throw new FinnhubError("Finnhub 응답을 읽지 못했습니다.");
     }
+    return body;
+  }
+
+  async function news(path: string): Promise<FinnhubNews[]> {
+    const body = await get(path);
     if (!Array.isArray(body))
       throw new FinnhubError("Finnhub 응답 형식이 다릅니다.");
     return body.filter(
@@ -63,10 +85,29 @@ export function createFinnhubClient(options: {
 
   return {
     companyNews: (symbol, from, to) =>
-      get(
+      news(
         `/company-news?symbol=${encodeURIComponent(symbol)}&from=${day(from)}&to=${day(to)}`,
       ),
-    generalNews: () => get("/news?category=general"),
+    generalNews: () => news("/news?category=general"),
+    async quote(symbol) {
+      const body = await get(`/quote?symbol=${encodeURIComponent(symbol)}`);
+      const q = (
+        typeof body === "object" && body !== null ? body : {}
+      ) as Record<string, unknown>;
+      const numbers = [q.c, q.d, q.dp, q.t];
+      if (!numbers.every((n) => typeof n === "number" || n === null)) {
+        throw new FinnhubError("Finnhub 응답 형식이 다릅니다.");
+      }
+      if (typeof q.c !== "number" || q.c <= 0 || typeof q.t !== "number") {
+        return null;
+      }
+      return {
+        price: q.c,
+        change: typeof q.d === "number" ? q.d : 0,
+        changePercent: typeof q.dp === "number" ? q.dp : 0,
+        quotedAt: new Date(q.t * 1000),
+      };
+    },
   };
 }
 

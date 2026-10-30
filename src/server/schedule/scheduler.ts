@@ -43,6 +43,8 @@ export function startScheduler(deps: {
   backup?: (now: Date) => Promise<{ file: string; bytes: number }>;
   /** 자동 토픽을 갱신한다(11단계). 성공하면 true. 던지지 않아야 한다. */
   refreshTopics?: () => Promise<boolean>;
+  /** 받을 때가 된 종목 주가를 받는다(13단계, 1분마다). 던지지 않아야 한다. */
+  refreshPrices?: () => Promise<unknown>;
   /** false면 정기 수집·키워드 자동 재생성을 하지 않는다(E2E용). 목록 확인은 한다. */
   jobsEnabled?: boolean;
   now?: () => Date;
@@ -54,6 +56,7 @@ export function startScheduler(deps: {
   let backupRunning = false;
   let backupRetryAt = -Infinity;
   let topicsRunning = false;
+  let pricesRunning = false;
 
   const tick = () => {
     const at = now();
@@ -98,6 +101,14 @@ export function startScheduler(deps: {
         } catch (error) {
           logError("토픽 갱신 확인 실패", error);
         }
+      }
+      // 주가(13단계): 1분마다. 장중인지는 refreshPrices가 종목마다 본다. 앞 회차가 길어지면 건너뛴다.
+      const refreshPrices = deps.refreshPrices;
+      if (refreshPrices && !pricesRunning) {
+        pricesRunning = true;
+        void refreshPrices().finally(() => {
+          pricesRunning = false;
+        });
       }
     }
     // 백업은 정기 작업을 꺼도(E2E) 폴더가 정해져 있으면 한다(D-27: 매일 04:00, 놓쳤으면 켜질 때).

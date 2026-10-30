@@ -30,6 +30,9 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
       TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+      KIS_APP_KEY: ${KIS_APP_KEY:-}
+      KIS_APP_SECRET: ${KIS_APP_SECRET:-}
+      KIS_ENV: ${KIS_ENV:-demo}
       # 자동 백업(D-27): 매일 04:00(한국 시간)에 여기로 남기고 최근 7개만 둔다.
       BACKUP_DIR: /backups
     volumes:

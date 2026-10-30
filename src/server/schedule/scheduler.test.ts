@@ -40,6 +40,7 @@ function setup(
     collector?: CollectionRunner;
     backup?: (now: Date) => Promise<{ file: string; bytes: number }>;
     refreshTopics?: () => Promise<boolean>;
+    refreshPrices?: () => Promise<unknown>;
   } = {},
 ) {
   const db = testDb();
@@ -73,6 +74,7 @@ function setup(
       jobsEnabled: options.jobsEnabled,
       backup: options.backup,
       refreshTopics: options.refreshTopics,
+      refreshPrices: options.refreshPrices,
       now: () => now,
       // 테스트에서는 tick()을 직접 부른다.
       tickMs: 24 * 60 * MIN,
@@ -285,5 +287,36 @@ describe("startScheduler (SPEC FR-6, D-31)", () => {
     writeSetting(t.db, "topics.intervalHours", 0);
     t.start();
     expect(calls).toEqual([]);
+  });
+
+  it("주가(13단계): 1분마다 부르고, 앞 회차가 끝나지 않았으면 건너뛰며, 정기 작업을 끄면 부르지 않는다", async () => {
+    let finish: (() => void) | null = null;
+    let calls = 0;
+    const refreshPrices = () => {
+      calls++;
+      return new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+    };
+    const t = setup({ refreshPrices });
+    const scheduler = t.start();
+    expect(calls).toBe(1);
+    t.advance(1);
+    scheduler.tick();
+    expect(calls).toBe(1);
+    finish!();
+    await new Promise((resolve) => setImmediate(resolve));
+    t.advance(1);
+    scheduler.tick();
+    expect(calls).toBe(2);
+
+    let disabledCalls = 0;
+    setup({
+      jobsEnabled: false,
+      refreshPrices: async () => {
+        disabledCalls++;
+      },
+    }).start();
+    expect(disabledCalls).toBe(0);
   });
 });

@@ -67,6 +67,9 @@ async function SystemStatusView() {
   const db = getWebDb();
   const lastBackupAt = readSetting(db, "backup.lastAt");
   const lastBackupFile = readSetting(db, "backup.lastFile");
+  const pricesCheckedAt = readSetting(db, "prices.checkedAt");
+  const pricesError = readSetting(db, "prices.error");
+  const pricesNote = readSetting(db, "prices.note");
 
   return (
     <dl className="mt-6 divide-y rounded-lg border">
@@ -93,6 +96,16 @@ async function SystemStatusView() {
         {lastBackupAt > 0
           ? `마지막 ${formatSeoulDateTime(new Date(lastBackupAt)).slice(5, 16)} · ${lastBackupFile} · 최근 7개 보관`
           : "아직 없습니다. Docker로 실행하면 매일 04:00에 backups 폴더에 남깁니다."}
+      </InfoRow>
+      <InfoRow label="주가(장중 1분마다)" testId="prices-status">
+        {[
+          pricesCheckedAt > 0
+            ? `마지막 ${formatSeoulDateTime(new Date(pricesCheckedAt)).slice(5, 16)}${pricesError ? ` · 오류: ${pricesError}` : ""}`
+            : "아직 받은 적이 없습니다.",
+          pricesNote,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
       </InfoRow>
       <div className="flex flex-col gap-1 p-4 sm:flex-row sm:justify-between">
         <dt className="text-sm text-muted-foreground">확인 시각 (한국 시간)</dt>

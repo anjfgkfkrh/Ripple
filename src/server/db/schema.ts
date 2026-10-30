@@ -447,3 +447,34 @@ export const evaluations = sqliteTable(
     index("evaluations_stock_relevance").on(table.stockId, table.relevance),
   ],
 );
+
+/** 주가를 받은 곳(13단계): 한국 종목은 한국투자증권 KIS, 미국 종목은 Finnhub */
+export const PRICE_SOURCES = ["kis", "finnhub"] as const;
+export type PriceSource = (typeof PRICE_SOURCES)[number];
+
+/**
+ * 종목 주가(13단계). worker가 장중 1분마다 받을 때마다 한 줄씩 쌓는다(덮어쓰지 않음).
+ * 값은 그 시장의 통화(한국 원, 미국 달러) 그대로 둔다.
+ */
+export const stockPrices = sqliteTable(
+  "stock_prices",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    stockId: integer("stock_id")
+      .notNull()
+      .references(() => stocks.id),
+    /** 현재가 */
+    price: real("price").notNull(),
+    /** 전일 종가(기준가) 대비. 오르면 +, 내리면 - */
+    change: real("change").notNull(),
+    /** 전일 대비 등락률(%) */
+    changePercent: real("change_percent").notNull(),
+    source: text("source", { enum: PRICE_SOURCES }).notNull(),
+    /** 받은 곳이 알려 준 시세 시각. 알려 주지 않으면(KIS 현재가) null */
+    quotedAt: integer("quoted_at", { mode: "timestamp_ms" }),
+    fetchedAt: integer("fetched_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    index("stock_prices_stock_fetched").on(table.stockId, table.fetchedAt),
+  ],
+);

@@ -43,6 +43,14 @@ function seedTimeline(): { melcon: number; nano: number } {
           );
         const melcon = stockId("179880", "멜콘", "KOSDAQ");
         const nano = stockId("238540", "나노솔루션", "KONEX");
+        // 주가(13단계): 멜콘은 오르고 나노솔루션은 내린다. 멜콘은 앞 값보다 새 값이 보여야 한다.
+        const insertPrice = db.prepare(
+          `insert into stock_prices (stock_id, price, change, change_percent, source, fetched_at)
+           values (?, ?, ?, ?, 'kis', ?)`,
+        );
+        insertPrice.run(melcon, 15000, 0, 0, now - 2 * MIN);
+        insertPrice.run(melcon, 15230, 230, 1.53, now - MIN);
+        insertPrice.run(nano, 4120, -55, -1.32, now - MIN);
 
         let serial = 0;
         const insertArticle = db.prepare(
@@ -249,6 +257,16 @@ const chip = (filters: Locator, group: string, name: string) =>
   filters
     .getByRole("navigation", { name: `${group} 필터` })
     .getByRole("link", { name, exact: true });
+/**
+ * 읽음 저장(서버 액션 POST)이 끝날 때까지 기다린다. 화면은 낙관적으로 먼저 바뀌므로, 기다리지 않고
+ * 새로 고치면 저장 전 DB로 그려져 간헐 실패했다(2026-10-30, HEAD에서도 10번 중 1번).
+ */
+const readSaved = (page: import("@playwright/test").Page) =>
+  page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      response.request().headers()["next-action"] !== undefined,
+  );
 
 test.describe("타임라인 (SPEC FR-7, D-25, D-26)", () => {
   test("종목·영향 필터, 여러 종목 카드, 같은 제목 묶기, 더 보기", async ({
@@ -332,6 +350,40 @@ test.describe("타임라인 (SPEC FR-7, D-25, D-26)", () => {
       fullPage: true,
       animations: "disabled",
     });
+  });
+
+  test("맨 위 주가 띠: 최근 값, 상승 빨강·하락 파랑, 누르면 그 종목 기사만(13단계)", async ({
+    page,
+  }, testInfo) => {
+    seedTimeline();
+    await login(page);
+    await page.goto("/");
+    const strip = page.getByTestId("price-strip");
+    const melcon = strip.getByTestId("price-item").filter({ hasText: "멜콘" });
+    const nano = strip
+      .getByTestId("price-item")
+      .filter({ hasText: "나노솔루션" });
+    // 스트리밍된 결과는 숨겨진 채 DOM에 먼저 들어오므로 "보이는지"까지 기다린다.
+    await expect(melcon).toBeVisible();
+    await expect(melcon).toContainText("15,230원");
+    await expect(melcon.getByTestId("price-change")).toHaveText("▲230 +1.53%");
+    await expect(melcon.getByTestId("price-change")).toHaveClass(/text-red/);
+    await expect(nano.getByTestId("price-change")).toHaveText("▼55 -1.32%");
+    await expect(nano.getByTestId("price-change")).toHaveClass(/text-blue/);
+    await expect(melcon).toContainText("기준");
+    await page.screenshot({ path: testInfo.outputPath("price-strip.png") });
+
+    await melcon.click();
+    await expect(page).toHaveURL(/\?stock=\d+$/);
+    await expect(melcon).toHaveAttribute("aria-current", "true");
+    await expect(
+      page
+        .getByRole("navigation", { name: "항목 필터" })
+        .getByRole("link", { name: "멜콘" }),
+    ).toHaveAttribute("aria-current", "true");
+    // 한 번 더 누르면 풀린다.
+    await melcon.click();
+    await expect(page).toHaveURL(/\/$/);
   });
 
   test("맨 위 '지금 시장 이슈' 토픽 카드: 누르면 그 토픽 기사만, 식은 토픽은 '이전 이슈'로 접는다(11단계)", async ({
@@ -430,8 +482,10 @@ test.describe("타임라인 (SPEC FR-7, D-25, D-26)", () => {
 
     // 제목 링크를 누르면 새 탭이 열리고, 이 카드는 읽음이 된다. 다른 카드는 그대로다.
     const popup = context.waitForEvent("page");
+    const loneSaved = readSaved(page);
     await lone.getByRole("link", { name: loneTitle }).click();
     await (await popup).close();
+    await loneSaved;
     await expect(lone).toHaveAttribute("data-read", "true");
     await expect(lone.getByTestId("read-label")).toBeVisible();
     await expect(lone.getByTestId("read-toggle")).toHaveText("안 읽음으로");
@@ -451,20 +505,26 @@ test.describe("타임라인 (SPEC FR-7, D-25, D-26)", () => {
 
     // 묶인 카드는 '외 N곳' 링크를 눌러도 카드 전체가 읽음이 된다. 버튼으로 되돌린다.
     const other = context.waitForEvent("page");
+    const groupSaved = readSaved(page);
     await group.getByRole("link", { name: "가짜일보" }).click();
     await (await other).close();
+    await groupSaved;
     await expect(group).toHaveAttribute("data-read", "true");
     await page.reload();
     await expect(group).toHaveAttribute("data-read", "true");
+    const unreadSaved = readSaved(page);
     await group.getByTestId("read-toggle").click();
     await expect(group).toHaveAttribute("data-read", "false");
+    await unreadSaved;
     await page.reload();
     await expect(group).toHaveAttribute("data-read", "false");
     await expect(lone).toHaveAttribute("data-read", "true");
 
     // 버튼으로 읽음 표시하면 링크를 열지 않아도 읽음이 된다.
+    const readAgainSaved = readSaved(page);
     await group.getByTestId("read-toggle").click();
     await expect(group).toHaveAttribute("data-read", "true");
+    await readAgainSaved;
     await page.reload();
     await expect(group).toHaveAttribute("data-read", "true");
   });

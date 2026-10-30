@@ -4,6 +4,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { requireSession } from "@/server/auth/guard";
 import { getWebDb } from "@/server/db/web";
 import { countPendingEvaluations } from "@/server/evaluate/read";
+import { readPriceStrip } from "@/server/prices/store";
 import { listActiveStocks } from "@/server/stocks/repository";
 import {
   parseTimelineParams,
@@ -19,6 +20,7 @@ import {
   listUserTopicItems,
   topicName,
 } from "@/server/topics/read";
+import { PriceStrip } from "./price-strip";
 import { TimelineCardView } from "./timeline-card";
 import { TimelineFilters, timelineHref } from "./timeline-filters";
 import { TopicCards } from "./topic-cards";
@@ -98,6 +100,7 @@ async function Timeline({ searchParams }: { searchParams: SearchParams }) {
         관련도 {minRelevance}점·영향도 {minMagnitude}점 이상인 기사를 최신순으로
         보여 줍니다.
       </p>
+      <PriceStrip items={readPriceStrip(db, now)} filter={filter} now={now} />
       <TopicCards cards={topicCards} filter={filter} now={now} />
       <TimelineFilters
         stocks={stocks.map((stock) => ({

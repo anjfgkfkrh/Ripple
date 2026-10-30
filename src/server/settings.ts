@@ -45,6 +45,10 @@ export const SETTING_DEFAULTS: {
   /** 공식 종목 목록을 마지막으로 받은 시각(ms). 0이면 아직 없음 */
   "listings.syncedAt.KR": number;
   "listings.syncedAt.US": number;
+  /** 주가(13단계): 마지막으로 받기를 마친 시각(ms), 그 회차의 오류(없으면 빈 값), 키가 없어 못 받는 시장 안내 */
+  "prices.checkedAt": number;
+  "prices.error": string;
+  "prices.note": string;
 } = {
   "llm.model": "anthropic/claude-haiku-5.5",
   "budget.monthlyUsd": 5,
@@ -69,6 +73,9 @@ export const SETTING_DEFAULTS: {
   "backup.lastFile": "",
   "listings.syncedAt.KR": 0,
   "listings.syncedAt.US": 0,
+  "prices.checkedAt": 0,
+  "prices.error": "",
+  "prices.note": "",
 };
 
 export type SettingKey = keyof typeof SETTING_DEFAULTS;

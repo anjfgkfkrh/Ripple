@@ -6,6 +6,7 @@ import { TYPESAFE_BASE_URL } from "@/server/ai/decider/typesafe";
 import { FINNHUB_BASE_URL } from "@/server/collect/finnhub";
 import { readPort, requireEnv } from "@/server/env";
 import { LISTING_SOURCES, type ListingSources } from "@/server/listings/sync";
+import type { KisEnv } from "@/server/prices/kis";
 
 type Env = Record<string, string | undefined>;
 
@@ -29,6 +30,10 @@ export type WorkerConfig = {
   schedulerJobsEnabled: boolean;
   /** 자동 백업 폴더(D-27). 없으면 백업하지 않는다(Docker는 /backups). */
   backupDir: string | undefined;
+  /** 한국 종목 주가(13단계, 한국투자증권 KIS). 키·시크릿 중 하나라도 없으면 null */
+  kis: { appKey: string; appSecret: string; env: KisEnv } | null;
+  /** 없으면 KIS_ENV에 맞는 공식 주소 */
+  kisBaseUrl: string | undefined;
 };
 
 const rssFeedsOverride = z
@@ -43,7 +48,7 @@ const rssFeedsOverride = z
   .min(1);
 
 /**
- * 원천 주소 재정의(OPENROUTER_BASE_URL, LISTING_*_URL, FINNHUB_BASE_URL, TYPESAFE_BASE_URL, RSS_FEEDS_JSON)는
+ * 원천 주소 재정의(OPENROUTER_BASE_URL, LISTING_*_URL, FINNHUB_BASE_URL, TYPESAFE_BASE_URL, KIS_BASE_URL, RSS_FEEDS_JSON)는
  * 테스트에서 가짜 서버를 쓰기 위한 것이다. SCHEDULER_DISABLED도 테스트용이다(E2E가 정기 수집과 겹치지 않게).
  */
 export function readWorkerConfig(env: Env = process.env): WorkerConfig {
@@ -70,7 +75,20 @@ export function readWorkerConfig(env: Env = process.env): WorkerConfig {
       env.SCHEDULER_DISABLED?.trim().toLowerCase() ?? "",
     ),
     backupDir: env.BACKUP_DIR?.trim() || undefined,
+    kis: readKis(env),
+    kisBaseUrl: env.KIS_BASE_URL?.trim() || undefined,
   };
+}
+
+function readKis(env: Env): WorkerConfig["kis"] {
+  const appKey = env.KIS_APP_KEY?.trim();
+  const appSecret = env.KIS_APP_SECRET?.trim();
+  if (!appKey || !appSecret) return null;
+  const kind = env.KIS_ENV?.trim().toLowerCase() || "demo";
+  if (kind !== "demo" && kind !== "real") {
+    throw new Error("KIS_ENV는 demo(모의투자) 또는 real(실전)이어야 합니다.");
+  }
+  return { appKey, appSecret, env: kind };
 }
 
 function readRssFeeds(json: string | undefined): RssFeed[] {

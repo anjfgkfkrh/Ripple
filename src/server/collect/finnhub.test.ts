@@ -94,4 +94,33 @@ describe("createFinnhubClient", () => {
       createFinnhubClient({ http: obj.http, apiKey: "k" }).generalNews(),
     ).rejects.toThrow("형식이 다릅니다");
   });
+
+  it("현재가(13단계): 2026-10-30 실제 응답 형식을 읽고, 현재가가 0이면 null", async () => {
+    const { http, calls } = fakeHttp(() => ({
+      status: 200,
+      text: '{"c":348.91,"d":5.08,"dp":1.4775,"h":351.43,"l":347.3,"o":348,"pc":343.83,"t":1793304000}',
+    }));
+    expect(
+      await createFinnhubClient({ http, apiKey: "k" }).quote("BRK.B"),
+    ).toEqual({
+      price: 348.91,
+      change: 5.08,
+      changePercent: 1.4775,
+      quotedAt: new Date(1_793_304_000_000),
+    });
+    expect(calls[0].url).toBe("https://finnhub.io/api/v1/quote?symbol=BRK.B");
+    expect(calls[0].headers).toEqual({ "X-Finnhub-Token": "k" });
+
+    const empty = fakeHttp(() => ({
+      status: 200,
+      text: '{"c":0,"d":null,"dp":null,"h":0,"l":0,"o":0,"pc":0,"t":0}',
+    }));
+    expect(
+      await createFinnhubClient({ http: empty.http, apiKey: "k" }).quote("X"),
+    ).toBeNull();
+    const odd = fakeHttp(() => ({ status: 200, text: '{"c":"1"}' }));
+    await expect(
+      createFinnhubClient({ http: odd.http, apiKey: "k" }).quote("X"),
+    ).rejects.toThrow("형식이 다릅니다");
+  });
 });

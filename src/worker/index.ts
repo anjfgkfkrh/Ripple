@@ -15,6 +15,8 @@ import {
 import { log, logError } from "@/server/log";
 import { isOpenRouterModel } from "@/server/ai/llm/models";
 import { backupDatabase } from "@/server/backup";
+import { createKisClient } from "@/server/prices/kis";
+import { createPriceRefresher } from "@/server/prices/run";
 import { startScheduler } from "@/server/schedule/scheduler";
 import { createTopicRefresher } from "@/server/topics/run";
 import { ensureDefaultMarket } from "@/server/topics/store";
@@ -54,19 +56,36 @@ async function main(): Promise<void> {
     log("TYPESAFE_API_KEY가 없어 기사 평가(Jev)는 하지 않습니다.");
   }
   const http = createHttpClient();
+  const finnhub = config.finnhubApiKey
+    ? createFinnhubClient({
+        http,
+        apiKey: config.finnhubApiKey,
+        baseUrl: config.finnhubBaseUrl,
+      })
+    : null;
   const collector = createCollectionRunner({
     db,
     http,
     robots: createRobotsChecker(http),
     feeds: config.rssFeeds,
-    finnhub: config.finnhubApiKey
-      ? createFinnhubClient({
-          http,
-          apiKey: config.finnhubApiKey,
-          baseUrl: config.finnhubBaseUrl,
-        })
-      : null,
+    finnhub,
     decider,
+  });
+
+  // 종목 주가(13단계): 한국은 KIS, 미국은 Finnhub. 키가 없는 쪽은 받지 않는다.
+  if (!config.kis) {
+    log("KIS_APP_KEY·KIS_APP_SECRET이 없어 한국 종목 주가는 받지 않습니다.");
+  } else {
+    log(
+      `한국 종목 주가: 한국투자증권 KIS(${config.kis.env === "demo" ? "모의투자" : "실전"} 키)`,
+    );
+  }
+  const priceRefresher = createPriceRefresher({
+    db,
+    kis: config.kis
+      ? createKisClient({ ...config.kis, baseUrl: config.kisBaseUrl })
+      : null,
+    finnhub,
   });
 
   // 자동 토픽 갱신(11단계): 정기 갱신과 "지금 갱신"이 같이 쓴다.
@@ -111,6 +130,7 @@ async function main(): Promise<void> {
     jobsEnabled: config.schedulerJobsEnabled,
     backup: backupDir ? (now) => backupDatabase(db, backupDir, now) : undefined,
     refreshTopics: () => topicRefresher.refresh(),
+    refreshPrices: () => priceRefresher.refresh(),
   });
 
   let stopping = false;

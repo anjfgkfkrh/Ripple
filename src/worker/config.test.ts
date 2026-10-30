@@ -26,7 +26,38 @@ describe("readWorkerConfig", () => {
       typesafeBaseUrl: "https://api.typesafe.ai",
       schedulerJobsEnabled: true,
       backupDir: undefined,
+      kis: null,
+      kisBaseUrl: undefined,
     });
+  });
+
+  it("KIS(13단계): 키·시크릿이 다 있어야 쓰고, 종류는 기본 모의투자, 잘못 쓰면 시작하지 않는다", () => {
+    const base = { DATABASE_PATH: "./x.db", WORKER_API_TOKEN: TOKEN };
+    expect(readWorkerConfig({ ...base, KIS_APP_KEY: "k" }).kis).toBeNull();
+    expect(
+      readWorkerConfig({ ...base, KIS_APP_KEY: " k ", KIS_APP_SECRET: "s" })
+        .kis,
+    ).toEqual({ appKey: "k", appSecret: "s", env: "demo" });
+    expect(
+      readWorkerConfig({
+        ...base,
+        KIS_APP_KEY: "k",
+        KIS_APP_SECRET: "s",
+        KIS_ENV: "REAL",
+        KIS_BASE_URL: "http://127.0.0.1:4200/kis",
+      }),
+    ).toMatchObject({
+      kis: { env: "real" },
+      kisBaseUrl: "http://127.0.0.1:4200/kis",
+    });
+    expect(() =>
+      readWorkerConfig({
+        ...base,
+        KIS_APP_KEY: "k",
+        KIS_APP_SECRET: "s",
+        KIS_ENV: "mock",
+      }),
+    ).toThrow("KIS_ENV");
   });
 
   it("BACKUP_DIR가 있으면 그 폴더에 자동 백업한다", () => {

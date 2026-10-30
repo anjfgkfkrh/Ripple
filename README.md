@@ -13,8 +13,9 @@
 3. 3시간마다(설정) 모은 기사 제목으로 AI가 지금 시장을 움직이는 토픽을 다시 잡고, 영향을 받을 내 종목에 그 토픽 가지를 붙인다.
 4. 30분마다 언론사 RSS 29곳과 Finnhub(미국 종목)에서 종목 이름·키워드가 들어간 기사를 모은다.
 5. Jev가 기사마다 관련도·영향도(0~10)와 호재·악재·중립을 매긴다. 같은 소식을 여러 언론사가 낸 기사는 한 번만 묻는다.
-6. 타임라인(홈) 맨 위에 '지금 시장 이슈' 토픽 카드를, 아래에 관련도·영향도가 둘 다 6점 이상인 기사를 최신순으로 보여 준다. 항목(종목·시장·주제)·호재/악재로 거를 수 있다.
-7. 매일 04:00에 DB를 이 컴퓨터의 `backups` 폴더에 백업한다.
+6. 타임라인(홈) 맨 위에 종목 주가 띠와 '지금 시장 이슈' 토픽 카드를, 아래에 관련도·영향도가 둘 다 6점 이상인 기사를 최신순으로 보여 준다. 항목(종목·시장·주제)·호재/악재로 거를 수 있다.
+7. 장중 1분마다 등록 종목의 주가(한국은 한국투자증권 KIS, 미국은 Finnhub)를 받는다.
+8. 매일 04:00에 DB를 이 컴퓨터의 `backups` 폴더에 백업한다.
 
 ## 1. 처음 설치
 
@@ -33,7 +34,9 @@ cp .env.example .env    # 아직 .env가 없을 때만
 | `WORKER_API_TOKEN` | 필수 | 32자 이상 무작위 값(web↔worker 내부 토큰): `openssl rand -base64 48` |
 | `OPENROUTER_API_KEY` | 필수 | 종목 찾기·키워드 만들기(https://openrouter.ai). 키에 사용 한도를 걸어 두길 권장 |
 | `TYPESAFE_API_KEY` | 필수 | 기사 평가 Jev(https://console.typesafe.ai). 없으면 기사는 모으고 평가는 미룬다 |
-| `FINNHUB_API_KEY` | 선택 | 미국 종목 뉴스(무료 가입 https://finnhub.io). 없으면 미국 뉴스는 건너뛴다 |
+| `FINNHUB_API_KEY` | 선택 | 미국 종목 뉴스와 주가(무료 가입 https://finnhub.io). 없으면 미국 뉴스·주가는 건너뛴다 |
+| `KIS_APP_KEY`, `KIS_APP_SECRET` | 선택 | 한국 종목 주가(한국투자증권 계좌로 KIS Developers https://apiportal.koreainvestment.com 에서 앱 키 발급). 없으면 한국 종목 주가는 보이지 않는다 |
+| `KIS_ENV` | 선택 | KIS 앱 키 종류: `demo`(모의투자, 기본) 또는 `real`(실전). 키가 새어도 실제 계좌로 주문되지 않게 모의투자 키를 권한다 |
 
 그리고 켠다(처음엔 이미지를 만드느라 몇 분 걸린다).
 
@@ -138,12 +141,19 @@ docker compose up -d --build
 - 발행 시각이 없거나 받은 시각보다 10분 넘게 미래면(국민일보 지면 기사) 처음 받은 시각으로 저장한다.
 - 받기 전에 robots.txt를 확인하고, 같은 사이트에는 1.1초 이상 간격을 두고, User-Agent에 개인용 RSS 리더임을 밝힌다.
 
+### 주가
+- 타임라인 맨 위 띠에 등록 종목의 현재가·전일 대비·등락률·기준 시각을 보여 준다(상승 빨강 ▲, 하락 파랑 ▼). 누르면 그 종목 기사만 보인다.
+- 한국 종목은 한국투자증권 KIS Open API(통합 시세: KRX+넥스트레이드), 미국 종목은 Finnhub `/quote`. 시세 조회만 하고 주문은 하지 않는다.
+- 장중(한국 평일 08:00~20:00, 미국 뉴욕 평일 09:30~16:00)에 1분마다 받아 이력으로 쌓는다. 장 밖에는 마지막 값과 "장 마감"을 보여 준다. 휴장일 달력은 없어 휴장일에도 같은 값을 받는다.
+- 화면은 자동으로 새로 고치지 않는다. 새로 고치면 가장 최근 값이 보인다. 받기 상태와 오류는 상태 화면에서 본다.
+
 ### 정기 작업
 | 작업 | 언제 |
 |---|---|
 | 기사 수집·평가 | 마지막 성공 회차 + 30분(설정). 예정보다 5분 넘게 늦으면 '누락 보정'. 회차 전체가 실패하면 5분 뒤 다시. 종목·시장·주제가 하나도 없으면 쉰다 |
 | 키워드 다시 만들기 | 매일 06:00(놓쳤으면 켜질 때 한 번) |
 | 시장 토픽 갱신 | 마지막 갱신 + 3시간(설정)이나 정한 시각 중 먼저 오는 때(놓쳤으면 켜질 때 한 번). 실패하면 30분 뒤 다시 |
+| 주가 | 1분마다 확인, 장중인 시장의 종목만(한 번도 못 받은 종목은 장 밖이어도 한 번) |
 | 백업 | 매일 04:00(놓쳤으면 켜질 때 한 번) |
 | 공식 종목 목록 | 30분마다 확인, 7일 지났을 때만 받음 |
 
@@ -190,7 +200,7 @@ pnpm dev              # 터미널 2: web     http://localhost:3000
 - Docker의 web도 3000번을 쓰므로 함께 띄우지 않는다(또는 Docker 쪽을 `WEB_PORT`로 바꾼다).
 - 스키마 변경: `src/server/db/schema.ts`를 고친 뒤 `pnpm db:generate --name <이름>`, `pnpm db:migrate`.
 - UI 부품 추가: `pnpm dlx shadcn@latest add <이름>`(shadcn/ui, Base UI 기반) 뒤 `pnpm format`.
-- 환경변수는 `.env.example`. Docker에서는 compose가 컨테이너용 값을 정하고 비밀 값만 `.env`에서 필요한 컨테이너에 넘긴다(로그인 값은 web, AI·Finnhub 키는 worker, 내부 토큰은 둘 다).
+- 환경변수는 `.env.example`. Docker에서는 compose가 컨테이너용 값을 정하고 비밀 값만 `.env`에서 필요한 컨테이너에 넘긴다(로그인 값은 web, AI·Finnhub·KIS 키는 worker, 내부 토큰은 둘 다).
 
 ### 검사·테스트
 
@@ -209,7 +219,7 @@ pnpm dev              # 터미널 2: web     http://localhost:3000
 
 ```bash
 # 시험용 띄우기: 포트 3300, 백업 .check-backups, AI 키 비움(비용 없음), 시험 비밀번호
-WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups OPENROUTER_API_KEY= TYPESAFE_API_KEY= FINNHUB_API_KEY= \
+WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups OPENROUTER_API_KEY= TYPESAFE_API_KEY= FINNHUB_API_KEY= KIS_APP_KEY= KIS_APP_SECRET= \
   APP_PASSWORD=e2e-password-not-secret SESSION_SECRET=e2e-session-secret-not-for-production-use \
   docker compose -p ripple-check up -d --build
 E2E_BASE_URL=http://127.0.0.1:3300 pnpm test:e2e   # 가짜 서비스·시험 DB가 필요한 테스트는 건너뜀
@@ -234,6 +244,7 @@ src/server/keywords/ 연관 키워드: 프롬프트·트리 검증, 참고할 �
 src/server/collect/ 기사 수집: RSS 목록·읽기, 요청 간격, robots.txt, 종목 연결, Finnhub, 피드 제목 보관, 보관한 제목으로 지난 기사 걸기, 회차 실행, 읽기
 src/server/evaluate/ 기사 평가 흐름(같은 소식 점수 재사용)과 읽기
 src/server/topics/  시장·주제 항목과 토픽 저장, 토픽 갱신(계획·프롬프트·실행), 화면 읽기
+src/server/prices/  주가(13단계): KIS 클라이언트, 장 시간, 받기 실행, 저장·화면 읽기
 src/server/timeline/ 타임라인 읽기(필터·같은 소식 묶기·더 보기·토픽 카드)
 src/server/schedule/ 정기 작업(다음 시각 계산, 1분 루프)
 src/server/db/      스키마, 연결, 마이그레이션 적용

@@ -14,7 +14,7 @@
 
 ## 1. 지금 상태
 
-마지막 갱신: 2026-10-30 14:30 (한국 시간), 토픽 유지 개선 배포 끝, 첫 정기 갱신 로그 확인 대기
+마지막 갱신: 2026-10-30 15:44 (한국 시간), 13단계 구현·검사 끝(커밋 전), KIS 키로 실제 확인 대기
 
 - **토픽 유지 개선(끝, 커밋 `46e3f58`, 2026-10-30 14:14 본 Docker 배포, 기록은 DECISIONS.md 3장)**: 남은 것은 첫 정기 토픽 갱신(6시간 간격, 마지막 09:57이라 약 16:00 이후) 확인뿐. `docker compose logs worker | grep "토픽 갱신"`에서 "이어짐 N(되살림 N), 유지 N, 새로 N, 끝남 N" 줄이 나오고 "토픽 갱신 실패"가 없는지 본다. 실패(최대 토큰 등)가 보이면 `debugging`으로 원인부터. 로그 읽기라 무료.
 - **단계**: 0~12단계 완료, 본 Docker는 토픽 유지 개선까지 배포됨. 12단계 휴대폰·PC 화면 확인 결과는 기록이 없다. **13단계(보유 종목 현재 주가창) 시작(2026-10-30)**: 사용자 답 1A 2B 3A 4B 5A 6A 7A 8A(DECISIONS.md 1장 "13단계" 줄). 토픽 유지 개선 배포 기록은 `/stage-start`로 커밋함.
@@ -22,7 +22,11 @@
 - **사용자 답 대기: 키워드·채점 점검의 개선안 I1~I9(2026-10-30, DECISIONS.md 2장 "키워드·채점 점검")**: 코드 오류 B1·B2 수정과 개선 후보. I4·I6·I8은 아래 AI 비용 질문과 겹치므로 합쳐 A/B·추천으로 다시 묻는다.
 - **사용자 답 대기: AI 비용 줄이기(2026-10-23, 무료 조사만, 구현 전)**: 본 DB 사용량으로 월 약 $2.6 추정. 조사 결과는 DECISIONS.md 2장 "AI 비용 줄이기 조사".
   - 사용자에게 물은 것: 토픽 갱신 모델 교체(품질 비교 유료), 일본어 제목 빼기, Jev 질문 문구 줄이기(유료 비교), 시장·토픽을 기사당 한 번에 묻기, 키워드 재생성 매주, 토픽 수·갱신 간격, 목표 금액. 답을 받으면 DECISIONS.md 1장에 적고 시작
-- **다음**: 13단계 세부 질문의 답을 받아 구현. 토픽 유지 개선의 첫 정기 갱신 로그 확인(위)도 남음. 위 답 대기 두 건은 13단계 뒤에 묻는다. 키워드·채점 점검의 B1(키워드 생성 실패 3건, 사용량 0토큰)은 "숨은 추론 토큰이 max_tokens를 먹는다"는 이번 발견도 원인 후보로 본다(DECISIONS.md 2장).
+- **13단계(보유 종목 주가 띠): 구현·검사 끝, 2026-10-30 커밋**: 결정은 DECISIONS.md 1장 "13단계"·"13단계 세부"·"13단계 구현 세부" 줄. 한 일: `src/server/prices/`(KIS 클라이언트·장 시간·1분마다 받기·저장/띠 읽기), Finnhub `quote`, 표 `stock_prices`(마이그레이션 0010), 스케줄러 `refreshPrices`, 타임라인 띠 `price-strip.tsx`, 상태 화면 "주가" 줄, 환경 변수 `KIS_APP_KEY`·`KIS_APP_SECRET`·`KIS_ENV`(compose·`.env.example`), SPEC(FR-11 등)·README. 12단계 읽음 E2E 간헐 실패도 시험 쪽에서 고침(DECISIONS.md 1장). 마지막 `/check`: 서식·린트·타입·단위 446개·빌드(web·worker)·E2E 39개 통과(건너뜀 5개는 모바일). 화면 캡처(데스크톱·휴대폰) 직접 확인.
+  - **KIS 실제 확인 끝(2026-10-30 15:49~15:55, 시험용 Docker, 무료, DECISIONS.md 2장 "13단계 KIS 실제 확인")**: 사용자가 모의투자 키를 `.env`에 넣음. 모의 서버의 통합(`UN`) 현재가, 토큰 하루 유효, worker 1분마다 저장, 띠·상태 화면 모두 확인. 시험용 Docker는 내리고 이미지도 지움.
+  - **남은 확인**: ① 모의 서버 값이 실전과 같은지(사용자가 증권 앱과 대조, 15:49 `UN` 현대건설 83,500·두산에너빌리티 54,600) ② KIS 미국 시세가 실시간인지(미국 장중 22:30 이후 KIS `last`와 Finnhub `c` 비교, 실시간이면 미국도 KIS로 바꿀지 묻기, 결정 ⑤) ③ 본 Docker 배포 뒤 로그 "주가 받기"와 상태 화면. 같은 키를 두 곳(본·시험 Docker)에서 쓰면 토큰 발급이 1분에 1번이라 서로 막는다(시험용은 `/real-check`대로 KIS 키를 비울 것).
+  - 이력 보관: 지금은 무기한(한국 종목 하나에 하루 약 725줄). 줄일지 사용자에게 아직 묻지 않음.
+- **다음**: 사용자 확인 뒤 13단계 커밋(요청 시), 배포는 `/deploy`(요청 시), 위 남은 확인. 토픽 유지 개선의 첫 정기 갱신 로그 확인(위)도 남음. 위 답 대기 두 건은 13단계 뒤에 묻는다. 키워드·채점 점검의 B1(키워드 생성 실패 3건, 사용량 0토큰)은 "숨은 추론 토큰이 max_tokens를 먹는다"는 이번 발견도 원인 후보로 본다(DECISIONS.md 2장).
 - 지난 진행 기록(단계별 체크리스트·배포 기록)은 DECISIONS.md 3장.
 
 ## 2. 단계별 현황
@@ -41,6 +45,7 @@
 | 12 | 읽은 기사 표시(링크 클릭·버튼, 서버 저장, 묶인 카드 단위) | 완료(2026-10-28 배포) | `05930df` |
 | - | 개발 환경 정리(문서 나누기, `.claude/`, 비밀 값 검사) | 완료(2026-10-30 커밋) | `4c4f259` |
 | - | 토픽 유지 개선(24시간 기사 수로 유지, 끝난 토픽 되살림, 최대 토큰 10,000) | 완료(2026-10-30 배포) | `46e3f58` |
+| 13 | 보유 종목 주가 띠(한국 KIS, 미국 Finnhub, 장중 1분, 이력) | 구현·검사 끝, KIS 실제 확인 전 | 커밋 전 |
 
 릴리스: **v0.1.0 (MVP)**, 태그 `v0.1.0`. **v0.2.0**(2026-10-23, 10·11단계: 시사·시장 토픽·Jev 점수 기반·같은 소식 묶기·항목별 비용), 태그 `v0.2.0`, GitHub 릴리스 페이지에 `gh release create`로 올림(이제 `gh`가 있음, 커밋 `4626733`).
 
@@ -78,7 +83,7 @@ E2E에서 알아 둘 것
 - 되풀이 실행: `pnpm exec playwright test e2e/auth.spec.ts --repeat-each=10`(접속자 라벨에 되풀이 번호가 붙어 실패 제한이 섞이지 않음).
 
 시험용 Docker(본 Docker와 볼륨·포트·백업 폴더를 나눔, 2026-10-21 9단계에서 씀). 백업 사본을 넣는 법과 실제 AI 확인까지 담은 절차는 `/real-check`
-- 띄우기: `WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups OPENROUTER_API_KEY= TYPESAFE_API_KEY= FINNHUB_API_KEY= APP_PASSWORD=… SESSION_SECRET=… docker compose -p ripple-check up -d --build`
+- 띄우기: `WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups OPENROUTER_API_KEY= TYPESAFE_API_KEY= FINNHUB_API_KEY= KIS_APP_KEY= KIS_APP_SECRET= APP_PASSWORD=… SESSION_SECRET=… docker compose -p ripple-check up -d --build`
   - AI 키를 비워 비용이 생기지 않게 한다. 터널까지 뜨므로 공개 주소가 생긴다. 외부에서 확인할 때는 공개된 시험 비밀번호(`e2e/test-env.ts`) 대신 무작위 비밀번호를 파일로 만들어 쓰고(출력하지 않음) 끝나면 지운다.
   - 임시 주소: `docker compose -p ripple-check logs tunnel | grep trycloudflare` 또는 http://127.0.0.1:3300/status
 - 내리기: `WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups docker compose -p ripple-check down -v`, `rm -rf .check-backups`, 시험 이미지 `docker image rm ripple-check-web ripple-check-worker ripple-check-migrate`
@@ -120,4 +125,5 @@ DECISIONS.md 2장 "다시 잴 때의 방법"으로 옮겼다. 시험용 Docker �
 - 시장·주제·토픽(11단계): `src/server/topics/`(store = 항목·토픽 저장과 가지 붙이기, plan = 갱신 시각, refresh = 프롬프트, run = 갱신 실행, read = 화면 읽기), 같은 소식 기준: `src/server/similar-title.ts`, 토픽 카드: `src/server/timeline/read.ts`의 `readTopicCards`
 - 화면: `src/app/(app)/`(page = 타임라인, status/, stocks/, settings/)
 - 읽은 기사 표시(12단계): 저장·조회 `src/server/timeline/reads.ts`, 카드의 `read`는 `timeline/read.ts`, worker `PUT /articles/read`(`src/worker/server.ts`), 서버 액션 `setArticlesReadAction`(`src/app/(app)/actions.ts`), 카드 겉틀 `src/app/(app)/read-card.tsx`
+- 주가(13단계): `src/server/prices/`(kis = KIS 클라이언트, plan = 장 시간, run = 1분마다 받기, store = 저장·띠 읽기), Finnhub 현재가는 `src/server/collect/finnhub.ts`의 `quote`, 띠 화면 `src/app/(app)/price-strip.tsx`
 - 설정 값 기본: `src/server/settings.ts`, 설정 화면 검사·저장: `src/server/settings-form.ts`

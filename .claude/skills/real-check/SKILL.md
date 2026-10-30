@@ -37,7 +37,7 @@ WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups docker compose -p ripple-check ru
 무료(AI 키를 비워 비용이 생기지 않게):
 
 ```bash
-WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups OPENROUTER_API_KEY= TYPESAFE_API_KEY= FINNHUB_API_KEY= \
+WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups OPENROUTER_API_KEY= TYPESAFE_API_KEY= FINNHUB_API_KEY= KIS_APP_KEY= KIS_APP_SECRET= \
   APP_PASSWORD=e2e-password-not-secret SESSION_SECRET=e2e-session-secret-not-for-production-use \
   docker compose -p ripple-check up -d migrate worker web
 ```
