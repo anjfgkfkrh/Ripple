@@ -14,3 +14,5 @@ playwright-report/
 rust/ripple/src/server/ai/llm/schemas/
 rust/ripple/src/server/ai/decider/questions_fixture.json
 rust/ripple/src/server/prompts/
+rust/ripple/src/server/collect/date_samples.json
+rust/ripple/src/server/collect/date_fixture.json

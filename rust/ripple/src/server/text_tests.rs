@@ -87,3 +87,12 @@ fn js_to_fixed_rounds_half_up_on_exact_value() {
     assert_eq!(js_to_fixed(-0.0, 2), "0.00");
     assert_eq!(js_to_fixed(1234.5678, 2), "1234.57");
 }
+
+#[test]
+fn encode_uri_component_matches_javascript() {
+    assert_eq!(encode_uri_component("BRK.B"), "BRK.B");
+    assert_eq!(encode_uri_component("A B&c=d/e?f"), "A%20B%26c%3Dd%2Fe%3Ff");
+    assert_eq!(encode_uri_component("삼성"), "%EC%82%BC%EC%84%B1");
+    assert_eq!(encode_uri_component("-_.!~*'()"), "-_.!~*'()");
+    assert_eq!(encode_uri_component("😀"), "%F0%9F%98%80");
+}

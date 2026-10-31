@@ -53,6 +53,19 @@ pub fn js_number(x: f64) -> String {
     }
 }
 
+/// JS `encodeURIComponent`: 영문·숫자와 `-_.!~*'()`만 그대로 두고 나머지는 UTF-8 바이트를 `%XX`(대문자)로 쓴다.
+pub fn encode_uri_component(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for byte in text.bytes() {
+        if byte.is_ascii_alphanumeric() || b"-_.!~*'()".contains(&byte) {
+            out.push(char::from(byte));
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
+}
+
 /// JS `x.toFixed(digits)`. 이진수 값을 정확한 십진 값으로 보고 0에서 먼 쪽으로 반올림한다
 /// (Rust `{:.n}`은 정확히 가운데인 값을 짝수 쪽으로 반올림해 `0.03125`가 달라진다). 유한한 값만 받는다.
 pub fn js_to_fixed(x: f64, digits: usize) -> String {
