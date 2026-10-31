@@ -1,0 +1,1 @@
+ALTER TABLE `stocks` ADD `backfill_from` integer;

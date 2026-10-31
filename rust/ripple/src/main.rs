@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use ripple::server::env::Env;
 
 #[derive(Parser)]
 #[command(
@@ -28,12 +29,16 @@ enum Command {
 
 fn main() {
     let cli = Cli::parse();
-    let name = match cli.command {
-        Command::Migrate => "migrate",
-        Command::Worker => "worker",
-        Command::Web => "web",
-        Command::Healthcheck { .. } => "healthcheck",
+    let code = match cli.command {
+        Command::Migrate => ripple::worker::migrate::run(&Env::from_process()),
+        Command::Worker => not_implemented("worker"),
+        Command::Web => not_implemented("web"),
+        Command::Healthcheck { .. } => not_implemented("healthcheck"),
     };
-    eprintln!("{name}: 아직 구현하지 않았습니다(R0 뼈대).");
-    std::process::exit(2);
+    std::process::exit(code);
+}
+
+fn not_implemented(name: &str) -> i32 {
+    eprintln!("{name}: 아직 구현하지 않았습니다(Rust 전환 중).");
+    2
 }

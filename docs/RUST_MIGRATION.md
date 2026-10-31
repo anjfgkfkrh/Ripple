@@ -142,7 +142,7 @@ rust/
 - SQL 파일: `drizzle/0000_init.sql`~`0010_stock_prices.sql` 11개를 `rust/ripple/migrations/`에 **내용 그대로** 복사한다(`--> statement-breakpoint`는 SQL 주석이라 `execute_batch`에 그대로 넣어도 된다). `include_str!`로 실행 파일에 넣는다. 순서 = 파일 이름 순서.
 - `ripple migrate` 순서(`src/server/db/migrate.rs`):
   1. 폴더를 만들고 DB를 연다(없으면 만든다. 유일하게 `CREATE` 플래그를 쓰는 곳). `busy_timeout` 5000ms, `foreign_keys = ON`.
-  2. **기준선:** `user_version`이 0이고 `__drizzle_migrations` 표가 있으면 drizzle이 적용한 DB다. 그 표의 줄 수가 11이고 `max(created_at)`이 `drizzle/meta/_journal.json`의 0010 `when` 값(1792...)과 같으면 `PRAGMA user_version = 11`을 쓴다. 줄 수나 값이 다르면 **아무것도 바꾸지 않고 실패**한다(오류 메시지에 줄 수와 기대값을 넣는다).
+  2. **기준선:** `user_version`이 0이고 `__drizzle_migrations` 표가 있으면 drizzle이 적용한 DB다. 그 표의 줄 수가 11이고 `max(created_at)`이 `drizzle/meta/_journal.json`의 0010 `when` 값(`1793341641528`)과 같으면 `PRAGMA user_version = 11`을 쓴다. 줄 수나 값이 다르면 **아무것도 바꾸지 않고 실패**한다(오류 메시지에 줄 수와 기대값을 넣는다).
   3. rusqlite_migration으로 아직 적용하지 않은 마이그레이션을 적용한다(새 DB면 0000부터 11개).
   4. `마이그레이션 적용 완료: <경로>` 로그(TS와 같은 문구).
 - `__drizzle_migrations` 표는 지우지 않는다. 문제가 생겨 TS 이미지로 되돌려도 drizzle이 같은 DB를 그대로 쓴다(`user_version`은 drizzle이 보지 않는다).
