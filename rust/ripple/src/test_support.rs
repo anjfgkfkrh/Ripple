@@ -187,3 +187,256 @@ pub fn seed_listings(conn: &mut Connection) {
     us.extend(parse_other_listed(&fixture_text(FIXTURE_FILES.other_listed)).unwrap());
     replace_listings(conn, Market::Us, &us).unwrap();
 }
+
+/// 깊이 2 키워드 트리 표본(LLM 출력 형식, 구조 키워드만). 단계마다 5개
+pub fn sample_keyword_tree(english: bool) -> Value {
+    let en = |text: &str| {
+        if english {
+            text.to_string()
+        } else {
+            String::new()
+        }
+    };
+    let level1 = [
+        ("메모리 반도체", "Memory chips", "주력 사업"),
+        ("HBM", "HBM", "AI 서버용 고대역폭 메모리"),
+        ("스마트폰", "Smartphones", "완제품 사업"),
+        ("파운드리", "Foundry", "위탁 생산 사업"),
+        ("환율", "Exchange rate", "수출 비중이 커 실적에 영향"),
+    ];
+    let level2 = [
+        ("엔비디아", "Nvidia", "HBM", "HBM 주요 고객"),
+        ("SK하이닉스", "SK hynix", "HBM", "HBM 경쟁사"),
+        (
+            "D램 가격",
+            "DRAM prices",
+            "메모리 반도체",
+            "메모리 실적을 좌우",
+        ),
+        ("TSMC", "TSMC", "파운드리", "파운드리 1위 경쟁사"),
+        ("애플", "Apple", "스마트폰", "스마트폰 경쟁사"),
+    ];
+    let mut keywords: Vec<Value> = level1
+        .iter()
+        .map(|(keyword, keyword_en, reason)| {
+            serde_json::json!({ "level": 1, "keyword": keyword, "keywordEn": en(keyword_en), "parent": "", "reason": reason })
+        })
+        .collect();
+    keywords.extend(level2.iter().map(|(keyword, keyword_en, parent, reason)| {
+        serde_json::json!({ "level": 2, "keyword": keyword, "keywordEn": en(keyword_en), "parent": parent, "reason": reason })
+    }));
+    serde_json::json!({ "keywords": keywords })
+}
+
+use crate::server::ai::decider::types::{DeciderError, LeadInput, LeadRating, TokenUsage};
+
+/// 기본 키워드·토픽 평가(관련 7점·영향 6점·입력 500토큰)
+pub fn fake_rating() -> LeadRating {
+    LeadRating {
+        relevance: 7.0,
+        relevance_confidence: 0.7,
+        magnitude: 6.0,
+        magnitude_confidence: 0.7,
+        model: "jev-1.13.0".to_string(),
+        usage: TokenUsage {
+            input_tokens: 500,
+            output_tokens: 20,
+        },
+    }
+}
+
+type RateAnswer = Box<dyn Fn(&LeadInput) -> Result<LeadRating, DeciderError> + Send + Sync>;
+
+/// 입력마다 정한 결과(또는 오류)를 돌려주는 가짜 Jev. 받은 입력과 모델을 `rate_calls`에 남긴다.
+/// 기사 평가(`decide`)는 R6에서 필요해질 때 더한다.
+pub struct FakeDecider {
+    rate_answer: RateAnswer,
+    pub rate_calls: Mutex<Vec<(LeadInput, String)>>,
+}
+
+pub fn fake_decider(
+    rate_answer: impl Fn(&LeadInput) -> Result<LeadRating, DeciderError> + Send + Sync + 'static,
+) -> FakeDecider {
+    FakeDecider {
+        rate_answer: Box::new(rate_answer),
+        rate_calls: Mutex::new(Vec::new()),
+    }
+}
+
+impl crate::server::ai::decider::types::Decider for FakeDecider {
+    async fn decide(
+        &self,
+        _: &crate::server::ai::decider::types::DecisionInput,
+        _: &str,
+    ) -> Result<crate::server::ai::decider::types::Decision, DeciderError> {
+        unreachable!("R4 시험은 기사 평가를 쓰지 않는다")
+    }
+
+    async fn rate(&self, input: &LeadInput, model: &str) -> Result<LeadRating, DeciderError> {
+        self.rate_calls
+            .lock()
+            .unwrap()
+            .push((input.clone(), model.to_string()));
+        (self.rate_answer)(input)
+    }
+}
+
+/// `insert_link`에 주는 값(`tests/fixtures.ts`의 `insertLink` 인자)
+pub struct LinkSpec<'a> {
+    pub stock_id: i64,
+    pub title: Option<&'a str>,
+    pub published_at: crate::server::time::EpochMs,
+    pub kind: &'a str,
+    /// 주면 그 점수로 평가한 것으로 한다
+    pub relevance: Option<f64>,
+}
+
+impl<'a> LinkSpec<'a> {
+    pub fn new(stock_id: i64, title: &'a str, published_at: crate::server::time::EpochMs) -> Self {
+        Self {
+            stock_id,
+            title: Some(title),
+            published_at,
+            kind: "name",
+            relevance: Some(7.0),
+        }
+    }
+
+    pub fn with_relevance(mut self, relevance: f64) -> Self {
+        self.relevance = Some(relevance);
+        self
+    }
+}
+
+static LINK_SERIAL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// 기사 하나와 종목 연결 하나를 넣는다. `relevance`가 있으면 평가도 넣는다.
+pub fn insert_link(conn: &Connection, link: &LinkSpec<'_>) -> (i64, i64) {
+    let serial = LINK_SERIAL.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+    conn.execute(
+        "INSERT INTO articles (url_key, url, title, summary, publisher, feed, published_at, collected_at) \
+         VALUES (?1, ?2, ?3, NULL, '가경제', 'rss:a:economy', ?4, ?4)",
+        rusqlite::params![
+            format!("fixture.example/{serial}"),
+            format!("https://fixture.example/{serial}"),
+            link.title.map_or_else(|| format!("기사 {serial}"), str::to_string),
+            link.published_at
+        ],
+    )
+    .unwrap();
+    let article_id = conn.last_insert_rowid();
+    conn.execute(
+        "INSERT INTO article_matches (article_id, stock_id, keyword_path, keyword_reason, match_kind, level, created_at) \
+         VALUES (?1, ?2, '종목', NULL, ?3, ?4, ?5)",
+        rusqlite::params![article_id, link.stock_id, link.kind, i64::from(link.kind == "keyword"), link.published_at],
+    )
+    .unwrap();
+    let match_id = conn.last_insert_rowid();
+    if let Some(relevance) = link.relevance {
+        conn.execute(
+            "INSERT INTO evaluations (match_id, article_id, stock_id, relevance, relevance_confidence, magnitude, \
+             magnitude_confidence, impact, impact_confidence, impact_probabilities, model, evaluated_at) \
+             VALUES (?1, ?2, ?3, ?4, 0.7, NULL, NULL, 'neutral', 0.7, \
+             '{\"positive\":0.1,\"negative\":0.1,\"neutral\":0.8}', 'jev-1.13.0', ?5)",
+            rusqlite::params![match_id, article_id, link.stock_id, relevance, link.published_at],
+        )
+        .unwrap();
+    }
+    (match_id, article_id)
+}
+
+// ---- 시장·주제 항목 씨앗: R7의 `topics/store` 함수가 만드는 것과 같은 모양의 행을 SQL로 직접 넣는다. ----
+
+/// 시장 항목 한 줄(`ensureDefaultMarket`·`createMarketRow`와 같은 값)
+pub fn seed_market(conn: &Connection, market: &str, now: crate::server::time::EpochMs) -> i64 {
+    let (name, exchange) = if market == "KR" {
+        ("한국 증시", "KOSPI·KOSDAQ")
+    } else {
+        ("미국 증시", "S&P 500·NASDAQ")
+    };
+    conn.execute(
+        "INSERT INTO stocks (market, code, name, name_ko, exchange, user_input, kind, keywords_status, backfill_from, created_at) \
+         VALUES (?1, 'MARKET', ?2, ?2, ?3, ?2, 'market', 'pending', ?4, ?5)",
+        rusqlite::params![market, name, exchange, now - 24 * 60 * 60 * 1000, now],
+    )
+    .unwrap();
+    conn.last_insert_rowid()
+}
+
+/// 토픽 한 줄. `terms`는 JSON 목록으로 저장한다.
+pub fn seed_topic(
+    conn: &Connection,
+    source: &str,
+    name: &str,
+    terms: &[&str],
+    now: crate::server::time::EpochMs,
+) -> i64 {
+    conn.execute(
+        "INSERT INTO topics (source, name, terms, created_at) VALUES (?1, ?2, ?3, ?4)",
+        rusqlite::params![source, name, serde_json::to_string(terms).unwrap(), now],
+    )
+    .unwrap();
+    conn.last_insert_rowid()
+}
+
+/// 토픽의 증시 기준 항목(`syncTopicLenses`가 만드는 줄). 자동 토픽은 키워드 상태가 이미 'ready'다.
+pub fn seed_lens(
+    conn: &Connection,
+    topic_id: i64,
+    name: &str,
+    source: &str,
+    market: &str,
+    now: crate::server::time::EpochMs,
+) -> i64 {
+    let exchange = if market == "KR" {
+        "한국 증시"
+    } else {
+        "미국 증시"
+    };
+    let auto = source == "auto";
+    conn.execute(
+        "INSERT INTO stocks (market, code, name, name_ko, exchange, user_input, kind, topic_id, keywords_status, \
+         keywords_generated_at, backfill_from, created_at) VALUES (?1, ?2, ?3, ?3, ?4, ?3, 'topic', ?5, ?6, ?7, ?8, ?9)",
+        rusqlite::params![
+            market,
+            format!("TOPIC-{topic_id}"),
+            name,
+            exchange,
+            topic_id,
+            if auto { "ready" } else { "pending" },
+            if auto { Some(now) } else { None },
+            if auto { None } else { Some(now - 24 * 60 * 60 * 1000) },
+            now
+        ],
+    )
+    .unwrap();
+    conn.last_insert_rowid()
+}
+
+/// 토픽 갱신이 종목에 붙이는 가지(`attachTopicToStock`): 1단계 토픽 이름, 2단계 검색어. topic_id가 있고 종류는 시사(current)다.
+pub fn attach_topic(
+    conn: &Connection,
+    stock_id: i64,
+    stock_display: &str,
+    topic_id: i64,
+    topic_name: &str,
+    terms: &[&str],
+    now: crate::server::time::EpochMs,
+) {
+    let theme_path = format!("{stock_display} → {topic_name}");
+    conn.execute(
+        "INSERT INTO keywords (stock_id, level, text_ko, reason, path, kind, relevance, magnitude, topic_id, created_at) \
+         VALUES (?1, 1, ?2, '수출 규제 영향', ?3, 'current', 7, 6, ?4, ?5)",
+        rusqlite::params![stock_id, topic_name, theme_path, topic_id, now],
+    )
+    .unwrap();
+    let theme_id = conn.last_insert_rowid();
+    for term in terms {
+        conn.execute(
+            "INSERT INTO keywords (stock_id, level, parent_id, text_ko, reason, path, kind, topic_id, created_at) \
+             VALUES (?1, 2, ?2, ?3, '토픽 검색어', ?4, 'current', ?5, ?6)",
+            rusqlite::params![stock_id, theme_id, term, format!("{theme_path} → {term}"), topic_id, now],
+        )
+        .unwrap();
+    }
+}

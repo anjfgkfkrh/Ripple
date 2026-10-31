@@ -103,6 +103,16 @@ pub enum RegisterResult {
 /// 새로 등록하거나 되살린 종목은 다음 수집 회차에서 이만큼 지난 기사까지 연결한다(2026-10-21 결정).
 pub const NEW_STOCK_BACKFILL_MS: i64 = 24 * 60 * 60 * 1000;
 
+/// id로 한 줄을 읽는다(없으면 None). 지운 줄도 읽는다.
+pub fn find_stock(conn: &Connection, id: i64) -> rusqlite::Result<Option<Stock>> {
+    conn.query_row(
+        &format!("SELECT {STOCK_COLUMNS} FROM stocks WHERE id = ?1"),
+        params![id],
+        row_to_stock,
+    )
+    .optional()
+}
+
 fn select_stock(conn: &Connection, id: i64) -> rusqlite::Result<Stock> {
     conn.query_row(
         &format!("SELECT {STOCK_COLUMNS} FROM stocks WHERE id = ?1"),
