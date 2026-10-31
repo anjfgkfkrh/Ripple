@@ -47,7 +47,7 @@ TS(Next.js + Node worker)로 된 Ripple을 기능 변경 없이 Rust로 옮기�
 | 문자 인코딩 | encoding_rs | 0.8.44 | EUC-KR 피드 디코딩(`collect/http.ts`의 `decode`) |
 | 주소 | url | 2.5.8 | |
 | 해시·서명 | sha2 / hmac | 0.11.1 / 0.13.0 | 비밀번호 비교·세션 서명·지문 |
-| base64 | base64 | (R0에서 조회·고정) | 세션 지문 base64url |
+| base64 | base64 | 0.23.1(R0에서 조회: 2026-08-04 공개) | 세션 지문 base64url |
 | 오류 | thiserror / anyhow | 2.0.21 / 1.0.104 | 모듈 오류는 thiserror, `main`과 작업 최상단만 anyhow |
 | 로그 | (없음) | | `log.ts`처럼 `println!`/`eprintln!`으로 직접 찍는다(3.8). tracing은 쓰지 않는다 |
 | 명령줄 | clap | 4.6.7 | `derive`. 하위 명령 `migrate`·`worker`·`web`·`healthcheck` |
@@ -56,7 +56,6 @@ TS(Next.js + Node worker)로 된 Ripple을 기능 변경 없이 Rust로 옮기�
 | 화면 상호작용 | htmx | 2.0.11 | `rust/ripple/static/htmx.min.js`로 저장소에 둔다. CDN 쓰지 않음 |
 | CSS | Tailwind standalone CLI | 4.3.3 | 지금 `node_modules/tailwindcss`와 같은 버전. Node 없이 실행 파일 하나 |
 
-- `base64`처럼 버전이 비어 있는 것은 R0에서 crates.io로 조회해 2주 넘은 최신 안정판을 고르고 이 표에 적는다.
 - 스택 요약: **tokio(실행 엔진) + axum(웹 서버) + reqwest(외부 호출) + rusqlite(DB) + askama(HTML 템플릿) + htmx(작은 화면 동작) + Tailwind(CSS)**.
 
 ## 3. 공통 방식
@@ -217,7 +216,7 @@ rust/
 - `static/` 파일은 `include_bytes!`로 실행 파일에 넣고 web이 `/static/<이름>`으로 내보낸다(올바른 `Content-Type`, `Cache-Control: public, max-age=31536000, immutable`, 주소에 내용 해시를 붙여 캐시를 깬다: `/static/app.<해시8자>.css`). 해시는 빌드 때 `build.rs` 없이 실행 시작 때 계산해 템플릿에 넘긴다.
 - `favicon.ico`는 `/favicon.ico`로도 내보낸다(로그인 없이, E2E가 기동 확인에 씀).
 - CSS 빌드: `tailwindcss -i styles/input.css -o static/app.css --minify`. Tailwind가 클래스를 찾을 곳은 `templates/**/*.html`과 `static/app.js`(`@source`로 지정). `cargo build` 전에 돌려야 하므로 `rust/build.sh`(CSS → cargo build 순서)를 만들고 Docker와 `/check`가 이것을 쓴다.
-- Tailwind 실행 파일은 `rust/tools/tailwindcss`에 내려받는다(.gitignore). 내려받는 스크립트 `rust/tools/fetch-tailwind.sh`가 버전(4.3.3)과 SHA-256을 확인한다(값은 R0에서 GitHub 릴리스의 체크섬으로 채운다).
+- Tailwind 실행 파일은 `rust/tools/tailwindcss`에 내려받는다(.gitignore). 내려받는 스크립트 `rust/tools/fetch-tailwind.sh`가 버전(4.3.3)과 SHA-256을 확인한다(값은 R0에서 GitHub 릴리스 `sha256sums.txt`로 채웠다: macOS·Linux의 arm64·x64).
 
 ### 3.13 테스트
 

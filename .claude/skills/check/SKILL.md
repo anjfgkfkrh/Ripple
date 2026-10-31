@@ -10,7 +10,16 @@ model: sonnet
 
 Ripple 저장소 루트에서 아래 검사를 차례로 돌리고 결과만 보고한다. 파일은 고치지 않는다(고치는 것은 부른 쪽이 한다).
 
-인자: `$ARGUMENTS` — "빠르게"면 1~4만 돈다.
+인자: `$ARGUMENTS` — "빠르게"면 1~4와 R1~R3만 돈다.
+
+Rust(14단계, `rust/`가 있을 때. 명령은 `rust/` 폴더에서):
+
+- R1. `cargo fmt --check`
+- R2. `cargo clippy --all-targets -- -D warnings`
+- R3. `cargo test`
+- R4. `./build.sh --release`(CSS + 빌드). "빠르게"면 건너뜀
+
+TS(R13에서 TS를 지우기 전까지):
 
 1. `pnpm format:check`
 2. `pnpm lint`
@@ -26,6 +35,8 @@ Ripple 저장소 루트에서 아래 검사를 차례로 돌리고 결과만 보
 
 | 검사 | 결과 | 숫자 |
 |---|---|---|
+
+(Rust 검사 R1~R4도 같은 표에 넣는다.)
 
 - 숫자: 단위·E2E는 출력 요약 줄의 통과·실패·건너뜀 개수와 파일 수, 나머지는 오류·경고 수.
 - E2E 건너뜀은 설계상 몇 개 있다(모바일에서 건너뛰는 시험). 지난 보고와 개수가 다르면 따로 적는다.

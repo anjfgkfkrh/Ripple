@@ -61,3 +61,9 @@ next-env.d.ts
 
 # vim 스왑 파일
 *.swp
+
+# Rust(rust/)
+/rust/target/
+/rust/tools/tailwindcss
+/rust/tools/tailwindcss.download
+/rust/ripple/static/app.css

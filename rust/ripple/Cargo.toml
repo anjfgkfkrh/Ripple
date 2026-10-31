@@ -1,0 +1,35 @@
+[package]
+name = "ripple"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+tokio.workspace = true
+axum.workspace = true
+axum-extra.workspace = true
+tower-http.workspace = true
+reqwest.workspace = true
+rusqlite.workspace = true
+rusqlite_migration.workspace = true
+askama.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+chrono-tz.workspace = true
+regex.workspace = true
+encoding_rs.workspace = true
+url.workspace = true
+sha2.workspace = true
+hmac.workspace = true
+base64.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+wiremock.workspace = true
