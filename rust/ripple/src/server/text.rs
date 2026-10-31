@@ -53,6 +53,51 @@ pub fn js_number(x: f64) -> String {
     }
 }
 
+/// JS `x.toFixed(digits)`. 이진수 값을 정확한 십진 값으로 보고 0에서 먼 쪽으로 반올림한다
+/// (Rust `{:.n}`은 정확히 가운데인 값을 짝수 쪽으로 반올림해 `0.03125`가 달라진다). 유한한 값만 받는다.
+pub fn js_to_fixed(x: f64, digits: usize) -> String {
+    if !x.is_finite() {
+        return js_number(x);
+    }
+    if x.abs() >= 1e21 {
+        return js_number(x);
+    }
+    // 정확한 십진 전개: 가운데 값 판단에 digits + 60자리면 충분하다(f64 유효 비트 53개).
+    let exact = format!("{:.*}", digits + 60, x.abs());
+    let (int_part, frac_part) = exact.split_once('.').unwrap_or((&exact, ""));
+    let mut kept: Vec<u8> = int_part
+        .bytes()
+        .chain(frac_part.bytes().take(digits))
+        .collect();
+    // JS toFixed: 정확히 가운데이거나 그 이상이면 올린다(n/10^f 중 더 큰 n).
+    if frac_part.as_bytes().get(digits).is_some_and(|d| *d >= b'5') {
+        let mut i = kept.len();
+        loop {
+            if i == 0 {
+                kept.insert(0, b'1');
+                break;
+            }
+            i -= 1;
+            if kept[i] == b'9' {
+                kept[i] = b'0';
+            } else {
+                kept[i] += 1;
+                break;
+            }
+        }
+    }
+    let int_len = kept.len() - digits;
+    let int_text = String::from_utf8_lossy(&kept[..int_len]).into_owned();
+    let frac_text = String::from_utf8_lossy(&kept[int_len..]).into_owned();
+    let body = if digits == 0 {
+        int_text
+    } else {
+        format!("{int_text}.{frac_text}")
+    };
+    // JS는 0으로 반올림돼도 음수 부호를 남긴다("-0.00"). -0은 음수가 아니다.
+    if x < 0.0 { format!("-{body}") } else { body }
+}
+
 /// JS `Number(s)`(StringToNumber). 앞뒤 공백을 뺀 뒤 빈 글자는 0, 읽을 수 없으면 NaN.
 pub fn js_parse_number(s: &str) -> f64 {
     let s = js_trim(s);

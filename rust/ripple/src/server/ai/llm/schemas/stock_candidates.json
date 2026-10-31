@@ -1,0 +1,44 @@
+{
+  "type": "object",
+  "properties": {
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "market": {
+            "type": "string",
+            "enum": [
+              "KR",
+              "US"
+            ],
+            "description": "KR: 한국 거래소 상장, US: 미국 거래소 상장"
+          },
+          "code": {
+            "type": "string",
+            "description": "KR은 6자리 종목코드, US는 티커"
+          },
+          "name": {
+            "type": "string",
+            "description": "정식 회사 이름. KR은 한글, US는 영문"
+          },
+          "nameKo": {
+            "type": "string",
+            "description": "한국에서 흔히 부르는 한글 이름"
+          }
+        },
+        "required": [
+          "market",
+          "code",
+          "name",
+          "nameKo"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "candidates"
+  ],
+  "additionalProperties": false
+}

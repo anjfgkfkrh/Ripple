@@ -65,3 +65,25 @@ fn js_parse_number_follows_string_to_number() {
     assert!(js_parse_number("0x").is_nan());
     assert!(js_parse_number("-0x10").is_nan());
 }
+
+#[test]
+fn js_to_fixed_rounds_half_up_on_exact_value() {
+    assert_eq!(js_to_fixed(5.0, 4), "5.0000");
+    assert_eq!(js_to_fixed(0.0, 4), "0.0000");
+    assert_eq!(js_to_fixed(0.000027, 4), "0.0000");
+    assert_eq!(js_to_fixed(0.0123456, 4), "0.0123");
+    assert_eq!(js_to_fixed(4.99996, 4), "5.0000");
+    assert_eq!(js_to_fixed(99.99995, 4), "99.9999");
+    assert_eq!(js_to_fixed(99.99996, 4), "100.0000");
+    // 정확히 가운데인 값(2진수로 딱 떨어짐): JS는 올리고 Rust `{:.n}`은 짝수로 내린다.
+    assert_eq!(js_to_fixed(0.03125, 4), "0.0313");
+    assert_eq!(js_to_fixed(2.5, 0), "3");
+    assert_eq!(js_to_fixed(0.5, 0), "1");
+    // 이진수로 정확히 표현되지 않는 값은 실제 저장된 값으로 판단한다(1.005는 1.00499999…).
+    assert_eq!(js_to_fixed(1.005, 2), "1.00");
+    assert_eq!(js_to_fixed(1.45, 1), "1.4");
+    assert_eq!(js_to_fixed(-1.5, 0), "-2");
+    assert_eq!(js_to_fixed(-0.00001, 2), "-0.00");
+    assert_eq!(js_to_fixed(-0.0, 2), "0.00");
+    assert_eq!(js_to_fixed(1234.5678, 2), "1234.57");
+}

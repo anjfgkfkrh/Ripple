@@ -1,5 +1,6 @@
 pub mod ai;
 pub mod auth;
+pub mod budget;
 pub mod collect;
 pub mod db;
 pub mod env;

@@ -48,3 +48,92 @@ pub fn test_db() -> TestDb {
     let conn = open_db(&file.path, DbAccess::ReadWrite).unwrap();
     TestDb { conn, _file: file }
 }
+
+/// 여러 곳에서 나눠 쓰는 연결(`Db`)이 열린 테스트 DB. 값이 버려지면 폴더째 지워진다.
+pub struct SharedTestDb {
+    pub db: crate::server::db::client::Db,
+    _file: TestDbFile,
+}
+
+pub fn shared_test_db() -> SharedTestDb {
+    let TestDb { conn, _file } = test_db();
+    SharedTestDb {
+        db: crate::server::db::client::into_db(conn),
+        _file,
+    }
+}
+
+use std::sync::Mutex;
+
+use serde_json::Value;
+
+use crate::server::ai::llm::{
+    JsonResult, LlmClient, LlmError, LlmMessage, LlmUsage, StructuredRequest,
+};
+use crate::server::db::schema::UsageProvider;
+
+/// `FakeLlm`이 받은 요청(`tests/fixtures.ts`의 `fakeLlm().calls` 대응)
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecordedCall {
+    pub model: String,
+    pub messages: Vec<LlmMessage>,
+    pub schema_name: String,
+    pub max_tokens: u32,
+}
+
+type Respond = Box<dyn Fn(&[LlmMessage]) -> Value + Send + Sync>;
+
+/// 정해진 값을 돌려주는 가짜 LLM. 받은 요청을 `calls`에 남긴다. 응답이 형식에 안 맞으면
+/// `generate_object`가 `invalid_output`(사용량 포함)으로 만든다.
+pub struct FakeLlm {
+    respond: Respond,
+    usage: LlmUsage,
+    pub calls: Mutex<Vec<RecordedCall>>,
+}
+
+pub fn fake_llm(
+    respond: impl Fn(&[LlmMessage]) -> Value + Send + Sync + 'static,
+    usage: LlmUsage,
+) -> FakeLlm {
+    FakeLlm {
+        respond: Box::new(respond),
+        usage,
+        calls: Mutex::new(Vec::new()),
+    }
+}
+
+impl FakeLlm {
+    pub fn call_count(&self) -> usize {
+        self.calls.lock().unwrap().len()
+    }
+}
+
+impl LlmClient for FakeLlm {
+    fn provider(&self) -> UsageProvider {
+        UsageProvider::Openrouter
+    }
+
+    async fn generate_json<T: Send>(
+        &self,
+        request: &StructuredRequest<T>,
+    ) -> Result<JsonResult, LlmError> {
+        self.calls.lock().unwrap().push(RecordedCall {
+            model: request.model.clone(),
+            messages: request.messages.clone(),
+            schema_name: request.schema_name.clone(),
+            max_tokens: request.max_tokens,
+        });
+        Ok(JsonResult {
+            json: Some((self.respond)(&request.messages)),
+            usage: self.usage,
+            model: request.model.clone(),
+        })
+    }
+}
+
+/// ISO 8601 UTC 글자("2026-10-20T03:00:00Z") → 밀리초. TS 테스트의 `new Date(iso)`.
+pub fn ms(iso: &str) -> crate::server::time::EpochMs {
+    chrono::DateTime::parse_from_rfc3339(iso)
+        .unwrap()
+        .timestamp_millis()
+}
