@@ -137,3 +137,53 @@ pub fn ms(iso: &str) -> crate::server::time::EpochMs {
         .unwrap()
         .timestamp_millis()
 }
+
+/// 실제 KIND·NASDAQ 파일에서 고른 표본(KIND는 원본처럼 EUC-KR). 저장소 루트의 `tests/fixtures`를 그대로 읽는다.
+pub struct FixtureFiles {
+    pub kind: &'static str,
+    pub nasdaq_listed: &'static str,
+    pub other_listed: &'static str,
+}
+
+pub const FIXTURE_FILES: FixtureFiles = FixtureFiles {
+    kind: "kind-sample.xls",
+    nasdaq_listed: "nasdaqlisted-sample.txt",
+    other_listed: "otherlisted-sample.txt",
+};
+
+pub fn fixture_bytes(name: &str) -> Vec<u8> {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures")
+        .join(name);
+    std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+}
+
+pub fn fixture_text(name: &str) -> String {
+    String::from_utf8(fixture_bytes(name)).unwrap()
+}
+
+pub fn decode_euc_kr(name: &str) -> String {
+    encoding_rs::EUC_KR
+        .decode_without_bom_handling(&fixture_bytes(name))
+        .0
+        .into_owned()
+}
+
+/// 표본으로 공식 목록을 채운다(한국 7개, 미국 9개).
+pub fn seed_listings(conn: &mut Connection) {
+    use crate::server::db::schema::Market;
+    use crate::server::listings::parse::{
+        parse_kind_list, parse_nasdaq_listed, parse_other_listed,
+    };
+    use crate::server::listings::sync::replace_listings;
+
+    replace_listings(
+        conn,
+        Market::Kr,
+        &parse_kind_list(&decode_euc_kr(FIXTURE_FILES.kind)).unwrap(),
+    )
+    .unwrap();
+    let mut us = parse_nasdaq_listed(&fixture_text(FIXTURE_FILES.nasdaq_listed)).unwrap();
+    us.extend(parse_other_listed(&fixture_text(FIXTURE_FILES.other_listed)).unwrap());
+    replace_listings(conn, Market::Us, &us).unwrap();
+}

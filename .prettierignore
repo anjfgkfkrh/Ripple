@@ -13,3 +13,4 @@ playwright-report/
 # Rust 전환(rust/): TS가 내보낸 파일은 글자 그대로 비교하므로 서식을 바꾸지 않는다
 rust/ripple/src/server/ai/llm/schemas/
 rust/ripple/src/server/ai/decider/questions_fixture.json
+rust/ripple/src/server/prompts/

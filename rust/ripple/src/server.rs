@@ -9,5 +9,6 @@ pub mod log;
 pub mod prices;
 pub mod settings;
 pub mod similar_title;
+pub mod stocks;
 pub mod text;
 pub mod time;
