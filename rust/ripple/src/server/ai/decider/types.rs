@@ -13,6 +13,17 @@ pub enum JudgeTarget {
     Topic,
 }
 
+impl From<crate::server::db::schema::ItemKind> for JudgeTarget {
+    fn from(kind: crate::server::db::schema::ItemKind) -> Self {
+        use crate::server::db::schema::ItemKind;
+        match kind {
+            ItemKind::Stock => JudgeTarget::Stock,
+            ItemKind::Market => JudgeTarget::Market,
+            ItemKind::Topic => JudgeTarget::Topic,
+        }
+    }
+}
+
 impl JudgeTarget {
     pub const ALL: [JudgeTarget; 3] = [JudgeTarget::Stock, JudgeTarget::Market, JudgeTarget::Topic];
 

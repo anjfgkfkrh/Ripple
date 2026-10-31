@@ -53,6 +53,15 @@ pub fn js_number(x: f64) -> String {
     }
 }
 
+/// JS `JSON.stringify`가 쓰는 숫자 글자와 같게 나오는 JSON 숫자: 정수 값(`5.0`)은 정수로 쓴다.
+pub fn json_number(x: f64) -> serde_json::Value {
+    if x.is_finite() && x.fract() == 0.0 && x.abs() < 9_007_199_254_740_992.0 {
+        return serde_json::Value::from(x as i64);
+    }
+    // 유한하지 않은 값은 JSON에 쓸 수 없어 JS도 null로 쓴다.
+    serde_json::Number::from_f64(x).map_or(serde_json::Value::Null, serde_json::Value::Number)
+}
+
 /// JS `encodeURIComponent`: 영문·숫자와 `-_.!~*'()`만 그대로 두고 나머지는 UTF-8 바이트를 `%XX`(대문자)로 쓴다.
 pub fn encode_uri_component(text: &str) -> String {
     let mut out = String::with_capacity(text.len());

@@ -315,13 +315,8 @@ async fn try_generate<L: LlmClient, D: Decider>(
 
 /// Jev 판단 대상(종목·시장·주제)
 pub fn judge_item(stock: &Stock, topic_summary: Option<&str>) -> JudgeItem {
-    let judge_kind = match stock.kind {
-        ItemKind::Stock => crate::server::ai::decider::types::JudgeTarget::Stock,
-        ItemKind::Market => crate::server::ai::decider::types::JudgeTarget::Market,
-        ItemKind::Topic => crate::server::ai::decider::types::JudgeTarget::Topic,
-    };
     JudgeItem {
-        kind: judge_kind,
+        kind: stock.kind.into(),
         name: stock.name_ko.clone().unwrap_or_else(|| stock.name.clone()),
         official_name: stock
             .name_ko

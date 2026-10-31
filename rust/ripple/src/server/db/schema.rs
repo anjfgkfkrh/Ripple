@@ -76,6 +76,127 @@ string_enum!(
     UsageProvider { Openrouter => "openrouter", Typesafe => "typesafe" }
 );
 
+/// 소스 하나의 수집 결과(`collection_runs.sources` JSON의 한 칸)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceResult {
+    /// 피드 id
+    pub id: String,
+    /// 화면 표시용(예: 조선비즈 증권)
+    pub label: String,
+    /// 화면에서 묶어 보여 줄 출처(예: 조선비즈, Finnhub)
+    pub group: String,
+    /// 받은 기사 수
+    pub fetched: i64,
+    /// 기준 시각 이후 기사 수
+    pub fresh: i64,
+    /// 새로 저장한 기사 수
+    pub saved: i64,
+    /// 새로 만든 기사–종목 연결 수
+    pub matched: i64,
+    /// 이 소스만 회차 기준 시각과 다른 기준 시각(ms)을 썼을 때(지난번에 실패한 소스, D-24)
+    pub since: Option<i64>,
+    pub error: Option<String>,
+    pub ms: i64,
+}
+
+impl SourceResult {
+    /// TS 객체의 키 순서(`ms` 뒤에 `error`)와 같은 JSON
+    pub fn to_json(&self) -> serde_json::Value {
+        let mut map = serde_json::Map::new();
+        map.insert("id".into(), self.id.clone().into());
+        map.insert("label".into(), self.label.clone().into());
+        map.insert("group".into(), self.group.clone().into());
+        map.insert("fetched".into(), self.fetched.into());
+        map.insert("fresh".into(), self.fresh.into());
+        map.insert("saved".into(), self.saved.into());
+        map.insert("matched".into(), self.matched.into());
+        if let Some(since) = self.since {
+            map.insert("since".into(), since.into());
+        }
+        map.insert("ms".into(), self.ms.into());
+        if let Some(error) = &self.error {
+            map.insert("error".into(), error.clone().into());
+        }
+        serde_json::Value::Object(map)
+    }
+
+    pub fn from_json(value: &serde_json::Value) -> Option<Self> {
+        let text = |key: &str| value.get(key)?.as_str().map(str::to_string);
+        let int = |key: &str| {
+            value
+                .get(key)
+                .and_then(serde_json::Value::as_f64)
+                .map(|v| v as i64)
+        };
+        Some(Self {
+            id: text("id")?,
+            label: text("label")?,
+            group: text("group")?,
+            fetched: int("fetched")?,
+            fresh: int("fresh")?,
+            saved: int("saved")?,
+            matched: int("matched")?,
+            since: int("since"),
+            error: text("error"),
+            ms: int("ms")?,
+        })
+    }
+}
+
+/// 수집 회차 안에서 한 Jev 평가 요약(`collection_runs.evaluation` JSON)
+#[derive(Debug, Clone, PartialEq)]
+pub struct EvaluationSummary {
+    /// 새로 평가한 기사–종목 연결 수
+    pub evaluated: i64,
+    /// 그중 표시 기준(관련도·영향도, 11단계) 이상
+    pub relevant: i64,
+    /// 같은 소식(비슷한 제목)의 앞선 평가를 그대로 쓴 수(Jev 호출 없음, 11단계)
+    pub copied: i64,
+    /// 실패해 다음 회차로 미룬 수
+    pub failed: i64,
+    /// 예산·키 문제 등으로 손대지 않고 남긴 수
+    pub remaining: i64,
+    /// 이 회차 평가 비용(달러)
+    pub cost_usd: f64,
+    pub ms: i64,
+    /// 멈춘 이유(예산 초과, 키 없음 등)
+    pub note: Option<String>,
+}
+
+impl EvaluationSummary {
+    pub fn empty() -> Self {
+        Self {
+            evaluated: 0,
+            relevant: 0,
+            copied: 0,
+            failed: 0,
+            remaining: 0,
+            cost_usd: 0.0,
+            ms: 0,
+            note: None,
+        }
+    }
+
+    /// TS 객체의 키 순서(`evaluated, relevant, copied, failed, remaining, costUsd, ms, note`)와 같은 JSON
+    pub fn to_json(&self) -> serde_json::Value {
+        let mut map = serde_json::Map::new();
+        map.insert("evaluated".into(), self.evaluated.into());
+        map.insert("relevant".into(), self.relevant.into());
+        map.insert("copied".into(), self.copied.into());
+        map.insert("failed".into(), self.failed.into());
+        map.insert("remaining".into(), self.remaining.into());
+        map.insert(
+            "costUsd".into(),
+            crate::server::text::json_number(self.cost_usd),
+        );
+        map.insert("ms".into(), self.ms.into());
+        if let Some(note) = &self.note {
+            map.insert("note".into(), note.clone().into());
+        }
+        serde_json::Value::Object(map)
+    }
+}
+
 #[cfg(test)]
 #[path = "schema_tests.rs"]
 mod tests;

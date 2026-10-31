@@ -96,3 +96,13 @@ fn encode_uri_component_matches_javascript() {
     assert_eq!(encode_uri_component("-_.!~*'()"), "-_.!~*'()");
     assert_eq!(encode_uri_component("😀"), "%F0%9F%98%80");
 }
+
+#[test]
+fn json_number_writes_integers_without_decimal_point() {
+    assert_eq!(json_number(0.0).to_string(), "0");
+    assert_eq!(json_number(5.0).to_string(), "5");
+    assert_eq!(json_number(-3.0).to_string(), "-3");
+    assert_eq!(json_number(0.00123).to_string(), "0.00123");
+    assert_eq!(json_number(0.1 + 0.2).to_string(), "0.30000000000000004");
+    assert_eq!(json_number(f64::NAN), serde_json::Value::Null);
+}

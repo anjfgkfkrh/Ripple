@@ -52,6 +52,17 @@ pub trait HttpClient: Send + Sync {
     ) -> impl Future<Output = Result<HttpResponse, HttpError>> + Send;
 }
 
+/// 여러 곳(로봇 검사·피드·Finnhub)이 한 클라이언트를 나눠 쓴다. 호스트별 요청 간격을 함께 지키려는 것이다.
+impl<T: HttpClient> HttpClient for std::sync::Arc<T> {
+    fn get(
+        &self,
+        url: &str,
+        headers: &[(&str, &str)],
+    ) -> impl Future<Output = Result<HttpResponse, HttpError>> + Send {
+        (**self).get(url, headers)
+    }
+}
+
 pub struct HttpClientOptions {
     pub user_agent: String,
     /// 같은 호스트에 대한 요청 시작 간격

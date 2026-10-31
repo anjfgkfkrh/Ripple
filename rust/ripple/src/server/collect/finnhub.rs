@@ -37,6 +37,37 @@ pub struct FinnhubQuote {
 #[error("{0}")]
 pub struct FinnhubError(pub String);
 
+/// 뉴스를 주는 쪽(`FinnhubClient`, 테스트의 가짜)
+pub trait FinnhubNewsClient: Send + Sync {
+    fn company_news(
+        &self,
+        symbol: &str,
+        from: EpochMs,
+        to: EpochMs,
+    ) -> impl std::future::Future<Output = Result<Vec<FinnhubNews>, FinnhubError>> + Send;
+
+    fn general_news(
+        &self,
+    ) -> impl std::future::Future<Output = Result<Vec<FinnhubNews>, FinnhubError>> + Send;
+}
+
+impl<H: HttpClient> FinnhubNewsClient for FinnhubClient<H> {
+    fn company_news(
+        &self,
+        symbol: &str,
+        from: EpochMs,
+        to: EpochMs,
+    ) -> impl std::future::Future<Output = Result<Vec<FinnhubNews>, FinnhubError>> + Send {
+        FinnhubClient::company_news(self, symbol, from, to)
+    }
+
+    fn general_news(
+        &self,
+    ) -> impl std::future::Future<Output = Result<Vec<FinnhubNews>, FinnhubError>> + Send {
+        FinnhubClient::general_news(self)
+    }
+}
+
 pub struct FinnhubClient<H> {
     http: H,
     api_key: String,

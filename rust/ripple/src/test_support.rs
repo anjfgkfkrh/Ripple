@@ -228,7 +228,9 @@ pub fn sample_keyword_tree(english: bool) -> Value {
     serde_json::json!({ "keywords": keywords })
 }
 
-use crate::server::ai::decider::types::{DeciderError, LeadInput, LeadRating, TokenUsage};
+use crate::server::ai::decider::types::{
+    DeciderError, Decision, DecisionInput, LeadInput, LeadRating, TokenUsage,
+};
 
 /// 기본 키워드·토픽 평가(관련 7점·영향 6점·입력 500토큰)
 pub fn fake_rating() -> LeadRating {
@@ -246,30 +248,66 @@ pub fn fake_rating() -> LeadRating {
 }
 
 type RateAnswer = Box<dyn Fn(&LeadInput) -> Result<LeadRating, DeciderError> + Send + Sync>;
+type DecideAnswer = Box<dyn Fn(&DecisionInput) -> Result<Decision, DeciderError> + Send + Sync>;
 
-/// 입력마다 정한 결과(또는 오류)를 돌려주는 가짜 Jev. 받은 입력과 모델을 `rate_calls`에 남긴다.
-/// 기사 평가(`decide`)는 R6에서 필요해질 때 더한다.
+/// 기본 평가 결과(관련 7점·영향 7점·호재·입력 1000토큰)
+pub fn fake_decision() -> Decision {
+    Decision {
+        relevance: 7.0,
+        relevance_confidence: 0.7,
+        magnitude: 7.0,
+        magnitude_confidence: 0.7,
+        impact: crate::server::db::schema::Impact::Positive,
+        impact_confidence: 0.8,
+        impact_probabilities: [0.8, 0.1, 0.1],
+        model: "jev-1.13.0".to_string(),
+        usage: TokenUsage {
+            input_tokens: 1000,
+            output_tokens: 50,
+        },
+    }
+}
+
+/// 입력마다 정한 결과(또는 오류)를 돌려주는 가짜 Jev. 받은 입력과 모델을 `calls`(기사 평가)와
+/// `rate_calls`(키워드·토픽 평가)에 남긴다.
 pub struct FakeDecider {
+    decide_answer: DecideAnswer,
     rate_answer: RateAnswer,
+    pub calls: Mutex<Vec<(DecisionInput, String)>>,
     pub rate_calls: Mutex<Vec<(LeadInput, String)>>,
 }
 
+/// 키워드·토픽 평가만 정한다(기사 평가는 기본 결과).
 pub fn fake_decider(
     rate_answer: impl Fn(&LeadInput) -> Result<LeadRating, DeciderError> + Send + Sync + 'static,
 ) -> FakeDecider {
     FakeDecider {
+        decide_answer: Box::new(|_| Ok(fake_decision())),
         rate_answer: Box::new(rate_answer),
+        calls: Mutex::new(Vec::new()),
+        rate_calls: Mutex::new(Vec::new()),
+    }
+}
+
+/// 기사 평가만 정한다(키워드·토픽 평가는 기본 결과).
+pub fn fake_article_decider(
+    decide_answer: impl Fn(&DecisionInput) -> Result<Decision, DeciderError> + Send + Sync + 'static,
+) -> FakeDecider {
+    FakeDecider {
+        decide_answer: Box::new(decide_answer),
+        rate_answer: Box::new(|_| Ok(fake_rating())),
+        calls: Mutex::new(Vec::new()),
         rate_calls: Mutex::new(Vec::new()),
     }
 }
 
 impl crate::server::ai::decider::types::Decider for FakeDecider {
-    async fn decide(
-        &self,
-        _: &crate::server::ai::decider::types::DecisionInput,
-        _: &str,
-    ) -> Result<crate::server::ai::decider::types::Decision, DeciderError> {
-        unreachable!("R4 시험은 기사 평가를 쓰지 않는다")
+    async fn decide(&self, input: &DecisionInput, model: &str) -> Result<Decision, DeciderError> {
+        self.calls
+            .lock()
+            .unwrap()
+            .push((input.clone(), model.to_string()));
+        (self.decide_answer)(input)
     }
 
     async fn rate(&self, input: &LeadInput, model: &str) -> Result<LeadRating, DeciderError> {

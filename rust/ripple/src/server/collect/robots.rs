@@ -117,6 +117,17 @@ fn pattern_matches(pattern: &str, path: &str) -> bool {
     Regex::new(&source).is_ok_and(|re| re.is_match(path))
 }
 
+/// 이 주소를 가져가도 되는지 묻는 쪽(`RobotsChecker`, 테스트의 가짜)
+pub trait RobotsCheck: Send + Sync {
+    fn allowed(&self, url: &str) -> impl std::future::Future<Output = bool> + Send;
+}
+
+impl<H: HttpClient> RobotsCheck for RobotsChecker<H> {
+    fn allowed(&self, url: &str) -> impl std::future::Future<Output = bool> + Send {
+        RobotsChecker::allowed(self, url)
+    }
+}
+
 struct CacheEntry {
     rules: Vec<Rule>,
     at: EpochMs,

@@ -4,6 +4,7 @@ pub mod budget;
 pub mod collect;
 pub mod db;
 pub mod env;
+pub mod evaluate;
 pub mod keywords;
 pub mod listings;
 pub mod log;
