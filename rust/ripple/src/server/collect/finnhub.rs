@@ -68,6 +68,23 @@ impl<H: HttpClient> FinnhubNewsClient for FinnhubClient<H> {
     }
 }
 
+/// 현재가를 주는 쪽(`FinnhubClient`, 테스트의 가짜). 값이 없으면 None
+pub trait FinnhubQuoteClient: Send + Sync {
+    fn quote(
+        &self,
+        symbol: &str,
+    ) -> impl std::future::Future<Output = Result<Option<FinnhubQuote>, FinnhubError>> + Send;
+}
+
+impl<H: HttpClient> FinnhubQuoteClient for FinnhubClient<H> {
+    fn quote(
+        &self,
+        symbol: &str,
+    ) -> impl std::future::Future<Output = Result<Option<FinnhubQuote>, FinnhubError>> + Send {
+        FinnhubClient::quote(self, symbol)
+    }
+}
+
 pub struct FinnhubClient<H> {
     http: H,
     api_key: String,

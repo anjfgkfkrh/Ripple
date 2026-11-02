@@ -1,5 +1,6 @@
 pub mod ai;
 pub mod auth;
+pub mod backup;
 pub mod budget;
 pub mod collect;
 pub mod db;
@@ -9,6 +10,7 @@ pub mod keywords;
 pub mod listings;
 pub mod log;
 pub mod prices;
+pub mod schedule;
 pub mod settings;
 pub mod similar_title;
 pub mod stocks;
