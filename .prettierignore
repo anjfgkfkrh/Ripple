@@ -16,3 +16,9 @@ rust/ripple/src/server/ai/decider/questions_fixture.json
 rust/ripple/src/server/prompts/
 rust/ripple/src/server/collect/date_samples.json
 rust/ripple/src/server/collect/date_fixture.json
+# askama 템플릿(.html)은 prettier가 해석하지 못하고, 아래는 복사해 온 외부 파일·생성물
+rust/ripple/templates/
+rust/ripple/static/htmx.min.js
+rust/ripple/static/app.css
+rust/ripple/styles/shadcn.css
+rust/ripple/styles/tw-animate.css

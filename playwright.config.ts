@@ -21,6 +21,14 @@ const baseEnv = Object.fromEntries(
 
 export default defineConfig({
   testDir: "e2e",
+  // R10~R11 동안 Rust web에 없는 화면의 시험(R12에서 지움, DECISIONS.md 1장 "14단계 R10 결정")
+  testIgnore: [
+    "**/timeline.spec.ts",
+    "**/stocks.spec.ts",
+    "**/keywords.spec.ts",
+    "**/settings.spec.ts",
+    "**/collect.spec.ts",
+  ],
   outputDir: "test-results",
   reporter: "list",
   use: {
@@ -80,13 +88,16 @@ export default defineConfig({
           gracefulShutdown: { signal: "SIGTERM", timeout: 5000 },
         },
         {
-          command: `node_modules/.bin/next dev -p ${E2E_PORTS.web} -H 127.0.0.1`,
+          // 14단계 R10부터 Rust web(`cd rust && ./build.sh --release`로 먼저 빌드).
+          command: "rust/target/release/ripple web",
           // DB를 건드리지 않는 정적 파일로 기동 여부만 본다.
           url: `http://127.0.0.1:${E2E_PORTS.web}/favicon.ico`,
           // .env의 실제 값보다 이 값이 우선한다(Next는 이미 있는 환경변수를 덮어쓰지 않음).
           env: {
             ...baseEnv,
             DATABASE_PATH: E2E_DB,
+            HOSTNAME: "127.0.0.1",
+            PORT: String(E2E_PORTS.web),
             WORKER_URL: `http://127.0.0.1:${E2E_PORTS.worker}`,
             WORKER_API_TOKEN: E2E_WORKER_API_TOKEN,
             APP_PASSWORD: E2E_APP_PASSWORD,

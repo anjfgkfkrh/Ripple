@@ -32,13 +32,8 @@ fn main() {
     let code = match cli.command {
         Command::Migrate => ripple::worker::migrate::run(&Env::from_process()),
         Command::Worker => ripple::worker::index::run(&Env::from_process()),
-        Command::Web => not_implemented("web"),
+        Command::Web => ripple::web::index::run(&Env::from_process()),
         Command::Healthcheck { url } => ripple::healthcheck::run(&url),
     };
     std::process::exit(code);
-}
-
-fn not_implemented(name: &str) -> i32 {
-    eprintln!("{name}: 아직 구현하지 않았습니다(Rust 전환 중).");
-    2
 }

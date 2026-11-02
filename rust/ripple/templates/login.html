@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% import "ui/button.html" as button %}
+{% block body %}
+<main class="flex flex-1 items-center justify-center px-4 py-12">
+<div data-slot="card" data-size="default" class="group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-xl bg-card py-(--card-spacing) text-sm text-card-foreground ring-1 ring-foreground/10 [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl w-full max-w-sm"><div data-slot="card-header" class="group/card-header @container/card-header grid auto-rows-min items-start gap-1 rounded-t-xl px-(--card-spacing) has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto] [.border-b]:pb-(--card-spacing)"><div data-slot="card-title" class="font-heading text-base leading-snug font-medium group-data-[size=sm]/card:text-sm"><h1>Ripple</h1></div><div data-slot="card-description" class="text-sm text-muted-foreground">비밀번호를 입력하세요.</div></div><div data-slot="card-content" class="px-(--card-spacing)">
+<form method="post" action="/login" class="grid gap-4" data-pending-label="확인 중…">
+<input type="hidden" name="next" value="{{ next }}">
+<div class="grid gap-2"><label data-slot="label" class="flex items-center gap-2 text-sm leading-none font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50" for="password">비밀번호</label><input id="password" autofocus type="password" data-slot="input" autocomplete="current-password" required class="h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base transition-colors outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40" name="password"></div>
+{% if let Some(error) = error %}<p role="alert" class="text-sm text-destructive">{{ error }}</p>{% endif %}
+{% call button::primary("로그인", false) %}{% endcall %}
+</form>
+</div></div>
+</main>
+{% endblock %}

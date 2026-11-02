@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% import "ui/button.html" as button %}
+{% block body %}
+
+<header class="border-b"><div class="mx-auto flex h-12 w-full max-w-xl items-center gap-4 px-4"><a class="font-semibold" href="/">Ripple</a><nav aria-label="메뉴" class="flex gap-3 text-sm"><a class="text-muted-foreground hover:text-foreground" href="/">타임라인</a><a class="text-muted-foreground hover:text-foreground" href="/stocks">종목</a><a class="text-muted-foreground hover:text-foreground" href="/status">상태</a><a class="text-muted-foreground hover:text-foreground" href="/settings">설정</a></nav><form method="post" action="/logout" class="ml-auto">{% call button::ghost_sm("로그아웃") %}{% endcall %}</form></div></header>
+{% if let Some(banner) = banner %}
+<div role="{% if banner.over %}alert{% else %}status{% endif %}" data-testid="budget-banner" class="{% if banner.over %}border-b border-destructive/30 bg-destructive/10 text-destructive{% else %}border-b border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200{% endif %}"><p class="mx-auto w-full max-w-xl px-4 py-2 text-sm">{{ banner.text }}<a class="font-medium underline underline-offset-2" href="/settings">{{ banner.link }}</a></p></div>
+{% endif %}
+{% block content %}{% endblock %}
+{% endblock %}

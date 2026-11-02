@@ -1,0 +1,18 @@
+{% extends "app_layout.html" %}
+{% block content %}
+<main class="mx-auto w-full max-w-xl px-4 py-8 sm:py-12">
+<h1 class="text-xl font-semibold">시스템 상태</h1>
+<p class="mt-1 text-sm text-muted-foreground">시스템과 기사 수집 상태를 확인합니다.</p>
+<div hx-get="/status/system" hx-trigger="load" hx-swap="outerHTML"><p class="mt-6 text-sm text-muted-foreground">확인 중…</p></div>
+<section class="mt-10">
+<h2 class="text-base font-semibold">기사 수집</h2>
+<p class="mt-1 text-sm text-muted-foreground">언론사 RSS와 Finnhub(미국 종목)에서 종목·시장·주제에 걸린 기사를 정해진 간격마다 모으고 Jev로 관련도·영향도(0~10)와 호재·악재를 평가합니다.</p>
+{% include "status/collection.html" %}
+</section>
+<section class="mt-10">
+<h2 class="text-base font-semibold">시장 토픽</h2>
+<p class="mt-1 text-sm text-muted-foreground">수집한 기사 제목으로 AI가 지금 시장을 움직이는 토픽을 정해진 때마다 다시 잡고, 토픽마다 영향을 받을 내 종목을 Jev로 평가해 붙입니다(낮에 1번 약 $0.005).</p>
+{% include "status/topics.html" %}
+</section>
+</main>
+{% endblock %}

@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="ko" class="h-full font-sans antialiased">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ripple</title>
+<meta name="description" content="보유 종목 관련 뉴스·증권사 리포트 모아보기">
+<meta name="robots" content="noindex, nofollow">
+<meta name="htmx-config" content='{"allowEval":false,"allowScriptTags":false}'>
+<link rel="icon" href="/favicon.ico" sizes="48x48" type="image/x-icon">
+<link rel="stylesheet" href="{{ assets.css }}">
+<script src="{{ assets.htmx }}" defer></script>
+<script src="{{ assets.app_js }}" defer></script>
+</head>
+<body class="flex min-h-full flex-col break-keep wrap-break-word">
+{% block body %}{% endblock %}
+</body>
+</html>
