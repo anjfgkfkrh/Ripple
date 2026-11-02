@@ -71,6 +71,8 @@ pub struct KisOptions {
     /// 요청 시작 간격(호출 한도 대비). 없으면 1.1초
     pub min_interval_ms: Option<i64>,
     pub timeout: Option<Duration>,
+    /// 나눠 쓸 HTTP 클라이언트(R9 결정 ③, 설계 8장). 없으면 새로 만든다.
+    pub http: Option<reqwest::Client>,
 }
 
 struct State {
@@ -98,7 +100,7 @@ impl ReqwestKisClient {
             .base_url
             .unwrap_or_else(|| kis_base_url(options.env).to_string());
         Self {
-            http: reqwest::Client::new(),
+            http: options.http.unwrap_or_default(),
             app_key: options.app_key,
             app_secret: options.app_secret,
             base: base.trim_end_matches('/').to_string(),

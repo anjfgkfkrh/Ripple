@@ -56,6 +56,7 @@ fn client(server: &MockServer, clock: &Arc<AtomicI64>) -> ReqwestKisClient {
         now: Some(Arc::new(move || clock.load(Ordering::SeqCst))),
         min_interval_ms: Some(0),
         timeout: None,
+        http: None,
     })
 }
 
@@ -308,6 +309,7 @@ async fn slow_server_is_cut_off_with_a_clear_message() {
         now: None,
         min_interval_ms: Some(0),
         timeout: Some(Duration::from_millis(50)),
+        http: None,
     });
     let error = kis.domestic_quote("000720").await.unwrap_err();
     assert_eq!(error.to_string(), "KIS 응답이 늦어 중단했습니다.");
@@ -323,6 +325,7 @@ async fn connection_failure_is_reported_as_kis_error() {
         now: None,
         min_interval_ms: Some(0),
         timeout: None,
+        http: None,
     });
     let error = kis.domestic_quote("000720").await.unwrap_err();
     assert!(error.to_string().starts_with("KIS에 연결하지 못했습니다: "));
@@ -349,6 +352,7 @@ async fn requests_are_spaced_by_the_minimum_interval() {
         now: Some(Arc::new(move || clock_in.load(Ordering::SeqCst))),
         min_interval_ms: Some(120),
         timeout: None,
+        http: None,
     });
     let started = std::time::Instant::now();
     kis.domestic_quote("000720").await.unwrap(); // 토큰 + 시세 = 요청 2번
@@ -376,6 +380,7 @@ fn real_key_uses_the_real_address_and_demo_the_demo_one() {
         now: None,
         min_interval_ms: None,
         timeout: None,
+        http: None,
     });
     assert_eq!(kis.base, "https://openapi.koreainvestment.com:9443");
 }

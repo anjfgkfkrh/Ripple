@@ -68,12 +68,39 @@ impl<H: HttpClient> FinnhubNewsClient for FinnhubClient<H> {
     }
 }
 
+/// 하나를 수집과 주가 받기가 나눠 쓸 때
+impl<T: FinnhubNewsClient> FinnhubNewsClient for std::sync::Arc<T> {
+    fn company_news(
+        &self,
+        symbol: &str,
+        from: EpochMs,
+        to: EpochMs,
+    ) -> impl std::future::Future<Output = Result<Vec<FinnhubNews>, FinnhubError>> + Send {
+        (**self).company_news(symbol, from, to)
+    }
+
+    fn general_news(
+        &self,
+    ) -> impl std::future::Future<Output = Result<Vec<FinnhubNews>, FinnhubError>> + Send {
+        (**self).general_news()
+    }
+}
+
 /// 현재가를 주는 쪽(`FinnhubClient`, 테스트의 가짜). 값이 없으면 None
 pub trait FinnhubQuoteClient: Send + Sync {
     fn quote(
         &self,
         symbol: &str,
     ) -> impl std::future::Future<Output = Result<Option<FinnhubQuote>, FinnhubError>> + Send;
+}
+
+impl<T: FinnhubQuoteClient> FinnhubQuoteClient for std::sync::Arc<T> {
+    fn quote(
+        &self,
+        symbol: &str,
+    ) -> impl std::future::Future<Output = Result<Option<FinnhubQuote>, FinnhubError>> + Send {
+        (**self).quote(symbol)
+    }
 }
 
 impl<H: HttpClient> FinnhubQuoteClient for FinnhubClient<H> {

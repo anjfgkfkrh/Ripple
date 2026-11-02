@@ -31,9 +31,9 @@ fn main() {
     let cli = Cli::parse();
     let code = match cli.command {
         Command::Migrate => ripple::worker::migrate::run(&Env::from_process()),
-        Command::Worker => not_implemented("worker"),
+        Command::Worker => ripple::worker::index::run(&Env::from_process()),
         Command::Web => not_implemented("web"),
-        Command::Healthcheck { .. } => not_implemented("healthcheck"),
+        Command::Healthcheck { url } => ripple::healthcheck::run(&url),
     };
     std::process::exit(code);
 }

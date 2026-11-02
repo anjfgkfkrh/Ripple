@@ -194,3 +194,22 @@ pub trait Decider: Send + Sync {
         model: &str,
     ) -> impl Future<Output = Result<LeadRating, DeciderError>> + Send;
 }
+
+/// 하나를 여러 곳(수집·키워드 대기열·토픽 갱신)이 나눠 쓸 때
+impl<T: Decider> Decider for std::sync::Arc<T> {
+    fn decide(
+        &self,
+        input: &DecisionInput,
+        model: &str,
+    ) -> impl Future<Output = Result<Decision, DeciderError>> + Send {
+        (**self).decide(input, model)
+    }
+
+    fn rate(
+        &self,
+        input: &LeadInput,
+        model: &str,
+    ) -> impl Future<Output = Result<LeadRating, DeciderError>> + Send {
+        (**self).rate(input, model)
+    }
+}

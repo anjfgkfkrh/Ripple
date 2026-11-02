@@ -40,8 +40,8 @@ export default defineConfig({
           env: { ...baseEnv, MOCK_PORT: String(E2E_PORTS.mock) },
         },
         {
-          // 테스트용 DB를 새로 만들고 마이그레이션한 뒤 worker를 띄운다.
-          command: `node e2e/wait-for.mjs ${MOCK}/health && rm -rf .e2e && node_modules/.bin/tsx src/worker/migrate.ts && node_modules/.bin/tsx src/worker/index.ts`,
+          // 테스트용 DB를 새로 만들고 마이그레이션한 뒤 worker를 띄운다(14단계 R9부터 Rust 실행 파일, `cd rust && ./build.sh --release`로 먼저 빌드).
+          command: `node e2e/wait-for.mjs ${MOCK}/health && rm -rf .e2e && rust/target/release/ripple migrate && rust/target/release/ripple worker`,
           url: `http://127.0.0.1:${E2E_PORTS.worker}/health`,
           env: {
             ...baseEnv,

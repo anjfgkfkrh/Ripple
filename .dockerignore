@@ -13,3 +13,7 @@ playwright-report
 *.tsbuildinfo
 *.db
 *.db-*
+rust/target
+rust/tools/tailwindcss
+rust/tools/tailwindcss.download
+rust/ripple/static/app.css

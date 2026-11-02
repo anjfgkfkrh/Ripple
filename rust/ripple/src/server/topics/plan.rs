@@ -13,7 +13,7 @@ use crate::server::time::{EpochMs, last_seoul_clock, next_seoul_clock};
 const HOUR_MS: f64 = 60.0 * 60.0 * 1000.0;
 
 /// 갱신 시각 형식: 한국 시간 "HH:MM"
-static TOPIC_TIME: LazyLock<Regex> =
+pub static TOPIC_TIME: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^([01][0-9]|2[0-3]):([0-5][0-9])$").expect("정규식이 올바르다"));
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

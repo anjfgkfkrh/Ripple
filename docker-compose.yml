@@ -3,12 +3,12 @@
 name: ripple
 
 services:
-  # 마이그레이션을 적용하고 끝난다(worker 이미지 사용). worker·web은 이것이 성공한 뒤 뜬다.
+  # 마이그레이션을 적용하고 끝난다(Rust worker 이미지 사용). worker·web은 이것이 성공한 뒤 뜬다.
   migrate:
     build:
       context: .
-      target: worker
-    command: ["node", "--enable-source-maps", "dist/worker/migrate.mjs"]
+      target: rust-worker
+    command: ["ripple", "migrate"]
     environment:
       DATABASE_PATH: /data/ripple.db
       TZ: Asia/Seoul
@@ -19,7 +19,8 @@ services:
   worker:
     build:
       context: .
-      target: worker
+      target: rust-worker
+    command: ["ripple", "worker"]
     environment:
       DATABASE_PATH: /data/ripple.db
       WORKER_HOST: 0.0.0.0
@@ -43,11 +44,7 @@ services:
       migrate:
         condition: service_completed_successfully
     healthcheck:
-      test:
-        - CMD
-        - node
-        - -e
-        - "fetch('http://127.0.0.1:4000/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      test: ["CMD", "ripple", "healthcheck", "http://127.0.0.1:4000/health"]
       interval: 30s
       timeout: 5s
       retries: 3
