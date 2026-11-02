@@ -57,6 +57,7 @@ fn name_and_direct_links_with_relevance_at_least_threshold_within_7_days_newest_
             published_at: ago(hours),
             kind,
             relevance,
+            magnitude: None,
         };
         insert_link(&db.conn, &spec);
     };
@@ -77,6 +78,7 @@ fn name_and_direct_links_with_relevance_at_least_threshold_within_7_days_newest_
             published_at: ago(1),
             kind: "name",
             relevance: Some(9.0),
+            magnitude: None,
         },
     );
 

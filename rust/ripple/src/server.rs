@@ -14,3 +14,4 @@ pub mod similar_title;
 pub mod stocks;
 pub mod text;
 pub mod time;
+pub mod topics;

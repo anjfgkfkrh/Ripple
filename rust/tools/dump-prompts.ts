@@ -8,6 +8,7 @@ import {
   type KeywordStock,
 } from "../../src/server/keywords/tree";
 import { buildMatchMessages } from "../../src/server/stocks/match";
+import { buildTopicRefreshMessages } from "../../src/server/topics/refresh";
 
 const outDir = path.resolve(
   process.argv[2] ?? "rust/ripple/src/server/prompts",
@@ -61,7 +62,40 @@ const keywordCases: {
   { stock: { ...SAMSUNG, nameKo: null }, depth: 2 },
 ];
 
+const topicCases = [
+  {
+    previous: [],
+    titles: ["유가 급등", "기준금리 동결"],
+    items: [],
+  },
+  {
+    previous: [
+      {
+        id: "3",
+        name: "중동 긴장",
+        summary: "사우디 공격",
+        terms: ["사우디", "유가"],
+        articles: 12,
+      },
+      {
+        id: "4",
+        name: "기준금리",
+        summary: "동결",
+        terms: ["기준금리"],
+        articles: 0,
+        ended: true,
+      },
+    ],
+    titles: ["유가 급등"],
+    items: ["현대건설", "삼성전자"],
+  },
+];
+
 const FILES: Record<string, unknown> = {
+  "topics.json": topicCases.map((c) => ({
+    ...c,
+    messages: buildTopicRefreshMessages(c),
+  })),
   "keywords.json": keywordCases.map((c) => ({
     stock: c.stock,
     depth: c.depth,

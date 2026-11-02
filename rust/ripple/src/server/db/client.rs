@@ -36,6 +36,26 @@ pub fn into_db(conn: Connection) -> Db {
     Arc::new(Mutex::new(conn))
 }
 
+/// 여러 문장을 한 덩어리로 실행한다(TS `db.transaction(() => ...)`). 이미 트랜잭션 안이면 savepoint가 되어
+/// 바깥 것과 함께 묶이고(better-sqlite3와 같은 동작), 아니면 새 트랜잭션이 된다. 오류가 나면 되돌린다.
+pub fn atomically<T>(
+    conn: &Connection,
+    body: impl FnOnce() -> rusqlite::Result<T>,
+) -> rusqlite::Result<T> {
+    conn.execute_batch("SAVEPOINT ripple_atomic")?;
+    match body() {
+        Ok(value) => {
+            conn.execute_batch("RELEASE ripple_atomic")?;
+            Ok(value)
+        }
+        Err(error) => {
+            // 되돌리기에 실패해도 처음 오류를 돌려준다.
+            let _ = conn.execute_batch("ROLLBACK TO ripple_atomic; RELEASE ripple_atomic");
+            Err(error)
+        }
+    }
+}
+
 /// WAL 모드를 켠다. WAL은 DB 파일에 저장되는 설정이라 쓰는 쪽(worker)이 시작할 때 한 번 하면 된다.
 /// WAL에서는 읽기와 쓰기가 서로 막지 않는다.
 pub fn enable_wal(conn: &Connection) -> Result<(), String> {

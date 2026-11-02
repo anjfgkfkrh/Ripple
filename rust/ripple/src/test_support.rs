@@ -327,6 +327,8 @@ pub struct LinkSpec<'a> {
     pub kind: &'a str,
     /// 주면 그 점수로 평가한 것으로 한다
     pub relevance: Option<f64>,
+    /// 영향도(11단계). 주지 않으면 11단계 전 평가처럼 비운다
+    pub magnitude: Option<f64>,
 }
 
 impl<'a> LinkSpec<'a> {
@@ -337,6 +339,7 @@ impl<'a> LinkSpec<'a> {
             published_at,
             kind: "name",
             relevance: Some(7.0),
+            magnitude: None,
         }
     }
 
@@ -374,9 +377,17 @@ pub fn insert_link(conn: &Connection, link: &LinkSpec<'_>) -> (i64, i64) {
         conn.execute(
             "INSERT INTO evaluations (match_id, article_id, stock_id, relevance, relevance_confidence, magnitude, \
              magnitude_confidence, impact, impact_confidence, impact_probabilities, model, evaluated_at) \
-             VALUES (?1, ?2, ?3, ?4, 0.7, NULL, NULL, 'neutral', 0.7, \
+             VALUES (?1, ?2, ?3, ?4, 0.7, ?6, ?7, 'neutral', 0.7, \
              '{\"positive\":0.1,\"negative\":0.1,\"neutral\":0.8}', 'jev-1.13.0', ?5)",
-            rusqlite::params![match_id, article_id, link.stock_id, relevance, link.published_at],
+            rusqlite::params![
+                match_id,
+                article_id,
+                link.stock_id,
+                relevance,
+                link.published_at,
+                link.magnitude,
+                link.magnitude.map(|_| 0.7)
+            ],
         )
         .unwrap();
     }
