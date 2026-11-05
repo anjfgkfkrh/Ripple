@@ -1,0 +1,24 @@
+{% import "ui/icons.html" as icons %}
+<section id="usage-section" class="mt-10 space-y-3" data-testid="usage"{% if usage.oob %} hx-swap-oob="true"{% endif %}>
+<h2 class="text-base font-semibold">이번 달 AI 사용량</h2>
+<div>
+<p class="text-sm"><strong class="tabular-nums">${{ usage.total }}</strong><span class="text-muted-foreground"> / 한도 ${{ usage.limit }} ({{ usage.percent }}%)</span></p>
+<div class="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted" role="progressbar" aria-label="이번 달 예산 사용" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ usage.percent }}"><div class="h-full rounded-full {% match usage.level %}{% when BudgetLevel::Ok %}bg-primary{% when BudgetLevel::Warn %}bg-amber-500{% when BudgetLevel::Over %}bg-destructive{% endmatch %}" style="width:{{ usage.width }}%"></div></div>
+</div>
+{% if !usage.has_rows %}
+<p class="text-sm text-muted-foreground">이번 달에는 아직 AI를 부르지 않았습니다.</p>
+{% else %}
+<table class="mt-2 w-full table-fixed text-sm" data-testid="usage-features"><caption class="text-left text-sm font-medium">기능별</caption><thead class="text-left text-xs text-muted-foreground"><tr class="border-b"><th class="py-1.5 font-normal">기능</th><th class="w-16 py-1.5 text-right font-normal">호출</th><th class="w-20 py-1.5 text-right font-normal">비용</th><th class="w-12 py-1.5 text-right font-normal">비율</th></tr></thead><tbody>
+{% for row in usage.features %}<tr class="border-b"><td class="py-1.5 break-words">{{ row.label }}{% if !row.sub.is_empty() %}<span class="text-xs text-muted-foreground"> · {{ row.sub }}</span>{% endif %}</td><td class="py-1.5 text-right tabular-nums">{{ row.calls }}</td><td class="py-1.5 text-right tabular-nums">{{ row.cost }}</td><td class="py-1.5 text-right tabular-nums">{{ row.share }}</td></tr>{% endfor %}
+</tbody></table>
+<table class="mt-2 w-full table-fixed text-sm" data-testid="usage-groups"><caption class="text-left text-sm font-medium">항목별</caption><thead class="text-left text-xs text-muted-foreground"><tr class="border-b"><th class="py-1.5 font-normal">묶음</th><th class="w-16 py-1.5 text-right font-normal">호출</th><th class="w-20 py-1.5 text-right font-normal">비용</th><th class="w-12 py-1.5 text-right font-normal">비율</th></tr></thead><tbody>
+{% for row in usage.groups %}<tr class="border-b"><td class="py-1.5 break-words">{{ row.label }}</td><td class="py-1.5 text-right tabular-nums">{{ row.calls }}</td><td class="py-1.5 text-right tabular-nums">{{ row.cost }}</td><td class="py-1.5 text-right tabular-nums">{{ row.share }}</td></tr>{% endfor %}
+</tbody></table>
+<details class="group"><summary class="flex w-fit cursor-pointer list-none items-center gap-1 text-sm text-muted-foreground select-none [&::-webkit-details-marker]:hidden">{% call icons::chevron_right("size-3.5 transition-transform group-open:rotate-90") %}{% endcall %}항목 하나씩 보기({{ usage.items.len() }}개)</summary>
+<table class="mt-2 w-full table-fixed text-sm" data-testid="usage-items"><thead class="text-left text-xs text-muted-foreground"><tr class="border-b"><th class="py-1.5 font-normal">항목</th><th class="w-16 py-1.5 text-right font-normal">호출</th><th class="w-20 py-1.5 text-right font-normal">비용</th><th class="w-12 py-1.5 text-right font-normal">비율</th></tr></thead><tbody>
+{% for row in usage.items %}<tr class="border-b"><td class="py-1.5 break-words">{{ row.label }}<span class="text-xs text-muted-foreground"> · {{ row.sub }}{% if row.deleted %} · 삭제함{% endif %}</span></td><td class="py-1.5 text-right tabular-nums">{{ row.calls }}</td><td class="py-1.5 text-right tabular-nums">{{ row.cost }}</td><td class="py-1.5 text-right tabular-nums">{{ row.share }}</td></tr>{% endfor %}
+</tbody></table>
+</details>
+<p class="text-xs text-muted-foreground">비율은 이번 달 전체 비용 대비입니다. 토픽–종목 평가는 그 종목에, 주제·토픽 기사 평가는 그 주제에 셉니다.</p>
+{% endif %}
+</section>

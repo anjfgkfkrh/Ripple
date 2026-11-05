@@ -123,4 +123,46 @@
   document.addEventListener("auxclick", (event) => {
     if (event.button === 1) openedLink(event);
   });
+
+  // 확인창(14단계 R12): 삭제 단추는 네이티브 dialog를 열고, 취소 단추로 닫는다(Esc는 브라우저가 닫는다).
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const opener = target.closest("[data-dialog-open]");
+    if (opener) {
+      document.getElementById(opener.dataset.dialogOpen).showModal();
+      return;
+    }
+    const closer = target.closest("[data-dialog-close]");
+    if (closer) closer.closest("dialog").close();
+  });
+
+  // 목록 조각을 다시 그려도 펼쳐 둔 키워드 트리는 펼친 채로 둔다(Next는 React가 펼침 상태를 그대로 뒀다).
+  let openDetails = null;
+  document.addEventListener("htmx:beforeSwap", () => {
+    openDetails = [...document.querySelectorAll("details[id][open]")].map(
+      (el) => el.id,
+    );
+  });
+  document.addEventListener("htmx:afterSettle", () => {
+    if (!openDetails) return;
+    openDetails.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.open = true;
+    });
+    openDetails = null;
+  });
+
+  // 만드는 중인 목록을 3초마다 다시 읽는 조각(data-poll)은 확인창이 열려 있으면 건너뛴다. 조각을 다시 그리면
+  // 열린 확인창도 사라지기 때문이다(Next는 React 상태를 그대로 둬서 창이 열린 채 남았다).
+  document.addEventListener("htmx:beforeRequest", (event) => {
+    const elt = event.detail && event.detail.elt;
+    if (
+      elt &&
+      elt.hasAttribute("data-poll") &&
+      document.querySelector("dialog[open]")
+    ) {
+      event.preventDefault();
+    }
+  });
 })();

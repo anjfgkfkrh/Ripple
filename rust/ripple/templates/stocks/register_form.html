@@ -1,0 +1,9 @@
+{% import "ui/button.html" as button %}
+<form class="shrink-0" hx-post="/stocks/register" hx-target="this" hx-swap="outerHTML" data-pending-label="등록 중…">
+<input type="hidden" name="market" value="{{ form.market }}">
+<input type="hidden" name="code" value="{{ form.code }}">
+<input type="hidden" name="nameKo" value="{{ form.name_ko }}">
+<input type="hidden" name="name" value="{{ form.name }}">
+<input type="hidden" name="userInput" value="{{ form.user_input }}">
+{% call button::primary_sm("등록", false, form.label) %}{% endcall %}
+</form>

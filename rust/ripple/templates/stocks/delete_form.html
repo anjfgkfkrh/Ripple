@@ -1,0 +1,5 @@
+{% import "ui/button.html" as button %}
+<form hx-post="{% if dialog.topic %}/stocks/topics/delete{% else %}/stocks/delete{% endif %}" hx-target="this" hx-swap="outerHTML" data-pending-label="삭제 중…">
+<input type="hidden" name="id" value="{{ dialog.item_id }}">
+{% call button::dialog_action("삭제", false) %}{% endcall %}
+</form>

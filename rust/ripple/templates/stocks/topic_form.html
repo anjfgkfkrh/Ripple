@@ -1,0 +1,9 @@
+{% import "ui/button.html" as button %}
+<div id="topic-form">
+<form class="flex gap-2" hx-post="/stocks/topics" hx-target="#topic-form" hx-swap="outerHTML" data-pending-label="넣는 중…">
+<label for="topic-name" class="flex items-center gap-2 text-sm leading-none font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 sr-only">주제</label>
+<input id="topic-name" data-slot="input" name="name" placeholder="예: 부동산 시장, 중동 정세" minlength="2" maxlength="20" autocomplete="off" required value="{{ topic_form.value }}" class="h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base transition-colors outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40">
+{% call button::primary("주제 추가", false, "") %}{% endcall %}
+</form>
+{% if let Some(error) = topic_form.error %}<p role="alert" class="mt-2 text-sm text-destructive">{{ error }}</p>{% endif %}
+</div>

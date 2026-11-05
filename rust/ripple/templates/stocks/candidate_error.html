@@ -1,0 +1,1 @@
+{% if let Some(message) = message %}<p id="{{ key }}" role="alert" class="mt-1 text-xs text-destructive" hx-swap-oob="true">{{ message }}</p>{% else %}<div id="{{ key }}" class="hidden" hx-swap-oob="true"></div>{% endif %}

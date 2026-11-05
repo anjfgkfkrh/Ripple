@@ -1,0 +1,25 @@
+{% extends "app_layout.html" %}
+{% block content %}
+<main class="mx-auto w-full max-w-xl px-4 py-8 sm:py-12">
+<h1 class="text-xl font-semibold">종목</h1>
+<p class="mt-1 text-sm text-muted-foreground">보유 종목을 이름이나 티커로 찾아 등록합니다. 등록하면 뉴스 검색에 쓸 연관 키워드를 AI가 만듭니다.</p>
+{% include "stocks/search.html" %}
+<section class="mt-10">
+<h2 class="text-base font-semibold">등록한 종목</h2>
+{% include "stocks/list.html" %}
+</section>
+<section class="mt-10" data-testid="market-topics">
+<h2 class="text-base font-semibold">시장·주제</h2>
+<p class="mt-1 text-sm text-muted-foreground">종목과 별개로 증시 전체와 직접 넣은 주제에 영향을 줄 기사를 모읍니다. 시장을 움직이는 토픽은 AI가 정해진 때마다 따로 잡아 타임라인 맨 위에 보입니다.</p>
+{% include "stocks/markets.html" %}
+<div class="mt-6">
+<h3 class="text-sm font-semibold">주제</h3>
+<p class="mt-1 text-sm text-muted-foreground">부동산 시장, 중동 정세처럼 따로 보고 싶은 주제를 넣으면 켜진 증시 기준으로 키워드 트리를 만들어 기사를 모읍니다.</p>
+<div class="mt-3">
+{% include "stocks/topic_form.html" %}
+</div>
+{% include "stocks/topic_list.html" %}
+</div>
+</section>
+</main>
+{% endblock %}

@@ -6,8 +6,10 @@ pub mod index;
 pub mod layout;
 pub mod login;
 pub mod response;
+pub mod settings;
 pub mod state;
 pub mod status;
+pub mod stocks;
 pub mod timeline;
 
 use std::sync::Arc;
@@ -32,6 +34,19 @@ pub fn web_router(state: Arc<WebState>) -> Router {
         .route("/status/collect", post(status::collect_now))
         .route("/status/topics", get(status::topics))
         .route("/status/topics/refresh", post(status::refresh_topics))
+        .route("/stocks", get(stocks::page))
+        .route("/stocks/match", post(stocks::match_stocks))
+        .route("/stocks/register", post(stocks::register))
+        .route("/stocks/list", get(stocks::list))
+        .route("/stocks/delete", post(stocks::delete))
+        .route("/stocks/keywords", post(stocks::regenerate))
+        .route("/stocks/markets", get(stocks::markets))
+        .route("/stocks/market", post(stocks::set_market))
+        .route("/stocks/topics", post(stocks::add_topic))
+        .route("/stocks/topics/list", get(stocks::topic_list))
+        .route("/stocks/topics/delete", post(stocks::delete_topic))
+        .route("/settings", get(settings::page).post(settings::save))
+        .route("/settings/rebuild", post(settings::rebuild))
         .fallback(layout::not_found)
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),

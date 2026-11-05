@@ -1,0 +1,9 @@
+{% import "ui/button.html" as button %}
+<section class="mt-10 space-y-2" data-testid="keyword-rebuild" id="keyword-rebuild">
+<h2 class="text-base font-semibold">키워드 다시 만들기</h2>
+<p class="text-sm text-muted-foreground">{% if rebuild.count > 0 %}지금 깊이({{ rebuild.depth }}단계)와 다르게 만든 종목·시장·주제가 {{ rebuild.count }}개 있습니다. 누르면 바로 다시 만듭니다(후보 트리와 Jev 평가, 하나에 약 $0.003).{% else %}모든 종목·시장·주제의 키워드가 지금 깊이({{ rebuild.depth }}단계)로 만들어져 있습니다.{% endif %}</p>
+<form class="flex flex-col items-start gap-2" hx-post="/settings/rebuild" hx-target="#keyword-rebuild" hx-swap="outerHTML" data-pending-label="요청 중…">
+{% call button::outline_sm("지금 다시 만들기", rebuild.count == 0, "") %}{% endcall %}
+{% if let Some(message) = rebuild.message %}<p class="text-xs text-muted-foreground">{{ message }}</p>{% endif %}
+</form>
+</section>

@@ -1,0 +1,24 @@
+{% import "ui/button.html" as button %}
+<section id="stock-search" class="mt-6">
+<form class="flex gap-2" hx-post="/stocks/match" hx-target="#stock-search" hx-swap="outerHTML" data-pending-label="찾는 중…">
+<label for="stock-query" class="flex items-center gap-2 text-sm leading-none font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 sr-only">종목 이름 또는 티커</label>
+<input id="stock-query" data-slot="input" name="query" placeholder="예: 삼전, 엔비디아, NVDA" maxlength="50" autocomplete="off" required value="{{ search.query }}" class="h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base transition-colors outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40">
+{% call button::primary("찾기", false, "") %}{% endcall %}
+</form>
+{% if let Some(error) = search.error %}<p role="alert" class="mt-3 text-sm text-destructive">{{ error }}</p>{% endif %}
+{% if search.searched && search.error.is_none() && search.candidates.is_empty() %}<p class="mt-3 text-sm text-muted-foreground">맞는 종목을 찾지 못했습니다. 다른 이름이나 티커로 입력해 보세요.</p>{% endif %}
+{% if !search.candidates.is_empty() %}
+<ul aria-label="찾은 후보" class="mt-3 divide-y rounded-lg border" data-testid="candidate-list">
+{% for candidate in search.candidates %}
+<li class="flex items-center justify-between gap-3 p-3" data-testid="candidate">
+<div class="min-w-0">
+<p class="truncate font-medium">{{ candidate.name }}</p>
+<p class="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground"><span class="group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-4xl border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap transition-all focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-3! bg-secondary text-secondary-foreground [a]:hover:bg-secondary/80">{{ candidate.market_label }}</span>{% if candidate.is_etf %}<span class="group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-4xl border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap transition-all focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-3! border-border text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground">ETF</span>{% endif %}<span>{{ candidate.exchange }}</span><span class="font-mono">{{ candidate.code }}</span>{% if candidate.us %}<span class="break-all">{{ candidate.english_name }}</span>{% endif %}</p>
+<div id="{{ candidate.form.key }}" class="hidden"></div>
+</div>
+{% if candidate.already %}<span class="shrink-0 text-sm text-muted-foreground">이미 등록됨</span>{% else %}{% let form = &candidate.form %}{% include "stocks/register_form.html" %}{% endif %}
+</li>
+{% endfor %}
+</ul>
+{% endif %}
+</section>

@@ -14,13 +14,11 @@
 
 ## 1. 지금 상태
 
-마지막 갱신: 2026-11-05 12:39 (한국 시간), 14단계(Rust 전환) R0~R11 끝
+마지막 갱신: 2026-11-05 (한국 시간), 14단계(Rust 전환) R0~R12 커밋됨, R13 질문 답 대기
 
-- **14단계 Rust 전환(설계 끝, 구현 전)**: 설계 문서 [RUST_MIGRATION.md](RUST_MIGRATION.md)(하위 단계 R0~R13, 1장 규칙·2장 크레이트·6장 단계표). 결정은 DECISIONS.md 1장 "14단계" 줄 3개. 설계는 Opus, 구현은 Sonnet이 한다(사용자 운영 방식). **전환이 끝날 때까지 기능 변경을 멈춘다**(결정 ⑦): 아래 답 대기 두 건과 13단계 남은 확인도 보류.
-  - **14단계 R8(주가·백업·스케줄) 끝, 커밋됨**(2026-11-02, R7 커밋 `0055b76` 이후, 커밋 해시는 `git log`): `/check` 전체 통과(Rust 410개, TS 446개, E2E 39개). 스스로 정한 것 ①~⑬은 DECISIONS.md 1장 "14단계 R8 구현 세부", 자세한 기록은 3장. **R9에서 주의**: `Scheduler`는 Drop 시 타이머가 멈추므로 worker 조립에서 종료 때까지 들고 있을 것. **다음**: R9 확인 뒤 R10(아래).
-  - **14단계 R9(worker 완성·교체) 끝, 커밋됨**(2026-11-02, R8 커밋 `1c4f3ce` 이후, 해시는 `git log`): `/check` 전체 통과(Rust 460개, TS 446개, E2E 39개, worker는 Rust). 실제 AI 확인 끝($0.0099, 사용량은 본 DB에 옮기지 않기로 함). 결정은 DECISIONS.md 1장 "14단계 R9 결정"·"R9 구현 세부", 기록은 3장. **배포는 요청할 때만**(이미지가 Rust로 바뀜, `/deploy`는 아직 TS worker 기준이므로 배포 전에 고칠 것).
-  - **14단계 R10(web 기반) 끝, 커밋됨**(2026-11-02, R9 커밋 `207e4eb` 이후, 해시는 `git log`): `/check` 전체 통과(Rust 532개, TS 446개, E2E 17개·건너뜀 1 모바일, web·worker는 Rust). 결정은 DECISIONS.md 1장 "14단계 R10 결정"·"R10 구현 세부", 기록은 3장. 상태 화면 데스크톱 캡처는 Next와 같고 **휴대폰·로그인 화면 캡처 비교는 아직**(R11 캡처 때 함께). compose의 web은 R13까지 TS(배포 불가 기간). 임시 `e2e/status-r10.spec.ts`는 R12에서 지운다.
-  - **14단계 R11(타임라인) 끝, 커밋됨**(구현 2026-11-02, 커밋 2026-11-05, R10 커밋 `b54805b` 이후, 해시는 `git log`): `/check` 전체 통과(Rust 565개, TS 446개, E2E 25개·건너뜀 1 모바일). 결정은 DECISIONS.md 1장 "14단계 R11 결정"·"R11 구현 세부", 기록은 3장. 데스크톱·휴대폰 캡처가 Next와 같음. E2E 전에 `cd rust && ./build.sh --release`로 release를 새로 빌드할 것(옛 바이너리면 `/`가 404). **다음**: R12(종목·설정 화면) 질문 답 대기.
+- **14단계 Rust 전환(R0~R12 커밋됨, R13 질문 답 대기)**: 설계 문서 [RUST_MIGRATION.md](RUST_MIGRATION.md)(하위 단계 R0~R13, 1장 규칙·2장 크레이트·6장 단계표). 결정은 DECISIONS.md 1장 "14단계" 줄 3개. 설계는 Opus, 구현은 Sonnet이 한다(사용자 운영 방식). **전환이 끝날 때까지 기능 변경을 멈춘다**(결정 ⑦): 아래 답 대기 두 건과 13단계 남은 확인도 보류.
+  - **14단계 R12(종목·설정 화면) 커밋됨**(2026-11-05, R11 커밋 `3dece10` 이후, 해시는 `git log`): `/check` 전체 통과(Rust 598개, TS 446개, E2E 39개·건너뜀 5 모바일). 결정은 DECISIONS.md 1장 "14단계 R12 결정"·"R12 구현 세부", 기록은 3장. 같은 DB 사본으로 Next와 Rust를 데스크톱·휴대폰 캡처 비교: 높이·요소별 클래스 같음, 로그인 폼도 같음(R10에서 남았던 것). 임시 `e2e/status-r10.spec.ts`는 이 커밋에서 지움.
+  - **다음: R13(정리·교체: TS 제거, Docker 이미지 하나, 문서)**: 질문 보냄, 답 대기. 질문 ① 최종 `/real-check`에 실제 AI 호출을 넣을지(추천: 넣음, 웹에서 종목 등록·키워드 다시 만들기를 처음 실제로 돌려 봄, 예상 $0.01 이하) ② GitHub 릴리스를 올릴지(추천: 이번엔 올리지 않음, 외부에 공개되므로 따로 결정) ③ TS 마지막 상태에 로컬 태그를 붙일지(추천: 붙임, 푸시 안 함). 답을 받으면 DECISIONS.md 1장 "14단계 R13 결정"에 적고 구현. R13 전까지 compose의 web은 TS, 본 Docker 배포는 하지 않는다(`/deploy`는 아직 TS 기준이라 R13에서 고침).
   - rustup 1.29.2와 Rust 1.99.1(rustfmt·clippy 포함)은 2026-10-31 사용자가 설치함(기본 툴체인 1.99.1).
 
 - **토픽 유지 개선(끝, 커밋 `46e3f58`, 2026-10-30 14:14 배포)**: 첫 정기 토픽 갱신 확인 끝. 15:57:32 시작, Haiku 1회 $0.0078(15:57:44) 성공, 실패 기록 없음, 진행 중 토픽 15개(끝남 136). 로그 줄은 16:00 배포로 컨테이너가 바뀌어 남지 않아 DB(`settings`·`usage_logs`·`topics`)로 확인.
@@ -53,7 +51,7 @@
 | - | 개발 환경 정리(문서 나누기, `.claude/`, 비밀 값 검사) | 완료(2026-10-30 커밋) | `4c4f259` |
 | - | 토픽 유지 개선(24시간 기사 수로 유지, 끝난 토픽 되살림, 최대 토큰 10,000) | 완료(2026-10-30 배포) | `46e3f58` |
 | 13 | 보유 종목 주가 띠(한국 KIS, 미국 Finnhub, 장중 1분, 이력) | 완료(2026-10-30 배포) | `ddde1a5` |
-| 14 | Rust 전환(기능 변경 없음, R0~R13, `docs/RUST_MIGRATION.md`) | R0~R11 끝, R12 질문 답 대기 | 설계 `92e956d`, R0 `ef6257d`, R1 `f142410`, R2 `5e03ee5`, R3 `56df2a3`, R4 `88c5c93`, R5 `b35bcca`, R6 `f371b85`, R7 `0055b76`, R8 `1c4f3ce`, R9 `207e4eb`, R10 `b54805b`, R11 (이 커밋) |
+| 14 | Rust 전환(기능 변경 없음, R0~R13, `docs/RUST_MIGRATION.md`) | R0~R12 커밋됨, R13 질문 답 대기 | 설계 `92e956d`, R0 `ef6257d`, R1 `f142410`, R2 `5e03ee5`, R3 `56df2a3`, R4 `88c5c93`, R5 `b35bcca`, R6 `f371b85`, R7 `0055b76`, R8 `1c4f3ce`, R9 `207e4eb`, R10 `b54805b`, R11 `3dece10`, R12 (해시는 `git log`) |
 
 릴리스: **v0.1.0 (MVP)**, 태그 `v0.1.0`. **v0.2.0**(2026-10-23, 10·11단계: 시사·시장 토픽·Jev 점수 기반·같은 소식 묶기·항목별 비용), 태그 `v0.2.0`, GitHub 릴리스 페이지에 `gh release create`로 올림(이제 `gh`가 있음, 커밋 `4626733`).
 
@@ -89,6 +87,7 @@ E2E에서 알아 둘 것
 - 타임라인·설정 테스트는 시험 DB에 데이터를 직접 넣는다(멜콘·나노솔루션 종목, 사용량 4.2달러). 앱 전체 값을 바꾸는 테스트는 데스크톱에서만 차례로 돌고 바로 되돌린다.
 - 로그인 테스트 헬퍼(`e2e/helpers.ts`의 `submitPassword`)는 앞 제출이 끝날 때까지 기다린 뒤 비밀번호를 넣는다. React가 제출이 끝난 뒤 폼을 비우는데, 그 전에 넣은 값이 지워져 브라우저가 빈 칸 제출을 막던 것이 7·9단계 간헐 실패(30번 중 1번꼴)의 원인이었다. 고친 뒤 140번 되풀이해 실패 0.
 - 되풀이 실행: `pnpm exec playwright test e2e/auth.spec.ts --repeat-each=10`(접속자 라벨에 되풀이 번호가 붙어 실패 제한이 섞이지 않음).
+- Rust web을 확인하는 E2E 전에는 `cd rust && ./build.sh --release`로 release를 새로 빌드한다(옛 바이너리면 `/`가 404, R11에서 겪음).
 
 시험용 Docker(본 Docker와 볼륨·포트·백업 폴더를 나눔, 2026-10-21 9단계에서 씀). 백업 사본을 넣는 법과 실제 AI 확인까지 담은 절차는 `/real-check`
 - 띄우기: `WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups OPENROUTER_API_KEY= TYPESAFE_API_KEY= FINNHUB_API_KEY= KIS_APP_KEY= KIS_APP_SECRET= APP_PASSWORD=… SESSION_SECRET=… docker compose -p ripple-check up -d --build`
@@ -135,3 +134,4 @@ DECISIONS.md 2장 "다시 잴 때의 방법"으로 옮겼다. 시험용 Docker �
 - 읽은 기사 표시(12단계): 저장·조회 `src/server/timeline/reads.ts`, 카드의 `read`는 `timeline/read.ts`, worker `PUT /articles/read`(`src/worker/server.ts`), 서버 액션 `setArticlesReadAction`(`src/app/(app)/actions.ts`), 카드 겉틀 `src/app/(app)/read-card.tsx`
 - 주가(13단계): `src/server/prices/`(kis = KIS 클라이언트, plan = 장 시간, run = 1분마다 받기, store = 저장·띠 읽기), Finnhub 현재가는 `src/server/collect/finnhub.ts`의 `quote`, 띠 화면 `src/app/(app)/price-strip.tsx`
 - 설정 값 기본: `src/server/settings.ts`, 설정 화면 검사·저장: `src/server/settings-form.ts`
+- Rust 웹의 종목·설정 화면(14단계 R12, 전환 중): `rust/ripple/src/web/stocks.rs`(종목·시장·주제 화면과 POST), `rust/ripple/src/web/settings.rs`(설정·사용량), 템플릿 `rust/ripple/templates/stocks/`·`settings/`, 확인창과 폴링 동작 `rust/ripple/static/app.js`

@@ -7,7 +7,7 @@
 <input type="hidden" name="next" value="{{ next }}">
 <div class="grid gap-2"><label data-slot="label" class="flex items-center gap-2 text-sm leading-none font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50" for="password">비밀번호</label><input id="password" autofocus type="password" data-slot="input" autocomplete="current-password" required class="h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base transition-colors outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40" name="password"></div>
 {% if let Some(error) = error %}<p role="alert" class="text-sm text-destructive">{{ error }}</p>{% endif %}
-{% call button::primary("로그인", false) %}{% endcall %}
+{% call button::primary("로그인", false, "") %}{% endcall %}
 </form>
 </div></div>
 </main>

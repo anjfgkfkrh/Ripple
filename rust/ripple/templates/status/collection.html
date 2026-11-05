@@ -2,7 +2,7 @@
 <div id="collection-panel" class="mt-3 space-y-4 rounded-lg border p-4" data-testid="collection"{% if collection.running || collection.poll %} hx-get="/status/collection" hx-trigger="every 3s" hx-swap="outerHTML"{% endif %}>
 <div class="flex flex-wrap items-start justify-between gap-3">
 <p class="text-sm text-muted-foreground">저장된 기사 {{ collection.articles }}건 · 종목 연결 {{ collection.matches }}건 · <span class="whitespace-nowrap">평가 {{ collection.evaluated }}건(표시 기준 이상 {{ collection.relevant }}건)</span></p>
-<form class="flex flex-col items-end gap-1" hx-post="/status/collect" hx-target="#collection-panel" hx-swap="outerHTML" data-pending-label="요청 중…">{% if collection.running %}{% call button::primary_sm("수집 중…", true) %}{% endcall %}{% else %}{% call button::primary_sm("지금 수집", false) %}{% endcall %}{% endif %}{% if let Some(error) = collection.error %}<p role="alert" class="text-sm text-destructive">{{ error }}</p>{% endif %}{% if let Some(notice) = collection.notice %}<p class="text-sm text-muted-foreground">{{ notice }}</p>{% endif %}</form>
+<form class="flex flex-col items-end gap-1" hx-post="/status/collect" hx-target="#collection-panel" hx-swap="outerHTML" data-pending-label="요청 중…">{% if collection.running %}{% call button::primary_sm("수집 중…", true, "") %}{% endcall %}{% else %}{% call button::primary_sm("지금 수집", false, "") %}{% endcall %}{% endif %}{% if let Some(error) = collection.error %}<p role="alert" class="text-sm text-destructive">{{ error }}</p>{% endif %}{% if let Some(notice) = collection.notice %}<p class="text-sm text-muted-foreground">{{ notice }}</p>{% endif %}</form>
 </div>
 <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm" data-testid="collection-schedule">
 <dt class="text-muted-foreground">정기 수집</dt>

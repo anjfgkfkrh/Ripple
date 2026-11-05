@@ -1,0 +1,6 @@
+{% import "ui/button.html" as button %}
+<form{% if keywords.ready %} class="mt-3"{% endif %} hx-post="/stocks/keywords" hx-target="this" hx-swap="outerHTML" data-pending-label="요청 중…">
+<input type="hidden" name="id" value="{{ keywords.stock_id }}">
+{% call button::outline_xs("키워드 다시 만들기", false, keywords.regen_aria) %}{% endcall %}
+{% if let Some(error) = keywords.regen_error %}<p role="alert" class="mt-1 text-xs text-destructive">{{ error }}</p>{% endif %}
+</form>

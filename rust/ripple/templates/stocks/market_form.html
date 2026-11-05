@@ -1,0 +1,7 @@
+{% import "ui/button.html" as button %}
+<form class="flex shrink-0 flex-col items-end gap-1" hx-post="/stocks/market" hx-target="this" hx-swap="outerHTML" data-pending-label="요청 중…">
+<input type="hidden" name="market" value="{{ market.market }}">
+<input type="hidden" name="enabled" value="{{ market.next }}">
+{% if market.enabled %}{% call button::ghost_sm(market.toggle_label, market.toggle_aria) %}{% endcall %}{% else %}{% call button::outline_sm(market.toggle_label, false, market.toggle_aria) %}{% endcall %}{% endif %}
+{% if let Some(error) = market.error %}<p role="alert" class="text-xs text-destructive">{{ error }}</p>{% endif %}
+</form>

@@ -1,0 +1,16 @@
+<div id="market-list"{% if market_list.oob %} hx-swap-oob="true"{% endif %}{% if market_list.poll %} hx-get="/stocks/markets" hx-trigger="every 3s" hx-swap="outerHTML" data-poll{% endif %}>
+<ul class="mt-3 divide-y rounded-lg border" data-testid="market-list">
+{% for market in market_list.markets %}
+<li class="p-3" data-testid="market">
+<div class="flex items-center justify-between gap-3">
+<div class="min-w-0">
+<p class="font-medium">{{ market.name }}</p>
+<p class="mt-1 text-xs text-muted-foreground">{{ market.detail }}</p>
+</div>
+{% include "stocks/market_form.html" %}
+</div>
+{% if let Some(keywords) = market.keywords %}{% include "stocks/keywords.html" %}{% endif %}
+</li>
+{% endfor %}
+</ul>
+</div>
