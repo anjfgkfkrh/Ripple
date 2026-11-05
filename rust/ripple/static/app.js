@@ -32,4 +32,95 @@
         button.disabled = false;
       });
   });
+
+  // 읽음 표시(12단계, 설계 5.4). 카드 안 원문 링크(가운데 버튼 포함)를 누르면 카드에 묶인 기사를 모두 읽음으로
+  // 저장하고, 카드 아래 작은 버튼으로 읽음/안 읽음을 되돌린다. 화면은 먼저 바꾸고 저장하며,
+  // 실패하면 원래대로 돌리고 이유를 보인다. 읽은 카드의 흐린 글자는 마크업의 `group-data-[read=true]:`가 정한다.
+  const CARD = 'article[data-testid="timeline-card"]';
+  const READ_FAILED = "읽음 표시를 저장하지 못했습니다.";
+
+  function showRead(article, read) {
+    article.dataset.read = String(read);
+    article.classList.toggle("bg-muted/40", read);
+    const footer = article.querySelector("[data-read-toggle]").parentElement;
+    const label = footer.querySelector('[data-testid="read-label"]');
+    if (read && !label) {
+      const span = document.createElement("span");
+      span.dataset.testid = "read-label";
+      span.textContent = "읽음 ·";
+      footer.insertBefore(span, footer.querySelector("[data-read-toggle]"));
+    } else if (!read && label) {
+      label.remove();
+    }
+    const toggle = footer.querySelector("[data-read-toggle]");
+    toggle.textContent = read ? "안 읽음으로" : "읽음으로 표시";
+    toggle.setAttribute(
+      "aria-label",
+      `${article.dataset.title} — ${read ? "안 읽음으로" : "읽음으로 표시"}`,
+    );
+  }
+
+  function showReadError(article, message) {
+    const footer = article.querySelector("[data-read-toggle]").parentElement;
+    let alert = footer.querySelector('[role="alert"]');
+    if (!message) {
+      if (alert) alert.remove();
+      return;
+    }
+    if (!alert) {
+      alert = document.createElement("span");
+      alert.setAttribute("role", "alert");
+      alert.className = "mr-auto text-destructive";
+      footer.insertBefore(alert, footer.firstChild);
+    }
+    alert.textContent = message;
+  }
+
+  async function saveRead(article, read) {
+    const before = article.dataset.read === "true";
+    const articleIds = article.dataset.articleIds.split(",").map(Number);
+    showReadError(article, null);
+    showRead(article, read);
+    let message = null;
+    try {
+      const response = await fetch("/articles/read", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ articleIds, read }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok !== true) message = data.error || READ_FAILED;
+    } catch {
+      message = READ_FAILED;
+    }
+    if (message) {
+      showRead(article, before);
+      showReadError(article, message);
+    }
+  }
+
+  function openedLink(event) {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const article = target.closest(CARD);
+    if (!article || article.dataset.read === "true") return;
+    if (target.closest("a[href]")) saveRead(article, true);
+  }
+
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const toggle = target.closest("[data-read-toggle]");
+    const article = toggle && toggle.closest(CARD);
+    if (article) {
+      saveRead(article, article.dataset.read !== "true");
+      return;
+    }
+    openedLink(event);
+  });
+
+  document.addEventListener("auxclick", (event) => {
+    if (event.button === 1) openedLink(event);
+  });
 })();

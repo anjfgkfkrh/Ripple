@@ -258,14 +258,14 @@ const chip = (filters: Locator, group: string, name: string) =>
     .getByRole("navigation", { name: `${group} 필터` })
     .getByRole("link", { name, exact: true });
 /**
- * 읽음 저장(서버 액션 POST)이 끝날 때까지 기다린다. 화면은 낙관적으로 먼저 바뀌므로, 기다리지 않고
+ * 읽음 저장(`POST /articles/read`)이 끝날 때까지 기다린다. 화면은 낙관적으로 먼저 바뀌므로, 기다리지 않고
  * 새로 고치면 저장 전 DB로 그려져 간헐 실패했다(2026-10-30, HEAD에서도 10번 중 1번).
  */
 const readSaved = (page: import("@playwright/test").Page) =>
   page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
-      response.request().headers()["next-action"] !== undefined,
+      new URL(response.url()).pathname === "/articles/read",
   );
 
 test.describe("타임라인 (SPEC FR-7, D-25, D-26)", () => {

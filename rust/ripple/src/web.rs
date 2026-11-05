@@ -8,6 +8,7 @@ pub mod login;
 pub mod response;
 pub mod state;
 pub mod status;
+pub mod timeline;
 
 use std::sync::Arc;
 
@@ -19,6 +20,8 @@ use state::WebState;
 /// web 라우터. 로그인 확인과 Origin 검사는 모든 요청에 걸린 미들웨어(`guard`)가 한다.
 pub fn web_router(state: Arc<WebState>) -> Router {
     Router::new()
+        .route("/", get(timeline::page))
+        .route("/articles/read", post(timeline::set_read))
         .route("/favicon.ico", get(assets::favicon))
         .route("/static/{name}", get(assets::serve))
         .route("/login", get(login::page).post(login::submit))

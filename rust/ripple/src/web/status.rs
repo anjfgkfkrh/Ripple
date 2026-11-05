@@ -539,7 +539,7 @@ pub async fn topics(State(state): State<Arc<WebState>>) -> Response {
     topics_panel(&state, None, None, false)
 }
 
-fn unreachable_result() -> WorkerResult {
+pub(crate) fn unreachable_result() -> WorkerResult {
     WorkerResult::Err {
         status: 0,
         error: "worker_unreachable".to_string(),

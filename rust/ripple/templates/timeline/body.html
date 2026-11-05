@@ -1,0 +1,51 @@
+{% import "ui/badge.html" as badge %}{% import "ui/icons.html" as icons %}
+<div id="timeline-body" hx-boost="true" hx-target="#timeline-body" hx-swap="outerHTML" hx-push-url="true">
+{% if body.empty %}
+<p class="mt-4 text-sm text-muted-foreground">등록한 종목이 없습니다. <a class="underline underline-offset-2" href="/stocks" hx-boost="false">종목을 등록</a>하면 30분마다 기사를 모아 여기에 보여 줍니다.</p>
+{% else %}
+<p class="mt-1 text-sm text-muted-foreground">관련도 {{ body.min_relevance }}점·영향도 {{ body.min_magnitude }}점 이상인 기사를 최신순으로 보여 줍니다.</p>
+{% if !body.prices.is_empty() %}
+<section class="mt-4" aria-label="주가" data-testid="price-strip"><ul class="-mx-4 flex snap-x gap-2 overflow-x-auto px-4 pb-2">
+{% for p in body.prices %}<li class="shrink-0 snap-start"><a href="{{ p.href }}"{% if p.selected %} aria-current="true"{% endif %} class="flex min-w-36 flex-col gap-0.5 rounded-lg border px-3 py-2 transition-colors {% if p.selected %}border-primary bg-primary/5{% else %}hover:bg-muted/60{% endif %}" data-testid="price-item"><span class="text-xs font-medium">{{ p.name }}</span><span class="text-base font-semibold tabular-nums">{{ p.price_text }}{% if p.is_kr %}<span class="ml-0.5 text-xs font-normal">원</span>{% endif %}</span><span class="text-xs tabular-nums {% if p.direction > 0 %}text-red-600 dark:text-red-400{% else if p.direction < 0 %}text-blue-600 dark:text-blue-400{% else %}text-muted-foreground{% endif %}" data-testid="price-change">{{ p.change_text }}</span><span class="text-[11px] text-muted-foreground tabular-nums">{{ p.basis_text }}</span></a></li>
+{% endfor %}</ul></section>
+{% endif %}
+{% if let Some(topics) = body.topics %}
+<section class="mt-4" aria-label="지금 시장 이슈" data-testid="topic-cards">
+<h2 class="text-sm font-medium">지금 시장 이슈</h2>
+{% if !topics.active.is_empty() %}
+<ul class="-mx-4 mt-2 flex snap-x gap-2 overflow-x-auto px-4 pb-2">{% for card in topics.active %}{% include "timeline/topic_card.html" %}{% endfor %}</ul>
+{% else %}
+<p class="mt-1 text-xs text-muted-foreground">지난 12시간 동안 새 기사가 걸린 토픽이 없습니다.</p>
+{% endif %}
+{% if !topics.faded.is_empty() %}
+<details class="group mt-1"{% if topics.faded_open %} open{% endif %}><summary class="flex w-fit cursor-pointer list-none items-center gap-1 text-xs text-muted-foreground select-none [&::-webkit-details-marker]:hidden">{% call icons::chevron_right("size-3.5 transition-transform group-open:rotate-90") %}{% endcall %}이전 이슈 {{ topics.faded.len() }}개</summary>
+<ul class="-mx-4 mt-2 flex snap-x gap-2 overflow-x-auto px-4 pb-2">{% for card in topics.faded %}{% include "timeline/topic_card.html" %}{% endfor %}</ul></details>
+{% endif %}
+</section>
+{% endif %}
+{% if let Some(filters) = body.filters %}
+<div class="mt-4 space-y-2" data-testid="timeline-filters">
+<nav aria-label="항목 필터" class="flex items-start gap-3"><span class="w-8 shrink-0 pt-1 text-xs text-muted-foreground">항목</span><div class="flex flex-wrap gap-1.5">{% for chip in filters.items %}<a href="{{ chip.href }}"{% if chip.active %} aria-current="true"{% endif %} class="rounded-full border px-3 py-1 text-xs transition-colors {% if chip.active %}border-primary bg-primary text-primary-foreground{% else %}text-muted-foreground hover:bg-muted hover:text-foreground{% endif %}">{{ chip.label }}</a>{% endfor %}</div></nav>
+<nav aria-label="영향 필터" class="flex items-start gap-3"><span class="w-8 shrink-0 pt-1 text-xs text-muted-foreground">영향</span><div class="flex flex-wrap gap-1.5">{% for chip in filters.impacts %}<a href="{{ chip.href }}"{% if chip.active %} aria-current="true"{% endif %} class="rounded-full border px-3 py-1 text-xs transition-colors {% if chip.active %}border-primary bg-primary text-primary-foreground{% else %}text-muted-foreground hover:bg-muted hover:text-foreground{% endif %}">{{ chip.label }}</a>{% endfor %}</div></nav>
+</div>
+{% endif %}
+{% if let Some(auto) = body.auto_topic %}
+<p class="mt-3 text-sm" data-testid="topic-filter">토픽 <strong>{{ auto.name }}</strong> 기사만 보는 중 · <a href="{{ auto.all_href }}" class="text-muted-foreground underline underline-offset-2">모두 보기</a></p>
+{% endif %}
+{% if body.pending > 0 %}
+<p class="mt-4 text-sm text-muted-foreground">평가를 기다리는 기사 {{ body.pending }}건은 평가가 끝나면 기준에 맞는 것만 보입니다.</p>
+{% endif %}
+{% if let Some(text) = body.empty_text %}
+<p class="mt-6 text-sm text-muted-foreground" data-testid="timeline-empty">{{ text }}</p>
+{% else %}
+{% for day in body.days %}
+<section class="mt-6" data-testid="timeline-day"><h2 class="border-b pb-1 text-sm font-medium text-muted-foreground">{{ day.label }}</h2><ul class="mt-3 space-y-3">
+{% for c in day.cards %}<li>{% include "timeline/card.html" %}</li>
+{% endfor %}</ul></section>
+{% endfor %}
+{% endif %}
+{% if let Some(href) = body.more_href %}
+<a href="{{ href }}" class="group/button inline-flex shrink-0 items-center justify-center rounded-lg border bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50 h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 mt-6 w-full">더 보기</a>
+{% endif %}
+{% endif %}
+</div>

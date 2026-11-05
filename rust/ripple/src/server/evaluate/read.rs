@@ -1,7 +1,9 @@
 //! 평가 읽기(`evaluate/read.ts`). web은 읽기만 한다.
 use rusqlite::Connection;
 
+use crate::server::evaluate::run::EVALUATION_WINDOW_MS;
 use crate::server::settings::{EVALUATION_MIN_MAGNITUDE, EVALUATION_MIN_RELEVANCE, read_num};
+use crate::server::time::EpochMs;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EvaluationTotals {
@@ -27,3 +29,21 @@ pub fn evaluation_totals(conn: &Connection) -> rusqlite::Result<EvaluationTotals
         min_magnitude,
     })
 }
+
+/// 아직 평가하지 않은 최근 7일 기사–종목 연결 수(삭제한 종목 제외, D-05와 같은 범위).
+/// 키가 없거나, 예산을 다 썼거나, 회차 한도에 밀리면 쌓인다.
+pub fn count_pending_evaluations(conn: &Connection, now: EpochMs) -> rusqlite::Result<i64> {
+    conn.query_row(
+        "SELECT count(*) FROM article_matches \
+         INNER JOIN articles ON articles.id = article_matches.article_id \
+         INNER JOIN stocks ON stocks.id = article_matches.stock_id \
+         LEFT JOIN evaluations ON evaluations.match_id = article_matches.id \
+         WHERE evaluations.id IS NULL AND stocks.deleted_at IS NULL AND articles.published_at >= ?1",
+        [now - EVALUATION_WINDOW_MS],
+        |r| r.get(0),
+    )
+}
+
+#[cfg(test)]
+#[path = "read_tests.rs"]
+mod tests;

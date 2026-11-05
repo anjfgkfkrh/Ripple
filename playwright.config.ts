@@ -21,9 +21,8 @@ const baseEnv = Object.fromEntries(
 
 export default defineConfig({
   testDir: "e2e",
-  // R10~R11 동안 Rust web에 없는 화면의 시험(R12에서 지움, DECISIONS.md 1장 "14단계 R10 결정")
+  // R10~R12 동안 Rust web에 없는 화면의 시험(R12에서 지움, DECISIONS.md 1장 "14단계 R10 결정")
   testIgnore: [
-    "**/timeline.spec.ts",
     "**/stocks.spec.ts",
     "**/keywords.spec.ts",
     "**/settings.spec.ts",
