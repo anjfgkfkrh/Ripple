@@ -6,7 +6,7 @@
 
 | 작업 | 목표 | 완료 조건 | 모델/effort | 선행 | 상태 | 시도 |
 |---|---|---|---|---|---|---|
-| tunnel-mode | compose 터널 명령을 토큰 유무로 바꾸고, 상태 화면에 고정 주소와 연결 여부를 보인다 | `tunnel_tests`·`config_tests`·`status_tests` 새 시험 통과, 시험 compose 두 경우 `docker compose config` 결과 기록, `/check` 전체 통과 | Sonnet / medium | 없음 | 대기 | 0 |
+| tunnel-mode | compose 터널 명령을 토큰 유무로 바꾸고, 상태 화면에 고정 주소와 연결 여부를 보인다 | `tunnel_tests`·`config_tests`·`status_tests` 새 시험 통과, 시험 compose 두 경우 `docker compose config` 결과 기록, `/check` 전체 통과 | Sonnet / medium | 없음 | 진행 | 1 |
 | tunnel-docs | README·설치 안내·스킬에 고정 주소 사용법과 시험 Docker 토큰 비우기를 적는다 | README·`release/INSTALL.md`·`.env.example` 안내, `deploy`·`real-check` 스킬 수정, `release.sh` 변환 결과 확인 기록, `/check` 빠르게 통과 | Sonnet / medium | tunnel-mode 통과 | 대기 | 0 |
 
 ## 사람이 승인한 큰 결정
