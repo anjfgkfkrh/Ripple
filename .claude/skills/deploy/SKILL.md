@@ -16,6 +16,7 @@ disable-model-invocation: true
 ```bash
 docker compose ps --format 'table {{.Service}}\t{{.Status}}'
 docker compose logs tunnel 2>&1 | grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' | tail -1
+# 고정 주소 모드(TUNNEL_TOKEN이 있음)면 위 줄은 비어 있다. 상태 화면의 고정 주소(PUBLIC_URL)와 "연결됨"으로 확인한다.
 docker compose exec -T worker sqlite3 -readonly /data/ripple.db "
 select 'articles', count(*) from articles;
 select 'userVersion', user_version from pragma_user_version;
@@ -43,12 +44,14 @@ docker compose up -d --build
 
 migrate·worker·web만 다시 만들어진다. tunnel은 이미지와 설정이 그대로라 다시 만들어지지 않고 주소도 유지된다.
 
+단 tunnel 서비스의 명령·환경이 바뀐 배포(15단계 첫 배포 등)에서는 tunnel도 다시 만들어지고, 임시 주소 모드면 주소가 바뀐다.
+
 ## 4. 확인
 
-- `docker compose ps`: worker `healthy`, web `Up`, tunnel은 배포 전과 같은 가동 시간(다시 만들어지지 않음).
+- `docker compose ps`: worker `healthy`, web `Up`, tunnel은 배포 전과 같은 가동 시간(다시 만들어지지 않음. tunnel 설정이 바뀐 배포는 예외).
 - `docker compose logs migrate --tail 20`: 오류 없음. 1의 조회를 다시 돌려 `userVersion`이 `rust/ripple/migrations/*.sql` 파일 수와 같고(지금 11), 기사 수가 배포 전 이상인지 본다.
 - 미로그인 차단: `curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' http://127.0.0.1:3000/` → `307 …/login`
-- 터널 주소: 1과 같은지.
+- 터널 주소: 1과 같은지(고정 주소 모드면 `PUBLIC_URL`을 쓰는 상태 화면의 고정 주소와 "연결됨(연결 N개)"으로 확인).
 - `docker compose logs --since 10m worker web 2>&1 | grep -i -E 'error|fail' | head`: 새 오류 없음.
 - 이번 변경에 맞는 확인을 하나 더 한다(예: 새 API를 데이터가 바뀌지 않는 방식으로 부르기). 데이터를 바꾸는 확인은 하지 않는다.
 - AI 호출은 하지 않는다(정기 작업이 부르는 것은 평소대로).

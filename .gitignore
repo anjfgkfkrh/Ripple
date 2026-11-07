@@ -59,3 +59,6 @@ yarn-error.log*
 /rust/tools/tailwindcss
 /rust/tools/tailwindcss.download
 /rust/ripple/static/app.css
+
+# 시험용 터널 값(real-check 고정 주소 확인)
+check-tunnel.vars

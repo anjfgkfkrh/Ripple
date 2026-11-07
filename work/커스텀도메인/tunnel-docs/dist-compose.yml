@@ -1,0 +1,95 @@
+# Ripple 설치용 compose(미리 만든 이미지 사용). 설치 방법은 INSTALL.md
+name: ripple
+
+services:
+  # 마이그레이션을 적용하고 끝난다. worker·web은 이것이 성공한 뒤 뜬다.
+  migrate:
+    image: ripple-app:0.0.0
+    command: ["ripple", "migrate"]
+    environment:
+      DATABASE_PATH: /data/ripple.db
+      TZ: Asia/Seoul
+    volumes:
+      - ripple-data:/data
+
+  # DB에 쓰는 유일한 프로세스. 내부 API는 compose 네트워크 안에서만 열린다(ports 없음).
+  worker:
+    image: ripple-app:0.0.0
+    command: ["ripple", "worker"]
+    environment:
+      DATABASE_PATH: /data/ripple.db
+      WORKER_HOST: 0.0.0.0
+      WORKER_PORT: "4000"
+      TZ: Asia/Seoul
+      # .env에서 읽는다. 외부 API 키는 worker에만 넘긴다(AI 호출·수집은 worker가 함).
+      WORKER_API_TOKEN: ${WORKER_API_TOKEN:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+      KIS_APP_KEY: ${KIS_APP_KEY:-}
+      KIS_APP_SECRET: ${KIS_APP_SECRET:-}
+      KIS_ENV: ${KIS_ENV:-demo}
+      # 자동 백업(D-27): 매일 04:00(한국 시간)에 여기로 남기고 최근 7개만 둔다.
+      BACKUP_DIR: /backups
+    volumes:
+      - ripple-data:/data
+      # 백업은 이 컴퓨터의 폴더에 둔다(Docker를 지워도 남게). DB 자체는 WAL 때문에 named volume에 둔다.
+      - ${BACKUP_HOST_DIR:-./backups}:/backups
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "ripple", "healthcheck", "http://127.0.0.1:4000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+      start_interval: 1s
+    restart: unless-stopped
+
+  # 화면. DB는 읽기 전용으로 열고, 쓰기는 worker 내부 API에 요청한다(SPEC D-36).
+  web:
+    image: ripple-app:0.0.0
+    command: ["ripple", "web"]
+    environment:
+      DATABASE_PATH: /data/ripple.db
+      WORKER_URL: http://worker:4000
+      TZ: Asia/Seoul
+      # Docker가 HOSTNAME을 컨테이너 번호로 채우므로, 바깥에서 들어올 수 있게 모든 주소에 연다.
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+      # 로그인 비밀번호·세션 서명 키는 .env에서 읽어 web에만 넘긴다. 없거나 짧으면 web이 시작하지 않는다.
+      APP_PASSWORD: ${APP_PASSWORD:-}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      WORKER_API_TOKEN: ${WORKER_API_TOKEN:-}
+      # 상태 화면에 외부 접속 임시 주소를 보여 주려고 cloudflared에 묻는다(9단계).
+      TUNNEL_METRICS_URL: http://tunnel:20241
+      # 고정 주소(15단계, 선택). 있으면 상태 화면이 이 주소와 cloudflared 연결 여부를 보인다.
+      PUBLIC_URL: ${PUBLIC_URL:-}
+    volumes:
+      - ripple-data:/data
+    ports:
+      # 이 컴퓨터에서만 열린다. 밖(휴대폰)에서는 아래 tunnel의 임시 주소로 들어온다.
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
+    depends_on:
+      worker:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 외부 접속(9단계): Cloudflare Quick Tunnel. 계정 없이 임시 주소(*.trycloudflare.com)를 받는다.
+  # 주소는 다시 켤 때마다 바뀐다. 상태 화면 또는 `docker compose logs tunnel`에서 확인한다(로그인으로 보호, FR-1).
+  # 메트릭 서버(20241)는 compose 내부망에서 web만 읽는다(/quicktunnel = 지금 주소). 호스트에는 열지 않는다.
+  tunnel:
+    image: cloudflare/cloudflared:2026.10.0
+    # TUNNEL_TOKEN이 있으면 `run`이 붙어 이름 붙은 터널(15단계), 없으면 Quick Tunnel로 뜬다.
+    # (문자열 형식이어야 토큰이 없을 때 빈 인자가 남지 않는다.)
+    command: tunnel --metrics 0.0.0.0:20241 --url http://web:3000 ${TUNNEL_TOKEN:+run}
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on:
+      - web
+    restart: unless-stopped
+
+volumes:
+  # SQLite 파일. WAL이 동작하도록 두 컨테이너가 같은 named volume을 쓴다(호스트 폴더 바인드 금지).
+  ripple-data:
