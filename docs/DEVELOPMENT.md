@@ -77,10 +77,12 @@ E2E에서 알아 둘 것
 - Rust web을 확인하는 E2E 전에는 `cd rust && ./build.sh --release`로 release를 새로 빌드한다(옛 바이너리면 `/`가 404, R11에서 겪음).
 
 시험용 Docker(본 Docker와 볼륨·포트·백업 폴더를 나눔, 2026-10-21 9단계에서 씀). 백업 사본을 넣는 법과 실제 AI 확인까지 담은 절차는 `/real-check`
-- 띄우기: `WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups OPENROUTER_API_KEY= TYPESAFE_API_KEY= FINNHUB_API_KEY= KIS_APP_KEY= KIS_APP_SECRET= APP_PASSWORD=… SESSION_SECRET=… docker compose -p ripple-check up -d --build`
+- 띄우기: `TUNNEL_TOKEN= PUBLIC_URL= WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups OPENROUTER_API_KEY= TYPESAFE_API_KEY= FINNHUB_API_KEY= KIS_APP_KEY= KIS_APP_SECRET= APP_PASSWORD=… SESSION_SECRET=… docker compose -p ripple-check up -d --build`
+  - `TUNNEL_TOKEN= PUBLIC_URL=`는 모든 시험 compose 명령에 붙인다(15단계). 본 토큰으로 시험 tunnel이 뜨면 Cloudflare가 실제 접속을 시험 Docker로도 나눠 보낸다. 셸의 빈 값이 env 파일 값을 덮는 것은 `config`로 확인함(2026-11-07).
+  - 고정 주소 확인은 시험용 터널(`check.<도메인>`)의 값을 저장소 루트 `check-tunnel.vars`(git 제외, 사용자가 만듦)에 두고 `/real-check` 4-1장대로 셸에 읽는다. 본 env 파일에 시험 토큰을 두지 않는다.
   - AI 키를 비워 비용이 생기지 않게 한다. 터널까지 뜨므로 공개 주소가 생긴다. 외부에서 확인할 때는 공개된 시험 비밀번호(`e2e/test-env.ts`) 대신 무작위 비밀번호를 파일로 만들어 쓰고(출력하지 않음) 끝나면 지운다.
   - 임시 주소: `docker compose -p ripple-check logs tunnel | grep trycloudflare` 또는 http://127.0.0.1:3300/status
-- 내리기: `WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups docker compose -p ripple-check down -v`, `rm -rf .check-backups`(이미지 `ripple-app`은 본 배포와 같은 이름이라 지우지 않는다)
+- 내리기: `TUNNEL_TOKEN= PUBLIC_URL= WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups docker compose -p ripple-check down -v`, `rm -rf .check-backups`(이미지 `ripple-app`은 본 배포와 같은 이름이라 지우지 않는다)
 - 복원 시험: `down` → 시험 볼륨(`ripple-check_ripple-data`)에 README의 복원 명령 → `up -d`
 
 ## 5. 데이터·비용 메모
