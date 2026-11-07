@@ -173,11 +173,11 @@ scripts/release.sh            # release-dist/ 에 만든다(약 5분, arm64·amd
 ARCHS=arm64 scripts/release.sh   # 한 종류만 다시 만들 때
 ```
 
-`release-dist/`에 생기는 파일(git에는 올라가지 않음)을 릴리스 페이지에 **직접** 올린다(`gh`가 없음).
+`release-dist/`에 생기는 파일(git에는 올라가지 않음)을 `gh release create`로 릴리스 페이지에 올린다.
 
 | 파일 | 설명 |
 |---|---|
-| `ripple-버전-images-arm64.tar.gz` | Apple Silicon Mac용(web·worker 이미지) |
+| `ripple-버전-images-arm64.tar.gz` | Apple Silicon Mac용(이미지 하나, migrate·worker·web이 같이 씀) |
 | `ripple-버전-images-amd64.tar.gz` | Intel·AMD PC(Windows, Linux, Intel Mac)용 |
 | `docker-compose.yml` | 설치용(본 compose에서 `build:`를 `image:`로 자동 변환) |
 | `env.example`, `INSTALL.md`, `SHA256SUMS` | 환경변수 예시(`.env.example`과 같은 내용, GitHub 릴리스가 점으로 시작하는 이름의 점을 지워서 점 없이 올림), 받는 사람용 설치 안내(`release/INSTALL.md`가 원본), 체크섬 |

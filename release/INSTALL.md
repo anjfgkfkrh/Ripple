@@ -40,7 +40,9 @@ cp env.example .env
 | `WORKER_API_TOKEN` | 필수 | 32자 이상 무작위 값: `openssl rand -base64 48` |
 | `OPENROUTER_API_KEY` | 필수 | https://openrouter.ai 에서 발급. 키에 사용 한도를 걸어 두길 권장 |
 | `TYPESAFE_API_KEY` | 필수 | https://console.typesafe.ai 에서 발급(기사 평가). 없으면 기사는 모으고 평가는 미룸 |
-| `FINNHUB_API_KEY` | 선택 | https://finnhub.io 에서 무료 가입(미국 종목 뉴스) |
+| `FINNHUB_API_KEY` | 선택 | https://finnhub.io 에서 무료 가입(미국 종목 뉴스·주가) |
+| `KIS_APP_KEY`, `KIS_APP_SECRET` | 선택 | 한국투자증권 KIS Open API 앱 키·시크릿(https://apiportal.koreainvestment.com, 한국 종목 주가). 없으면 한국 종목 주가는 보이지 않음 |
+| `KIS_ENV` | 선택 | `demo`(모의투자, 기본) 또는 `real`. 키가 새어도 실제 계좌로 주문되지 않게 모의투자 키를 권장 |
 
 ```bash
 # 4. 켜기
