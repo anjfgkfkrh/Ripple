@@ -2,8 +2,9 @@
 
 보유 주식과 시장 전체에 관련된 뉴스를 자동으로 모으고 Jev(TypeSafe AI)로 관련도·영향도와 호재·악재를 골라 웹으로 보여 주는 개인용 앱. 집 노트북의 Docker에서 돌고, 휴대폰에서는 Cloudflare 임시 주소로 접속한다.
 
-- 기능 명세: [SPEC.md](SPEC.md)
-- 개발 현황과 이어서 하는 방법: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
+- 기능 명세: [docs/SPEC.md](docs/SPEC.md)
+- 지금 상태: [docs/STATE.md](docs/STATE.md)
+- 개발 방법과 단계 현황: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
 - 구현 세부 결정·실측·진행 기록: [docs/DECISIONS.md](docs/DECISIONS.md)
 
 ## 하는 일
@@ -169,7 +170,7 @@ docker compose up -d --build
 저장소를 그대로 받아 `docker compose up -d --build`로 설치하는 방법 말고, 미리 만든 이미지를 GitHub 릴리스 페이지에 파일로 올려 배포할 수 있다. 받는 사람은 빌드 없이 `docker load` → `.env` 채움 → `docker compose up -d`만 하면 된다. GitHub Actions·ghcr.io는 쓰지 않는다.
 
 ```bash
-scripts/release.sh            # release-dist/ 에 만든다(약 5분, arm64·amd64 두 종류)
+scripts/release.sh            # release-dist/ 에 만든다(약 11분, arm64·amd64 두 종류)
 ARCHS=arm64 scripts/release.sh   # 한 종류만 다시 만들 때
 ```
 
@@ -188,7 +189,7 @@ ARCHS=arm64 scripts/release.sh   # 한 종류만 다시 만들 때
 
 ## 8. 개발
 
-자세한 현황·규칙·검사 절차는 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Claude Code(터미널)로 개발한다. 규칙은 `CLAUDE.md`, 권한·hook·skill(`/check`, `/deploy` 등)은 `.claude/`(DEVELOPMENT.md 4장).
+자세한 현황·규칙·검사 절차는 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Claude Code(터미널)로 개발한다. 단계 작업은 agentflow 플러그인(`/agentflow:plan`·`run`·`close`, 단계 작업 폴더 `work/`, 역할별 모델 `.agentflow/models.json`)으로 한다. 규칙은 `CLAUDE.md`, 권한·hook·skill(`/check`, `/deploy` 등)은 `.claude/`(DEVELOPMENT.md 4장).
 
 ```bash
 cp .env.example .env                 # 위 "처음 설치"대로 값을 넣는다
@@ -261,8 +262,10 @@ rust/ripple/tests/fixtures/     테스트 표본 파일과 TS 시절 drizzle 고
 rust/build.sh                   CSS → cargo build
 e2e/                            Playwright 테스트, 가짜 외부 서비스(mock-services.mjs)
 scripts/                        커밋 전 비밀 값 검사, 릴리스 묶음
-docs/                           개발 현황·작업 방법(DEVELOPMENT.md), 구현 세부 결정·실측·진행 기록(DECISIONS.md), 설계(RUST_MIGRATION.md)
+docs/                           기능 명세(SPEC.md), 지금 상태(STATE.md), 작업 방법(DEVELOPMENT.md), 구현 세부 결정·실측·진행 기록(DECISIONS.md), 설계(RUST_MIGRATION.md)
 .claude/                        Claude Code 설정(권한, hook)과 skill
+.agentflow/                     agentflow 역할별 모델·effort 설정
+work/                           진행 중인 agentflow 단계의 계획·브리프·인계(단계를 닫으면 보관소로 옮김)
 ```
 
 ### 참고

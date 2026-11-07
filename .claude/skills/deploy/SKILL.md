@@ -8,6 +8,7 @@ disable-model-invocation: true
 
 ## 1. 배포 전 확인
 
+- `git branch --show-current`: main이어야 한다. agentflow 단계 브랜치(`af/<단계>`)이면 멈추고, 사용자에게 main에 합칠지 묻는다(합치기 전 `node scripts/check-secrets.mjs`).
 - `git status --short`, `git log -1 --oneline`: 빌드는 커밋이 아니라 작업 트리 기준이다. 커밋하지 않은 변경이 있으면 보고에 적는다.
 - 이번 변경 뒤에 돌린 `/check` 결과가 있는지 본다. 없으면 먼저 돌린다.
 - 지금 상태(읽기 전용):
@@ -54,5 +55,5 @@ migrate·worker·web만 다시 만들어진다. tunnel은 이미지와 설정이
 
 ## 5. 기록
 
-- DEVELOPMENT.md 1장(지금 상태)과 2장(단계 표 "배포" 날짜), DECISIONS.md 3장 맨 위에 배포 기록: 시각, HEAD 커밋과 커밋하지 않은 변경 여부, 백업 파일·기사 수, 마이그레이션 수, 확인 결과.
+- STATE.md(지금 상태)와 DEVELOPMENT.md 2장(단계 표 "배포" 날짜), DECISIONS.md 3장 맨 위에 배포 기록: 시각, HEAD 커밋과 커밋하지 않은 변경 여부, 백업 파일·기사 수, 마이그레이션 수, 확인 결과.
 - 사용자에게 같은 내용을 표로 보고한다. 휴대폰·PC 화면 확인은 사용자 몫이라고 적는다.

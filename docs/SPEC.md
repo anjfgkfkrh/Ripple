@@ -1,6 +1,7 @@
 # 주식 뉴스·리포트 자동 수집기 — 요구사항 및 개발 가이드 (MVP)
 
-> 이 문서는 기능 명세다. 지금 상태·다음 할 일·작업 방법은 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md), 구현 세부 결정·실측·진행 기록은 [docs/DECISIONS.md](docs/DECISIONS.md)에 있다.
+> 읽는 때: 작업에 관련된 장만(단계 순서와 완료 기준은 10장, 미결정 D-xx는 13장).
+> 이 문서는 기능 명세다. 지금 상태는 [STATE.md](STATE.md), 작업 방법은 [DEVELOPMENT.md](DEVELOPMENT.md), 구현 세부 결정·실측·진행 기록은 [DECISIONS.md](DECISIONS.md)에 있다.
 
 > 프로젝트명: **Ripple** (패키지·compose 이름 `ripple`)
 > 문서 버전: v0.3 (2026-10-29) — 결정 로그(12장)와 실측 기록(11장 일부)을 docs/DECISIONS.md로 옮김
@@ -222,7 +223,7 @@
 | 외부 접속 | Cloudflare Tunnel (MVP는 임시 URL) |
 
 > 구현 시작 전 미결정이던 D-30~D-36은 2026-10-19 결정됨 → DECISIONS.md.
-> 14단계(Rust 전환, 2026-10-31 결정)가 끝나 이 표가 Rust 스택이다(R13 커밋 `bc97679`, 2026-11-07 본 Docker 배포). 크레이트 버전 근거는 [docs/RUST_MIGRATION.md](docs/RUST_MIGRATION.md) 2장. 이후 본 Docker 배포는 사용자가 요청할 때 한다.
+> 14단계(Rust 전환, 2026-10-31 결정)가 끝나 이 표가 Rust 스택이다(R13 커밋 `bc97679`, 2026-11-07 본 Docker 배포). 크레이트 버전 근거는 [docs/RUST_MIGRATION.md](RUST_MIGRATION.md) 2장. 이후 본 Docker 배포는 사용자가 요청할 때 한다.
 
 ---
 
@@ -368,7 +369,7 @@
 | 11 | 시장 전체 기사: '한국 증시'(미국 증시는 켜고 끄기)와 사용자가 추가한 주제를 종목처럼 두고 거시 키워드 트리로 기사를 걸어 Jev로 판정, 비슷한 제목 묶기 — MVP 뒤 | 시장·주제 항목의 트리로 거시 기사가 걸리고 Jev 평가 뒤 타임라인에 '시장'·주제 칩으로 보인다. 비슷한 제목은 한 카드로 묶인다. (뒤에 정한 것) 정해진 때마다 토픽이 갱신되어 타임라인 맨 위 토픽 카드로 보이고, 키워드 트리와 토픽 가지가 Jev 관련도·영향도로 골라지며, 기사는 관련도·영향도가 둘 다 기준 이상일 때 보인다. 설정 화면에 기능별·항목별 비용과 비율이 보인다 | DECISIONS.md "11단계" 결정 |
 | 12 | 읽은 기사 표시 — MVP 뒤 | 기사 링크를 누르면(또는 카드 버튼으로) 읽음으로 저장되고, 읽은 카드는 제자리에서 흐려지며 '읽음'이 붙는다. 휴대폰·PC에서 같은 상태로 보이고, 버튼으로 되돌릴 수 있다 | DECISIONS.md "12단계" 결정 |
 | 13 | 보유 종목 현재 주가창(FR-11) — MVP 뒤 | 장중 1분마다 받은 종목 주가가 타임라인 맨 위 띠에 현재가·전일 대비·등락률·기준 시각으로 보이고(상승 빨강·하락 파랑), 누르면 그 종목 기사만 보인다. 장 밖에는 "장 마감"과 마지막 값. 한국은 KIS, 미국은 Finnhub. 상태 화면에 마지막 받은 시각·오류가 보인다 | DECISIONS.md "13단계" 결정 |
-| 14 | Rust 전환(기능 변경 없음): worker를 먼저, 그다음 web을 Rust로 바꾸고 TS 코드를 지운다. 하위 단계 R0~R13은 [docs/RUST_MIGRATION.md](docs/RUST_MIGRATION.md) | 기능·화면·DB·환경 변수가 지금과 같고, Rust 단위 테스트와 기존 Playwright E2E가 모두 통과하며, 본 Docker가 Rust 이미지 하나로 돈다 | DECISIONS.md "14단계" 결정 |
+| 14 | Rust 전환(기능 변경 없음): worker를 먼저, 그다음 web을 Rust로 바꾸고 TS 코드를 지운다. 하위 단계 R0~R13은 [docs/RUST_MIGRATION.md](RUST_MIGRATION.md) | 기능·화면·DB·환경 변수가 지금과 같고, Rust 단위 테스트와 기존 Playwright E2E가 모두 통과하며, 본 Docker가 Rust 이미지 하나로 돈다 | DECISIONS.md "14단계" 결정 |
 
 ---
 
@@ -386,13 +387,13 @@
   - 네이버 금융·네이버 증권(모바일 포함)·한경 컨센서스(consensus.hankyung.com): robots.txt 전면 금지. 네이버 이용약관은 자동화된 수단의 수집을 금지한다. 한경 컨센서스의 새 주소(markets.hankyung.com/consensus)는 robots.txt상 허용이지만 한경 이용약관 제19조가 사전 서면 허가 없는 자동 수집을 금지한다.
   - 대안 후보: 조선비즈 RSS(robots.txt `Content-Signal: search=yes, ai-input=yes, ai-train=no`), 연합뉴스 RSS(RSS 안내는 "개인적인 용도로만" 허용, 저작권규약은 사전 허가 없는 전자적 저장을 금지), Finnhub(약관상 개인 용도 플랜, AI 금지 조항 없음). 팍스넷 증권사 리포트는 2025-08-29 이후 갱신이 없고, Nasdaq 종목 RSS는 약관이 자동 수집과 AI 분석을 금지한다.
   - 실측(2026-10-20, RSS는 검색이 안 되어 제목·요약에서 종목 이름·키워드를 찾음): 연합 4개 분야 피드 하루 369건·조선비즈 4개 피드 205건 중 삼성전자 9건, 엔비디아 0건, 현대건설 1건(오탐).
-- **실측·실제 확인 결과**: [docs/DECISIONS.md](docs/DECISIONS.md) 2장으로 옮겼다(2026-10-29).
+- **실측·실제 확인 결과**: [docs/DECISIONS.md](DECISIONS.md) 2장으로 옮겼다(2026-10-29).
 
 ---
 
 ## 12. 결정 로그
 
-결정 기록은 [docs/DECISIONS.md](docs/DECISIONS.md) 1장으로 옮겼다(2026-10-29). 기능이 바뀌는 결정은 이 문서 본문(1~10장)에도 반영한다.
+결정 기록은 [docs/DECISIONS.md](DECISIONS.md) 1장으로 옮겼다(2026-10-29). 기능이 바뀌는 결정은 이 문서 본문(1~10장)에도 반영한다.
 
 ---
 

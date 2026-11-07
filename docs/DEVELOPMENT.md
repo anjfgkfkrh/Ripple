@@ -1,40 +1,21 @@
 # 개발 현황과 이어서 하기
 
-새 세션은 이 문서의 1장부터 읽는다. 이 문서는 짧게 둔다(지금 상태, 다음 할 일, 작업 방법). 지난 기록은 DECISIONS.md로 보낸다.
+> 읽는 때: 단계 표(2장), 일하는 규칙(3장), 실행·검사(4장), 코드 지도(8장) 등 작업 방법이 필요할 때 그 장만.
+
+지금 상태는 [STATE.md](STATE.md)에 있다. 이 문서는 작업 방법을 둔다. 지난 기록은 DECISIONS.md로 보낸다.
 
 | 문서 | 내용 | 언제 읽나 |
 |---|---|---|
 | `CLAUDE.md` | 일하는 규칙 | 자동으로 읽힘 |
-| [SPEC.md](../SPEC.md) | 기능 명세, 미결정 목록(13장) | 작업에 관련된 장만 |
-| 이 문서 | 지금 상태, 다음 할 일, 작업 방법 | 세션 시작 때 1장, 나머지는 필요할 때 |
+| [STATE.md](STATE.md) | 지금 상태, 답 대기, 다음 할 일 | 세션 시작 때 |
+| [SPEC.md](SPEC.md) | 기능 명세, 미결정 목록(13장) | 작업에 관련된 장만 |
+| 이 문서 | 단계 표, 작업 방법, 코드 지도 | 필요한 장만 |
 | [DECISIONS.md](DECISIONS.md) | 구현 세부 결정(1장), 실측(2장), 지난 진행 기록(3장) | 필요할 때 찾아서 |
 | [README.md](../README.md) | 설치·사용법 | 필요할 때 |
 
-"지금 상태"가 실제와 다르면 git log와 `git status`를 먼저 본다.
-
 ## 1. 지금 상태
 
-마지막 갱신: 2026-11-07 14:48 (한국 시간), 노컷뉴스 TLS 회귀 수정 끝(커밋·본 Docker 배포 14:36·회차 765 확인)
-
-- **수집 TLS 회귀 수정(끝, 2026-11-07 14:36 본 Docker 배포)**: 노컷뉴스 서버는 TLS 1.2 CBC만 받는데 rustls가 CBC를 지원하지 않아 회차 764가 partial이었다. 수집용 클라이언트만 native-tls(OpenSSL)로 바꾸고 robots 확인 실패 때 원인을 기록한다. 배포 뒤 첫 정기 회차 765는 success(소스 73개 실패 0, Finnhub 포함). 기록은 DECISIONS.md 1장 "수집 TLS 회귀"·"구현 세부", 2장, 3장 맨 위.
-
-- **14단계 Rust 전환(끝: R13 커밋 `bc97679`, 2026-11-07 본 Docker 배포)**: 설계 문서 [RUST_MIGRATION.md](RUST_MIGRATION.md)(하위 단계 R0~R13, 1장 규칙·2장 크레이트·6장 단계표). 결정은 DECISIONS.md 1장 "14단계" 줄 3개. 설계는 Opus, 구현은 Sonnet이 한다(사용자 운영 방식). **전환이 끝날 때까지 기능 변경을 멈춘다**(결정 ⑦): 아래 답 대기 두 건과 13단계 남은 확인도 보류.
-  - **14단계 R12(종목·설정 화면) 커밋됨**(2026-11-05, R11 커밋 `3dece10` 이후, 해시는 `git log`): `/check` 전체 통과(Rust 598개, TS 446개, E2E 39개·건너뜀 5 모바일). 결정은 DECISIONS.md 1장 "14단계 R12 결정"·"R12 구현 세부", 기록은 3장. 같은 DB 사본으로 Next와 Rust를 데스크톱·휴대폰 캡처 비교: 높이·요소별 클래스 같음, 로그인 폼도 같음(R10에서 남았던 것). 임시 `e2e/status-r10.spec.ts`는 이 커밋에서 지움.
-  - **14단계 R13(정리·교체) 커밋 `bc97679`, 본 Docker 배포 2026-11-07**(구현 2026-11-05): TS 제거(`src/`·`tests/`·`drizzle/`·Next 설정·TS 시험 설정, `rust/tools`의 TS 도구), 이미지 하나 `ripple`(migrate·worker·web은 명령만 다름), compose·`release.sh`·README·SPEC 5·6장·CLAUDE.md·skill 수정. 결정은 DECISIONS.md 1장 "14단계 R13 결정"·"R13 구현 세부", 기록은 3장. `/check`(R1~R4, format·lint·typecheck, Vitest 7개, E2E 39개·건너뜀 5 모바일) 통과, Rust 테스트 592개. 무료 실제 확인 끝(시험 Docker `ripple-check`, AI 키 비움, 터널 없음): 최신 백업 사본(`ripple-20261105-040021.db`)에서 drizzle 이력 DB가 업그레이드됨(`user_version` 11, 이력 11줄 유지, 기사 수 유지), web 307→로그인·worker 상태 정상, 화면 캡처 3장(타임라인·상태·종목) 직접 봄, E2E `E2E_BASE_URL`로 16개 통과·28개 건너뜀(목 서비스 필요). 시험 Docker는 AI 확인 뒤 내렸다(볼륨·백업 사본 삭제). **남은 것**: ① `.claude/settings.json` 허용 목록(`pnpm build` 두 줄 제거, `cargo *`·`cd rust && *` 추가)도 자동 승인이 두 번 거부돼 사용자가 고친다 ② 본 Docker 배포 끝(2026-11-07). SPEC 10장 14단계 완료 기준("본 Docker가 Rust 이미지 하나로 돈다")도 같은 날 확인함. 허용 목록(`cargo` 허용, `pnpm build` 제거)은 커밋에 들어감. 남은 것: ① Rust 첫 정기 수집(회차 764)은 partial이었고 TLS 수정 배포 뒤 회차 765부터 success(위 "수집 TLS 회귀 수정") ② KIS 주가 띠(Rust)는 실제 키로 아직 안 돌았다(토요일이라 장이 닫힘, 월요일 09:00 첫 갱신 뒤 확인) ③ 휴대폰·PC 화면 확인(사용자 몫).
-  - rustup 1.29.2와 Rust 1.99.1(rustfmt·clippy 포함)은 2026-10-31 사용자가 설치함(기본 툴체인 1.99.1).
-
-- **토픽 유지 개선(끝, 커밋 `46e3f58`, 2026-10-30 14:14 배포)**: 첫 정기 토픽 갱신 확인 끝. 15:57:32 시작, Haiku 1회 $0.0078(15:57:44) 성공, 실패 기록 없음, 진행 중 토픽 15개(끝남 136). 로그 줄은 16:00 배포로 컨테이너가 바뀌어 남지 않아 DB(`settings`·`usage_logs`·`topics`)로 확인.
-- **단계**: 0~13단계 완료, 본 Docker는 13단계까지 배포됨(2026-10-30 16:00, 기록은 DECISIONS.md 3장). 12·13단계 휴대폰·PC 화면 확인 결과는 기록이 없다.
-- **사용자가 할 일(개발 환경 정리에서 남음)**: ① `sudo chown -R "$(whoami)":staff ~/.npm`(playwright MCP) ② GitHub 토큰을 `GITHUB_PERSONAL_ACCESS_TOKEN`으로 셸 환경에 넣기(github MCP, 이번 세션에서도 연결 실패로 표시됨) ③ 새 세션에서 `/mcp`로 확인.
-- **사용자 답 대기: 키워드·채점 점검의 개선안 I1~I9(2026-10-30, DECISIONS.md 2장 "키워드·채점 점검")**: 코드 오류 B1·B2 수정과 개선 후보. I4·I6·I8은 아래 AI 비용 질문과 겹치므로 합쳐 A/B·추천으로 다시 묻는다.
-- **사용자 답 대기: AI 비용 줄이기(2026-10-23, 무료 조사만, 구현 전)**: 본 DB 사용량으로 월 약 $2.6 추정. 조사 결과는 DECISIONS.md 2장 "AI 비용 줄이기 조사".
-  - 사용자에게 물은 것: 토픽 갱신 모델 교체(품질 비교 유료), 일본어 제목 빼기, Jev 질문 문구 줄이기(유료 비교), 시장·토픽을 기사당 한 번에 묻기, 키워드 재생성 매주, 토픽 수·갱신 간격, 목표 금액. 답을 받으면 DECISIONS.md 1장에 적고 시작
-- **13단계(보유 종목 주가 띠): 끝, 커밋 `ddde1a5`, 2026-10-30 16:00 본 Docker 배포**: 결정은 DECISIONS.md 1장 "13단계"·"13단계 세부"·"13단계 구현 세부" 줄. 한 일: `src/server/prices/`(KIS 클라이언트·장 시간·1분마다 받기·저장/띠 읽기), Finnhub `quote`, 표 `stock_prices`(마이그레이션 0010), 스케줄러 `refreshPrices`, 타임라인 띠 `price-strip.tsx`, 상태 화면 "주가" 줄, 환경 변수 `KIS_APP_KEY`·`KIS_APP_SECRET`·`KIS_ENV`(compose·`.env.example`), SPEC(FR-11 등)·README. 12단계 읽음 E2E 간헐 실패도 시험 쪽에서 고침(DECISIONS.md 1장). 마지막 `/check`: 서식·린트·타입·단위 446개·빌드(web·worker)·E2E 39개 통과(건너뜀 5개는 모바일). 화면 캡처(데스크톱·휴대폰) 직접 확인.
-  - **KIS 실제 확인 끝(2026-10-30 15:49~15:55, 시험용 Docker, 무료, DECISIONS.md 2장 "13단계 KIS 실제 확인")**: 사용자가 모의투자 키를 `.env`에 넣음. 모의 서버의 통합(`UN`) 현재가, 토큰 하루 유효, worker 1분마다 저장, 띠·상태 화면 모두 확인. 시험용 Docker는 내리고 이미지도 지움.
-  - **남은 확인**: ① 모의 서버 값이 실전과 같은지(사용자가 증권 앱과 대조, 15:49 `UN` 현대건설 83,500·두산에너빌리티 54,600) ② KIS 미국 시세가 실시간인지(미국 장중 22:30 이후 KIS `last`와 Finnhub `c` 비교, 실시간이면 미국도 KIS로 바꿀지 묻기, 결정 ⑤). 본 Docker 배포 뒤 1분마다 쌓이는 것은 확인함. 같은 키를 두 곳(본·시험 Docker)에서 쓰면 토큰 발급이 1분에 1번이라 서로 막는다(시험용은 `/real-check`대로 KIS 키를 비울 것).
-  - 이력 보관: 지금은 무기한(한국 종목 하나에 하루 약 725줄). 줄일지 사용자에게 아직 묻지 않음.
-- **(14단계 뒤로 보류) 다음이던 것**: 13단계 남은 확인(위 ①②). 그 뒤 위 답 대기 두 건(키워드·채점 개선안, AI 비용 줄이기)과 13단계 이력 보관 기간을 사용자에게 묻는다. 키워드·채점 점검의 B1(키워드 생성 실패 3건, 사용량 0토큰)은 "숨은 추론 토큰이 max_tokens를 먹는다"는 발견도 원인 후보로 본다(DECISIONS.md 2장). 배포 기록 문서는 커밋 전(요청하면 "배포 기록" 커밋).
-- 지난 진행 기록(단계별 체크리스트·배포 기록)은 DECISIONS.md 3장.
+[STATE.md](STATE.md)로 옮겼다(2026-11-07, agentflow 문서 구조). 장 번호는 다른 문서가 가리키므로 그대로 둔다.
 
 ## 2. 단계별 현황
 
@@ -59,12 +40,12 @@
 
 ## 3. 일하는 규칙 (CLAUDE.md에 더해 사용자가 요청한 것)
 
-- **단계 시작 = 이전 단계 커밋**(`/stage-start`): 새 단계를 시작할 때 이전 단계 변경을 main에 커밋한다. 커밋 전에 `node scripts/check-secrets.mjs`로 `.env`의 비밀 값과 흔한 키 형식이 스테이징 내용에 없는지, `.env`가 스테이징되지 않았는지 본다. 푸시는 요청할 때만.
-- **질문 → 기록 → 구현**: 단계 시작 전에 그 단계의 미결정(SPEC 13장 D-xx)과 화면·비용·구조 관련 질문을 모아 A/B·장단점·추천으로 묻는다. 답은 DECISIONS.md 1장(과 SPEC 13장 상태)에 먼저 적고 구현한다. 기능이 바뀌면 SPEC 본문도 고친다.
-- **작은 결정**: 스스로 정한 것은 DECISIONS.md 1장에 "— 구현 중 정함"으로 적고 보고에 표로 알린다. 사용자가 이의 없이 다음 응답을 하면 "— 구현 중 정함, 보고 후 이의 없음"으로 바꾼다.
+- **단계는 agentflow로 진행한다(2026-11-07부터)**: `/agentflow:plan <단계>` → `/agentflow:run <단계>` → (사용자가 결과 승인) → `/agentflow:close <단계>`. 단계 작업은 브랜치 `af/<단계>`에서 하고, agentflow 스킬은 그 브랜치에 스스로 커밋한다. main에 합치기·푸시·배포는 사용자가 요청할 때만 한다. 합치기 전에 `node scripts/check-secrets.mjs`(main 기준 바뀐 내용이 스테이징된 상태에서)로 `.env`의 비밀 값과 흔한 키 형식이 없는지, `.env`가 들어가지 않았는지 본다. 하위(worker)는 이 검사를 하지 않고 커밋하므로 합칠 때 한 번 반드시 한다. 단계 밖 작업(배포, 급한 수정, 릴리스)은 지금처럼 main에서 하고 커밋은 요청할 때만. review는 STATE.md만 다시 쓰므로, 2장 단계 표의 줄은 main에 합칠 때(또는 그 뒤 `/handoff`에서) 더한다.
+- **질문 → 기록 → 구현**: 단계 시작 전(`/agentflow:plan`에서 작업 목록을 승인받기 전)에 그 단계의 미결정(SPEC 13장 D-xx)과 화면·비용·구조 관련 질문을 모아 A/B·장단점·추천으로 묻는다. 답은 DECISIONS.md 1장(과 SPEC 13장 상태)에 먼저 적고 구현한다. 기능이 바뀌면 SPEC 본문도 고친다.
+- **작은 결정**: 스스로 정한 것은 DECISIONS.md 1장에 "— 구현 중 정함"으로 적고 보고에 표로 알린다. 사용자가 이의 없이 다음 응답을 하면 "— 구현 중 정함, 보고 후 이의 없음"으로 바꾼다. 이전 단계의 줄은 다음 단계 `/agentflow:plan`을 시작할 때 바꾼다(전에는 `/stage-start`가 했다).
 - **돈이 드는 실행**: 예상 비용을 말하고 승인받는다. 승인과 실제 사용은 DECISIONS.md 1장 "N단계 실제 API 호출" 줄과 아래 5장에 적는다. 개발 중 worker 밖에서 직접 부른 AI 호출도 사용량 기록(`usage_logs`)에 `*_check` 용도로 넣어 월 합계를 맞춘다.
 - **본 Docker에는 사용자 실제 데이터가 있다(2026-10-21부터)**: compose 프로젝트 `ripple`(볼륨 `ripple_ripple-data`)은 사용자가 쓰고 있다. 실제 확인은 시험용 Docker(프로젝트 `ripple-check`, `/real-check`)로 한다. 본 Docker의 비밀번호·설정·종목·예산을 바꾸지 않고, 재빌드(배포)는 사용자가 요청할 때만 한다. 읽기 전용 조회는 괜찮다.
-- **세션**: 작업 하나에 세션 하나(결정·구현·검사·배포·질문). 시작할 때 이 문서 1장과 작업에 관련된 SPEC 장만 읽는다. 끝날 때 `/handoff`로 이 문서 1장과 DECISIONS.md를 고치고, 사용자가 `/rename` 뒤 `/clear` 한다. 대화와 세션 임시 폴더(scratchpad)에만 있는 것은 다음 세션에서 사라지므로, 다시 필요한 방법·절차는 문서나 skill에 적는다.
+- **세션**: 작업 하나에 세션 하나(결정·구현·검사·배포·질문). 단계 작업은 agentflow가 작업마다 하위 세션을 나누고, 인계는 `work/<단계>/<작업>/` 파일로 한다. 단계 밖 세션은 시작할 때 STATE.md와 작업에 관련된 SPEC 장만 읽는다. 끝날 때 `/handoff`로 STATE.md와 DECISIONS.md를 고치고, 사용자가 `/rename` 뒤 `/clear` 한다. 대화와 세션 임시 폴더(scratchpad)에만 있는 것은 다음 세션에서 사라지므로, 다시 필요한 방법·절차는 문서나 skill에 적는다.
 - 답변은 한국어로, 결론 먼저, 비교는 표로.
 
 ## 4. 실행·검사
@@ -83,7 +64,8 @@
 
 Claude Code 설정(2026-10-29, 결정은 DECISIONS.md 1장 "개발 환경" 줄)
 - `.claude/settings.json`: 이 프로젝트에서 superpowers 끔, 검사 명령 허용, 푸시·본 Docker 명령은 확인, `.env` 읽기·고치기 막음, hook 두 개(`.claude/hooks/`: 고친 파일 Prettier 서식, Bash 명령의 `.env` 막기)
-- `.claude/skills/`: `/check`, `/deploy`, `/stage-start`, `/real-check`, `/handoff`, 디버깅(`debugging`), 완료 전 확인(`before-done`)
+- `.claude/skills/`: `/check`, `/deploy`, `/real-check`, `/handoff`(단계 밖 작업), 디버깅(`debugging`), 완료 전 확인(`before-done`)
+- agentflow 플러그인(AgentDev 저장소 `agentflow/`, 마켓플레이스 `agentdev`): 단계 작업 `/agentflow:plan`·`run`·`close`, 역할별 모델 `.agentflow/models.json`, 단계 작업 폴더 `work/<단계>/`. 단계를 닫으면 `work/<단계>/`는 보관소 `../Ripple-archive/`(따로 된 git 저장소, `.agentflow/config.json`의 `archive_root`로 바꿀 수 있음)로 옮긴다. 플러그인은 `.claude/settings.local.json`(커밋 안 함)에서 켠다.
 - 세션: 작업 하나에 세션 하나. 끝날 때 `/handoff` → `/rename 이름` → `/clear`. 돌아올 때 `/resume`
 
 E2E에서 알아 둘 것
@@ -129,7 +111,8 @@ DECISIONS.md 2장 "다시 잴 때의 방법"으로 옮겼다. 시험용 Docker �
 - (14단계 R13, 2026-11-05 추천대로) `scripts/analysis/`(일회성 분석 스크립트)는 지웠다. 전부 본 DB를 worker 컨테이너의 node로 읽었는데 이미지에 node가 없어 돌지 않았다. 옛 파일은 커밋 `31d962f`에 남아 있다.
 - (14단계 R13, 2026-11-05 추천대로) ESLint는 `typescript-eslint`로 바꿨고 `next`·`eslint-config-next`는 뺐다. Prettier와 vitest(비밀 값 검사 테스트)는 남겼다.
 - (14단계 R13) `.claude/settings.json` 허용 목록에 `pnpm build` 두 줄이 남아 있고 `cargo` 줄은 없다. 권한 파일 변경은 자동 승인이 거부돼서 사용자가 고치거나 허락해야 한다.
-- (14단계 R13) `scripts/release.sh`는 이미지 하나로 바꿨지만 아직 실행하지 않았다(두 종류 빌드와 압축 파일이 크다).
+- (릴리스, 2026-11-07 v0.3.0) `scripts/release.sh`는 Rust 뒤 약 11분(amd64는 에뮬레이션 컴파일이라 arm64보다 4배쯤 걸림). 끝나면 로컬 `ripple-app:버전` 태그는 마지막에 만든 amd64를 가리키니 지운다(본 Docker는 `ripple-app:latest`라 상관없음). **릴리스 전에 직전 릴리스 이미지(`release-dist/ripple-이전버전-images-arm64.tar.gz`)로 빈 볼륨에 DB를 만들고 새 이미지 `ripple migrate`를 돌려 업데이트가 되는지 본다**(v0.3.0은 이 시험에서 v0.2.0 업데이트 불가를 찾음, 사용자 답 B로 그대로 냄). 문서만 고쳤으면 이미지는 다시 빌드하지 않고 `release-dist/INSTALL.md`(`__VERSION__` 바꿈)와 `SHA256SUMS`만 다시 만든다.
+- (v0.3.0, 사용자 답 B) v0.2.0 이하 DB는 Rust 마이그레이션이 받지 않는다(`server/db/migrate.rs` `baseline_drizzle`가 drizzle 이력 11줄만 받음). 업데이트를 되살리려면 안 A(앞에서부터 k줄이고 마지막 값이 journal k번째와 같으면 `user_version = k`). DECISIONS.md 1장 "v0.3.0 업데이트 경로".
 - MVP 범위 밖(SPEC 2.2): 요약, 외부 알림, 미국 증권사 리포트, 다중 사용자, 종목별 수집 간격, 고정 도메인.
 
 ## 8. 코드 지도
