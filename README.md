@@ -1,6 +1,6 @@
 # Ripple
 
-보유 주식과 시장 전체에 관련된 뉴스를 자동으로 모으고 Jev(TypeSafe AI)로 관련도·영향도와 호재·악재를 골라 웹으로 보여 주는 개인용 앱. 집 노트북의 Docker에서 돌고, 휴대폰에서는 Cloudflare 임시 주소로 접속한다.
+보유 주식과 시장 전체에 관련된 뉴스를 자동으로 모으고 Jev(TypeSafe AI)로 관련도·영향도와 호재·악재를 골라 웹으로 보여 주는 개인용 앱. 집 노트북의 Docker에서 돌고, 휴대폰에서는 Cloudflare 임시 주소(또는 내 도메인의 고정 주소)로 접속한다.
 
 - 기능 명세: [docs/SPEC.md](docs/SPEC.md)
 - 지금 상태: [docs/STATE.md](docs/STATE.md)
@@ -57,9 +57,35 @@ docker compose up -d --build
 
 ### 휴대폰 접속
 
+고정 주소(`https://ripple.example.com` 같은 내 도메인)가 있으면 아래 "선택: 고정 도메인"을, 없으면 임시 주소를 쓴다.
+
+#### 토큰이 없을 때: 임시 주소
+
 1. 이 컴퓨터에서 http://127.0.0.1:3000/status 를 열면 "외부 접속(임시 주소)"에 `https://…trycloudflare.com` 주소가 보인다. 또는 `docker compose logs tunnel | grep trycloudflare`.
 2. 휴대폰 브라우저에 그 주소를 넣고 `APP_PASSWORD`로 로그인한다(30일 유지).
 3. 주소는 Docker를 다시 켤 때마다(노트북을 다시 켰을 때 포함) 바뀐다. 바뀌면 1번부터 다시.
+
+#### 선택: 고정 도메인
+
+Cloudflare에 내 도메인이 등록돼 있어야 한다. 메뉴 이름은 Cloudflare 공식 문서(2026-11-07 확인) 기준이며 바뀔 수 있다.
+
+1. Cloudflare 대시보드에서 **Networking** > **Tunnels** > **Create a tunnel**. 이름을 넣고 **Create Tunnel**.
+2. 설치 명령에 나오는 토큰(`--token` 뒤의 긴 문자열)을 복사한다. 설치 명령 자체는 실행하지 않는다(Ripple의 `tunnel` 컨테이너가 대신 연결한다).
+3. 만든 터널의 **Routes** 탭에서 **Add route** > **Published application**. 서브도메인과 **Domain**을 고르고(예: `ripple` + `example.com`), **Service URL**에 `http://web:3000`을 넣고 **Add route**.
+4. 환경 변수 파일(`.env`)에 토큰과 주소를 넣는다.
+
+   ```
+   TUNNEL_TOKEN=복사한 토큰
+   PUBLIC_URL=https://ripple.example.com
+   ```
+5. `docker compose up -d`. 토큰이 있으면 `tunnel` 컨테이너가 다시 만들어진다.
+
+확인: http://127.0.0.1:3000/status 의 외부 접속에 고정 주소와 "연결됨(연결 N개)"이 보이고, 휴대폰에서 그 주소로 열려 로그인된다. 노트북을 껐다 켜도 주소는 그대로다.
+
+주의
+- `TUNNEL_TOKEN`은 비밀 값이다. env 파일에만 넣고 출력하거나 커밋하지 않는다. 새면 대시보드에서 토큰을 새로 만들고 env 파일을 고친다.
+- 같은 토큰을 두 컴퓨터(또는 두 Docker)에서 쓰지 않는다. Cloudflare가 접속을 둘로 나눠 보내 어떤 때는 열리지 않는다. 시험용은 다른 이름의 터널을 따로 만든다.
+- 토큰을 비우고 `docker compose up -d`하면 임시 주소 방식으로 돌아간다.
 
 알아 둘 것
 - Cloudflare Quick Tunnel은 계정 없이 무료이지만 공식 문서상 테스트·개발용이라 가동 보장이 없다. 주소가 안 열리면 `docker compose restart tunnel`(새 주소가 생김).
@@ -111,7 +137,11 @@ docker compose up -d --build
 | 증상 | 확인할 것 |
 |---|---|
 | web이 계속 재시작 | `docker compose logs web`의 `[설정 오류]`(비밀번호·서명 키 누락이나 길이 부족) |
-| 휴대폰에서 주소가 안 열림 | 노트북이 켜져 있는지, 주소가 바뀌지 않았는지(상태 화면), `docker compose logs tunnel`. 안 되면 `docker compose restart tunnel` |
+| 휴대폰에서 주소가 안 열림 | 노트북이 켜져 있는지, 주소가 바뀌지 않았는지(상태 화면), `docker compose logs tunnel`. 안 되면 `docker compose restart tunnel`(임시 주소면 새 주소가 생김) |
+| 상태 화면에 "Cloudflare와 연결되지 않았습니다" | 고정 주소: `TUNNEL_TOKEN` 값이 맞는지, `docker compose logs tunnel`, 같은 토큰을 다른 곳에서 쓰는지 |
+| 상태 화면에 "터널에 닿지 못했습니다: …" | `docker compose ps`로 tunnel이 떠 있는지, `docker compose up -d` |
+| 상태 화면에 "PUBLIC_URL 형식이 다릅니다(https://호스트 꼴)" | `PUBLIC_URL`을 `https://ripple.example.com`처럼 고친다(끝에 `/`·경로 없이) |
+| 고정 주소로 열면 Cloudflare 오류(502 등) | 대시보드 Routes의 Service URL이 `http://web:3000`인지 |
 | 기사가 안 보임 | 상태 화면의 최근 회차(실패한 소스, 평가 결과와 멈춘 이유). 평가 키가 없거나 예산을 다 썼거나, 관련도·영향도 기준(설정)이 높을 수 있다 |
 | 토픽 카드가 없음 | 상태 화면의 '시장 토픽'(마지막 갱신, 실패 이유). 새 제목이 20개보다 적으면 토픽을 바꾸지 않는다. 토픽에 기준 이상 기사가 하나도 없으면 카드가 보이지 않는다 |
 | 종목 찾기가 안 됨 | 화면의 오류 문구(예산·OpenRouter 키·크레딧). 공식 목록에 없는 종목(한국 우선주·ETF, 미국 장외)은 등록할 수 없다 |

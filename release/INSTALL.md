@@ -52,9 +52,30 @@ docker compose up -d
 ## 사용
 
 - 이 컴퓨터에서: http://127.0.0.1:3000 → `APP_PASSWORD`로 로그인 → 메뉴 '종목'에서 종목 등록(예: 삼전, NVDA).
-- 휴대폰에서: http://127.0.0.1:3000/status 의 "외부 접속(임시 주소)"에 나온 `https://…trycloudflare.com` 주소를 휴대폰 브라우저에 넣습니다. 또는 `docker compose logs tunnel | grep trycloudflare`. 주소는 다시 켤 때마다 바뀌고, 가동 보장이 없는 무료 임시 주소입니다.
+- 휴대폰에서(토큰이 없을 때): http://127.0.0.1:3000/status 의 "외부 접속(임시 주소)"에 나온 `https://…trycloudflare.com` 주소를 휴대폰 브라우저에 넣습니다. 또는 `docker compose logs tunnel | grep trycloudflare`. 주소는 다시 켤 때마다 바뀌고, 가동 보장이 없는 무료 임시 주소입니다. 고정 주소는 아래 "선택: 고정 도메인".
 - 정기 수집은 30분마다, 키워드 다시 만들기는 매일 06:00, 백업은 매일 04:00(이 폴더의 `backups/`, 최근 7개)입니다. 노트북이 꺼져 있으면 멈추고, 켜지면 놓친 것을 바로 한 번 합니다.
 - 설정(수집 간격, 월 예산 한도 등)은 웹의 '설정' 메뉴에서 바꿉니다. 월 예산 기본값은 $5이고, 넘으면 AI 호출만 멈춥니다.
+
+## 선택: 고정 도메인
+
+Cloudflare 계정에 내 도메인이 있으면 바뀌지 않는 주소를 쓸 수 있습니다. 메뉴 이름은 Cloudflare 공식 문서(2026-11-07 확인) 기준이며 바뀔 수 있습니다.
+
+1. Cloudflare 대시보드에서 **Networking** > **Tunnels** > **Create a tunnel**. 이름을 넣고 **Create Tunnel**.
+2. 설치 명령에 나오는 토큰(`--token` 뒤의 긴 문자열)을 복사합니다. 설치 명령은 실행하지 않습니다(이 앱의 `tunnel` 컨테이너가 연결합니다).
+3. 터널의 **Routes** 탭에서 **Add route** > **Published application**. 서브도메인과 **Domain**을 고르고(예: `ripple` + `example.com`), **Service URL**에 `http://web:3000`을 넣고 **Add route**.
+4. 설정 파일(위 3단계에서 만든 것)의 `TUNNEL_TOKEN=`·`PUBLIC_URL=` 줄을 채웁니다.
+
+   ```
+   TUNNEL_TOKEN=복사한 토큰
+   PUBLIC_URL=https://ripple.example.com
+   ```
+5. `docker compose up -d`
+
+확인: http://127.0.0.1:3000/status 의 외부 접속에 고정 주소와 "연결됨(연결 N개)"이 보이고, 휴대폰에서 그 주소로 열립니다.
+
+- `TUNNEL_TOKEN`은 비밀 값입니다. 설정 파일에만 넣고 남에게 보이지 마세요. 새면 대시보드에서 토큰을 새로 만들어 바꿉니다.
+- 같은 토큰을 두 컴퓨터(또는 두 Docker)에서 쓰면 접속이 둘로 나뉘어 어떤 때는 열리지 않습니다.
+- 토큰을 비우고 `docker compose up -d`하면 임시 주소로 돌아갑니다.
 
 ## 켜고 끄기·상태
 
@@ -100,7 +121,11 @@ docker compose up -d
 |---|---|
 | web이 계속 재시작 | `docker compose logs web`의 `[설정 오류]`(비밀번호·키 길이 부족) |
 | `no matching manifest`·`exec format error` | 내 컴퓨터와 다른 종류(arm64/amd64) 파일을 불러온 것입니다. 맞는 파일로 다시 `docker load` |
-| 휴대폰에서 주소가 안 열림 | 컴퓨터가 켜져 있는지, 주소가 바뀌지 않았는지(상태 화면), 안 되면 `docker compose restart tunnel` |
+| 휴대폰에서 주소가 안 열림 | 컴퓨터가 켜져 있는지, 주소가 바뀌지 않았는지(상태 화면), 안 되면 `docker compose restart tunnel`(임시 주소면 새 주소가 생김) |
+| 상태 화면에 "Cloudflare와 연결되지 않았습니다" | 고정 주소: `TUNNEL_TOKEN` 값이 맞는지, `docker compose logs tunnel`, 같은 토큰을 다른 곳에서 쓰는지 |
+| 상태 화면에 "터널에 닿지 못했습니다: …" | `docker compose ps`로 tunnel이 떠 있는지, `docker compose up -d` |
+| 상태 화면에 "PUBLIC_URL 형식이 다릅니다(https://호스트 꼴)" | `PUBLIC_URL`을 `https://ripple.example.com`처럼 고칩니다(끝에 `/`·경로 없이) |
+| 고정 주소로 열면 Cloudflare 오류(502 등) | 대시보드 Routes의 Service URL이 `http://web:3000`인지 |
 | 기사가 안 보임 | 웹 '상태' 화면의 최근 수집 결과, 평가 키, 월 예산, '설정'의 관련도 기준 |
 
 소스와 자세한 설명: https://github.com/anjfgkfkrh/Ripple
