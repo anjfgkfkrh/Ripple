@@ -75,6 +75,8 @@ services:
       WORKER_API_TOKEN: ${WORKER_API_TOKEN:-}
       # 상태 화면에 외부 접속 임시 주소를 보여 주려고 cloudflared에 묻는다(9단계).
       TUNNEL_METRICS_URL: http://tunnel:20241
+      # 고정 주소(15단계, 선택). 있으면 상태 화면이 이 주소와 cloudflared 연결 여부를 보인다.
+      PUBLIC_URL: ${PUBLIC_URL:-}
     volumes:
       - ripple-data:/data
     ports:
@@ -90,8 +92,11 @@ services:
   # 메트릭 서버(20241)는 compose 내부망에서 web만 읽는다(/quicktunnel = 지금 주소). 호스트에는 열지 않는다.
   tunnel:
     image: cloudflare/cloudflared:2026.10.0
-    command:
-      ["tunnel", "--metrics", "0.0.0.0:20241", "--url", "http://web:3000"]
+    # TUNNEL_TOKEN이 있으면 `run`이 붙어 이름 붙은 터널(15단계), 없으면 Quick Tunnel로 뜬다.
+    # (문자열 형식이어야 토큰이 없을 때 빈 인자가 남지 않는다.)
+    command: tunnel --metrics 0.0.0.0:20241 --url http://web:3000 ${TUNNEL_TOKEN:+run}
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
     depends_on:
       - web
     restart: unless-stopped
