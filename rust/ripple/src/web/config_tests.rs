@@ -28,6 +28,19 @@ fn reads_defaults_and_overrides() {
     assert_eq!(config.tunnel_metrics_url, None);
 }
 
+// Rust 전용: PUBLIC_URL은 앞뒤 공백을 떼고, 빈 값은 없음으로 읽는다(15단계)
+#[test]
+fn reads_public_url_trimmed() {
+    assert_eq!(read_web_config(&base()).unwrap().public_url, None);
+    let env = base().with("PUBLIC_URL", "  https://example.com ");
+    assert_eq!(
+        read_web_config(&env).unwrap().public_url.as_deref(),
+        Some("https://example.com")
+    );
+    let env = base().with("PUBLIC_URL", "  ");
+    assert_eq!(read_web_config(&env).unwrap().public_url, None);
+}
+
 // Rust 전용: instrumentation-node.ts — 비밀 값이 없거나 짧으면 시작하지 않는다(값은 오류에 넣지 않는다)
 #[test]
 fn refuses_missing_or_short_secrets() {

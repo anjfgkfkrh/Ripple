@@ -21,6 +21,7 @@ pub struct WebState {
     pub worker_url: Option<String>,
     pub worker_token: String,
     pub tunnel_metrics_url: Option<String>,
+    pub public_url: Option<String>,
     pub assets: Assets,
     now: NowFn,
 }
@@ -40,6 +41,7 @@ impl WebState {
             worker_url: config.worker_url.clone(),
             worker_token: config.worker_token.clone(),
             tunnel_metrics_url: config.tunnel_metrics_url.clone(),
+            public_url: config.public_url.clone(),
             assets: Assets::load(),
             now: now.unwrap_or_else(|| Arc::new(now_ms)),
         }

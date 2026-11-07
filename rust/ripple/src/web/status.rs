@@ -26,7 +26,10 @@ use crate::server::text::{js_number, js_to_fixed};
 use crate::server::time::{EpochMs, format_seoul_date_time};
 use crate::server::topics::plan::{parse_topic_times, topic_plan};
 use crate::server::topics::store::active_auto_topics;
-use crate::server::tunnel::{TUNNEL_TIMEOUT_MS, TunnelStatus, fetch_tunnel_status};
+use crate::server::tunnel::{
+    ReadyStatus, TUNNEL_TIMEOUT_MS, TunnelStatus, fetch_ready_status, fetch_tunnel_status,
+    parse_public_url,
+};
 use crate::server::worker_client::{WorkerHealth, WorkerResult};
 use crate::web::assets::AssetUrls;
 use crate::web::layout::{BannerView, budget_banner};
@@ -42,6 +45,8 @@ pub struct SystemView {
     pub worker_text: String,
     pub tunnel_url: Option<String>,
     pub tunnel_text: String,
+    /// 고정 주소 모드(`PUBLIC_URL`이 있음)
+    pub tunnel_fixed: bool,
     pub backup_text: String,
     pub prices_text: String,
     pub checked_text: String,
@@ -405,13 +410,26 @@ pub async fn page(State(state): State<Arc<WebState>>) -> Response {
 
 /// 시스템 상태 조각. 화면이 먼저 "확인 중…"을 보이고 htmx로 이것을 채운다(R10 결정 ③).
 pub async fn system(State(state): State<Arc<WebState>>) -> Response {
-    let (status, tunnel) = tokio::join!(
+    let tunnel_fixed = state.public_url.is_some();
+    let (status, tunnel_result) = tokio::join!(
         get_system_status(&state.db, state.worker_url.as_deref(), &state.http),
-        fetch_tunnel_status(
-            state.tunnel_metrics_url.as_deref(),
-            &state.http,
-            TUNNEL_TIMEOUT_MS
-        ),
+        async {
+            if tunnel_fixed {
+                Err(fetch_ready_status(
+                    state.tunnel_metrics_url.as_deref(),
+                    &state.http,
+                    TUNNEL_TIMEOUT_MS,
+                )
+                .await)
+            } else {
+                Ok(fetch_tunnel_status(
+                    state.tunnel_metrics_url.as_deref(),
+                    &state.http,
+                    TUNNEL_TIMEOUT_MS,
+                )
+                .await)
+            }
+        },
     );
     let settings = state.db.with(|conn| {
         Ok((
@@ -445,17 +463,37 @@ pub async fn system(State(state): State<Arc<WebState>>) -> Response {
         WorkerHealth::Ok { listings: None } => (true, "응답함".to_string()),
         WorkerHealth::Err { reason } => (false, reason.clone()),
     };
-    let (tunnel_url, tunnel_text) = match tunnel {
-        TunnelStatus::Ready { url } => (Some(url), String::new()),
-        TunnelStatus::Pending => (
+    let (tunnel_url, tunnel_text) = match tunnel_result {
+        Ok(TunnelStatus::Ready { url }) => (Some(url), String::new()),
+        Ok(TunnelStatus::Pending) => (
             None,
             "주소를 받는 중입니다. 잠시 뒤 새로 고침하세요.".to_string(),
         ),
-        TunnelStatus::Off => (
+        Ok(TunnelStatus::Off) => (
             None,
             "터널을 쓰지 않습니다(이 컴퓨터에서만 접속).".to_string(),
         ),
-        TunnelStatus::Error { reason } => (None, format!("터널에 닿지 못했습니다: {reason}")),
+        Ok(TunnelStatus::Error { reason }) => (None, format!("터널에 닿지 못했습니다: {reason}")),
+        Err(ready) => match state.public_url.as_deref().and_then(parse_public_url) {
+            None => (
+                None,
+                "PUBLIC_URL 형식이 다릅니다(https://호스트 꼴)".to_string(),
+            ),
+            Some(url) => {
+                let text = match ready {
+                    ReadyStatus::Connected {
+                        connections: Some(n),
+                    } => format!("연결됨(연결 {n}개)"),
+                    ReadyStatus::Connected { connections: None } => "연결됨".to_string(),
+                    ReadyStatus::Disconnected => "Cloudflare와 연결되지 않았습니다".to_string(),
+                    ReadyStatus::Error { reason } => format!("터널에 닿지 못했습니다: {reason}"),
+                    ReadyStatus::Unknown => {
+                        "연결 상태를 알 수 없습니다(터널 메트릭 주소 없음)".to_string()
+                    }
+                };
+                (Some(url), text)
+            }
+        },
     };
     let backup_text = if backup_at > 0.0 {
         format!(
@@ -489,6 +527,7 @@ pub async fn system(State(state): State<Arc<WebState>>) -> Response {
             worker_text,
             tunnel_url,
             tunnel_text,
+            tunnel_fixed,
             backup_text,
             prices_text,
             checked_text: format_seoul_date_time(status.checked_at),

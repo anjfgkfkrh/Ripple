@@ -114,6 +114,14 @@ pub mod test_support {
     }
 
     pub async fn start_web(worker_url: Option<String>) -> TestWeb {
+        start_web_with_tunnel(worker_url, None, None).await
+    }
+
+    pub async fn start_web_with_tunnel(
+        worker_url: Option<String>,
+        tunnel_metrics_url: Option<String>,
+        public_url: Option<String>,
+    ) -> TestWeb {
         let file = test_db_file();
         let env = Env::from_pairs([
             ("APP_PASSWORD", PASSWORD),
@@ -126,7 +134,8 @@ pub mod test_support {
             port: 0,
             database_path: Some(file.path.to_string_lossy().into_owned()),
             worker_url,
-            tunnel_metrics_url: None,
+            tunnel_metrics_url,
+            public_url,
         };
         let clock = Arc::new(AtomicI64::new(T0));
         let c = clock.clone();

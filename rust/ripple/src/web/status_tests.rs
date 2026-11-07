@@ -3,7 +3,7 @@ use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use super::*;
-use crate::web::test_support::{T0, start_web};
+use crate::web::test_support::{T0, start_web, start_web_with_tunnel};
 
 #[test]
 fn next_text_forms() {
@@ -58,6 +58,98 @@ async fn system_partial_shows_db_and_worker() {
     assert!(body.contains("응답함 · 공식 종목 목록 한국 7개, 미국 9개"));
     assert!(body.contains("터널을 쓰지 않습니다(이 컴퓨터에서만 접속)."));
     assert!(body.contains("아직 받은 적이 없습니다"));
+}
+
+async fn fixed_system_body(
+    ready: Option<ResponseTemplate>,
+    metrics: bool,
+    public_url: &str,
+) -> String {
+    let tunnel = MockServer::start().await;
+    if let Some(ready) = ready {
+        Mock::given(method("GET"))
+            .and(path("/ready"))
+            .respond_with(ready)
+            .mount(&tunnel)
+            .await;
+    }
+    let web = start_web_with_tunnel(
+        None,
+        metrics.then(|| tunnel.uri()),
+        Some(public_url.to_string()),
+    )
+    .await;
+    web.get("/status/system")
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn fixed_address_mode_shows_link_and_connection() {
+    let body = fixed_system_body(
+        Some(
+            ResponseTemplate::new(200).set_body_json(json!({"status": 200, "readyConnections": 4})),
+        ),
+        true,
+        "https://example.com/",
+    )
+    .await;
+    assert!(body.contains("외부 접속(고정 주소)"));
+    assert!(!body.contains("외부 접속(임시 주소)"));
+    assert!(body.contains("href=\"https://example.com\""));
+    assert!(body.contains("휴대폰 브라우저에 이 주소를 넣으세요."));
+    assert!(!body.contains("다시 켜면 주소가 바뀝니다"));
+    assert!(body.contains("연결됨(연결 4개)"));
+
+    let plain = fixed_system_body(
+        Some(ResponseTemplate::new(200)),
+        true,
+        "https://example.com",
+    )
+    .await;
+    assert!(plain.contains("연결됨"));
+    assert!(!plain.contains("연결됨(연결"));
+}
+
+#[tokio::test]
+async fn fixed_address_mode_shows_disconnected_unreachable_unknown_and_bad_format() {
+    let down = fixed_system_body(
+        Some(ResponseTemplate::new(503)),
+        true,
+        "https://example.com",
+    )
+    .await;
+    assert!(down.contains("Cloudflare와 연결되지 않았습니다"));
+    assert!(down.contains("href=\"https://example.com\""));
+
+    // /ready 응답을 등록하지 않으면 wiremock이 404를 준다. 닿지 않는 경우는 막힌 포트로 만든다.
+    let web = start_web_with_tunnel(
+        None,
+        Some("http://127.0.0.1:1".to_string()),
+        Some("https://example.com".to_string()),
+    )
+    .await;
+    let body = web
+        .get("/status/system")
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    assert!(body.contains("터널에 닿지 못했습니다: "));
+
+    let unknown = fixed_system_body(None, false, "https://example.com").await;
+    assert!(unknown.contains("연결 상태를 알 수 없습니다(터널 메트릭 주소 없음)"));
+    assert!(unknown.contains("href=\"https://example.com\""));
+
+    let bad = fixed_system_body(None, false, "http://example.com").await;
+    assert!(bad.contains("PUBLIC_URL 형식이 다릅니다(https://호스트 꼴)"));
+    assert!(!bad.contains("href=\"http://example.com"));
 }
 
 #[tokio::test]

@@ -12,6 +12,8 @@ pub struct WebConfig {
     pub database_path: Option<String>,
     pub worker_url: Option<String>,
     pub tunnel_metrics_url: Option<String>,
+    /// `PUBLIC_URL`(15단계, 상태 화면 표시용 고정 주소. 형식 검사는 화면에서 한다)
+    pub public_url: Option<String>,
 }
 
 impl std::fmt::Debug for WebConfig {
@@ -36,6 +38,7 @@ pub fn read_web_config(env: &Env) -> Result<WebConfig, ConfigError> {
         database_path: env.get_trimmed("DATABASE_PATH").map(str::to_string),
         worker_url: env.get_trimmed("WORKER_URL").map(str::to_string),
         tunnel_metrics_url: env.get_trimmed("TUNNEL_METRICS_URL").map(str::to_string),
+        public_url: env.get_trimmed("PUBLIC_URL").map(str::to_string),
     })
 }
 
