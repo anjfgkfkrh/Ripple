@@ -1,3 +1,0 @@
-TUNNEL_TOKEN=fake-token-abc
-PUBLIC_URL=https://example.com
-APP_PASSWORD=x

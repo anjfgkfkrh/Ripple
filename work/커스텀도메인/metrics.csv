@@ -1,5 +1,0 @@
-time,id,role,stage,task,attempt,model,effort,requests,input,cache_write_5m,cache_write_1h,cache_read,output,max_context,cost_usd,nocache_usd,saved_usd,saved_pct
-2026-11-07 16:25:20,a9c72e191e87fe3fd,work,커스텀도메인,work/커스텀도메인/tunnel-mode,1,claude-sonnet-5-5,medium,18,36,72160,0,1004144,12842,72162,0.4093,2.2811,1.8718,82.1
-2026-11-07 16:29:42,a8d1869928e7392f9,review,커스텀도메인,work/커스텀도메인/tunnel-mode,1,claude-opus-5-5,기본,30,60,103727,0,2265811,17408,103729,1.3202,9.8266,8.5064,86.6
-2026-11-07 16:32:46,aaff92cb5b6bc1e89,work,커스텀도메인,work/커스텀도메인/tunnel-docs,1,claude-sonnet-5-5,medium,24,50,65314,0,1560602,19263,83569,0.5121,3.4446,2.9325,85.1
-2026-11-07 16:37:14,a364b404a8af8c4a8,review,커스텀도메인,work/커스텀도메인/tunnel-docs,1,claude-opus-5-5,기본,28,60,90967,0,2346660,17226,191134,1.2689,10.0953,8.8263,87.4
