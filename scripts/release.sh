@@ -33,14 +33,11 @@ echo "검사할 비밀 값 $(wc -l <"$SECRETS_FILE" | tr -d ' ')개(값은 출�
 for arch in $ARCHS; do
   echo
   echo "── linux/$arch 빌드"
-  for target in worker web; do
-    docker buildx build --platform "linux/$arch" --target "$target" --load \
-      -t "ripple-$target:$VERSION" .
-  done
+  docker buildx build --platform "linux/$arch" --target ripple --load \
+    -t "ripple-app:$VERSION" .
 
   echo "── linux/$arch 검사"
-  for target in worker web; do
-    image="ripple-$target:$VERSION"
+  for image in "ripple-app:$VERSION"; do
     got="$(docker image inspect --format '{{.Architecture}}' "$image")"
     [ "$got" = "$arch" ] || { echo "종류가 다릅니다: $image = $got (기대 $arch)"; exit 1; }
     # 1) 이미지 설정의 환경변수에 키·비밀번호가 없어야 한다(이름만 본다).
@@ -67,14 +64,14 @@ for arch in $ARCHS; do
   # 실패하면(set -e, pipefail) 여기서 멈춘다. 빈 볼륨은 끝나거나 실패해도 지운다.
   trap 'docker volume rm "$vol" >/dev/null 2>&1 || true; rm -f "$SECRETS_FILE"' EXIT
   docker run --rm --platform "linux/$arch" -v "$vol:/data" \
-    -e DATABASE_PATH=/data/ripple.db "ripple-worker:$VERSION" \
-    node dist/worker/migrate.mjs 2>&1 | tail -2
+    -e DATABASE_PATH=/data/ripple.db "ripple-app:$VERSION" \
+    ripple migrate 2>&1 | tail -2
   echo "  마이그레이션 실행 확인(linux/$arch)"
   docker volume rm "$vol" >/dev/null
 
   file="$OUT/ripple-$VERSION-images-$arch.tar.gz"
   echo "── $file 만드는 중"
-  docker save "ripple-web:$VERSION" "ripple-worker:$VERSION" | gzip -9 >"$file"
+  docker save "ripple-app:$VERSION" | gzip -9 >"$file"
   echo "  $(du -h "$file" | cut -f1)"
 done
 
@@ -86,8 +83,8 @@ v = os.environ["VERSION"]
 src = open("docker-compose.yml", encoding="utf-8").read()
 # build 블록(context + target)을 미리 만든 이미지 이름으로 바꾼다.
 out = re.sub(
-    r"    build:\n      context: \.\n      target: (\w+)\n",
-    lambda m: f"    image: ripple-{m.group(1)}:{v}\n",
+    r"    build:\n      context: \.\n      target: ripple\n    image: ripple-app\n",
+    f"    image: ripple-app:{v}\n",
     src,
 )
 if "build:" in out.replace("# ", ""):

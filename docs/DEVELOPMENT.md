@@ -14,11 +14,11 @@
 
 ## 1. 지금 상태
 
-마지막 갱신: 2026-11-05 (한국 시간), 14단계(Rust 전환) R0~R12 커밋됨, R13 질문 답 대기
+마지막 갱신: 2026-11-05 (한국 시간), 14단계(Rust 전환) R0~R13 구현 끝(커밋 전), 실제 AI 확인 끝, 허용 목록·배포 대기
 
-- **14단계 Rust 전환(R0~R12 커밋됨, R13 질문 답 대기)**: 설계 문서 [RUST_MIGRATION.md](RUST_MIGRATION.md)(하위 단계 R0~R13, 1장 규칙·2장 크레이트·6장 단계표). 결정은 DECISIONS.md 1장 "14단계" 줄 3개. 설계는 Opus, 구현은 Sonnet이 한다(사용자 운영 방식). **전환이 끝날 때까지 기능 변경을 멈춘다**(결정 ⑦): 아래 답 대기 두 건과 13단계 남은 확인도 보류.
+- **14단계 Rust 전환(R0~R13 구현 끝, 커밋 전)**: 설계 문서 [RUST_MIGRATION.md](RUST_MIGRATION.md)(하위 단계 R0~R13, 1장 규칙·2장 크레이트·6장 단계표). 결정은 DECISIONS.md 1장 "14단계" 줄 3개. 설계는 Opus, 구현은 Sonnet이 한다(사용자 운영 방식). **전환이 끝날 때까지 기능 변경을 멈춘다**(결정 ⑦): 아래 답 대기 두 건과 13단계 남은 확인도 보류.
   - **14단계 R12(종목·설정 화면) 커밋됨**(2026-11-05, R11 커밋 `3dece10` 이후, 해시는 `git log`): `/check` 전체 통과(Rust 598개, TS 446개, E2E 39개·건너뜀 5 모바일). 결정은 DECISIONS.md 1장 "14단계 R12 결정"·"R12 구현 세부", 기록은 3장. 같은 DB 사본으로 Next와 Rust를 데스크톱·휴대폰 캡처 비교: 높이·요소별 클래스 같음, 로그인 폼도 같음(R10에서 남았던 것). 임시 `e2e/status-r10.spec.ts`는 이 커밋에서 지움.
-  - **다음: R13(정리·교체: TS 제거, Docker 이미지 하나, 문서)**: 질문 보냄, 답 대기. 질문 ① 최종 `/real-check`에 실제 AI 호출을 넣을지(추천: 넣음, 웹에서 종목 등록·키워드 다시 만들기를 처음 실제로 돌려 봄, 예상 $0.01 이하) ② GitHub 릴리스를 올릴지(추천: 이번엔 올리지 않음, 외부에 공개되므로 따로 결정) ③ TS 마지막 상태에 로컬 태그를 붙일지(추천: 붙임, 푸시 안 함). 답을 받으면 DECISIONS.md 1장 "14단계 R13 결정"에 적고 구현. R13 전까지 compose의 web은 TS, 본 Docker 배포는 하지 않는다(`/deploy`는 아직 TS 기준이라 R13에서 고침).
+  - **14단계 R13(정리·교체) 구현 끝, 커밋 전**(2026-11-05): TS 제거(`src/`·`tests/`·`drizzle/`·Next 설정·TS 시험 설정, `rust/tools`의 TS 도구), 이미지 하나 `ripple`(migrate·worker·web은 명령만 다름), compose·`release.sh`·README·SPEC 5·6장·CLAUDE.md·skill 수정. 결정은 DECISIONS.md 1장 "14단계 R13 결정"·"R13 구현 세부", 기록은 3장. `/check`(R1~R4, format·lint·typecheck, Vitest 7개, E2E 39개·건너뜀 5 모바일) 통과, Rust 테스트 592개. 무료 실제 확인 끝(시험 Docker `ripple-check`, AI 키 비움, 터널 없음): 최신 백업 사본(`ripple-20261105-040021.db`)에서 drizzle 이력 DB가 업그레이드됨(`user_version` 11, 이력 11줄 유지, 기사 수 유지), web 307→로그인·worker 상태 정상, 화면 캡처 3장(타임라인·상태·종목) 직접 봄, E2E `E2E_BASE_URL`로 16개 통과·28개 건너뜀(목 서비스 필요). 시험 Docker는 AI 확인 뒤 내렸다(볼륨·백업 사본 삭제). **남은 것**: ① `.claude/settings.json` 허용 목록(`pnpm build` 두 줄 제거, `cargo *`·`cd rust && *` 추가)도 자동 승인이 두 번 거부돼 사용자가 고친다 ② 본 Docker 배포는 요청할 때만(`/deploy`). 배포 뒤 SPEC 10장 14단계 완료 기준("본 Docker가 Rust 이미지 하나로 돈다")을 확인한다. 그 전까지 14단계는 끝이 아니다.
   - rustup 1.29.2와 Rust 1.99.1(rustfmt·clippy 포함)은 2026-10-31 사용자가 설치함(기본 툴체인 1.99.1).
 
 - **토픽 유지 개선(끝, 커밋 `46e3f58`, 2026-10-30 14:14 배포)**: 첫 정기 토픽 갱신 확인 끝. 15:57:32 시작, Haiku 1회 $0.0078(15:57:44) 성공, 실패 기록 없음, 진행 중 토픽 15개(끝남 136). 로그 줄은 16:00 배포로 컨테이너가 바뀌어 남지 않아 DB(`settings`·`usage_logs`·`topics`)로 확인.
@@ -51,7 +51,7 @@
 | - | 개발 환경 정리(문서 나누기, `.claude/`, 비밀 값 검사) | 완료(2026-10-30 커밋) | `4c4f259` |
 | - | 토픽 유지 개선(24시간 기사 수로 유지, 끝난 토픽 되살림, 최대 토큰 10,000) | 완료(2026-10-30 배포) | `46e3f58` |
 | 13 | 보유 종목 주가 띠(한국 KIS, 미국 Finnhub, 장중 1분, 이력) | 완료(2026-10-30 배포) | `ddde1a5` |
-| 14 | Rust 전환(기능 변경 없음, R0~R13, `docs/RUST_MIGRATION.md`) | R0~R12 커밋됨, R13 질문 답 대기 | 설계 `92e956d`, R0 `ef6257d`, R1 `f142410`, R2 `5e03ee5`, R3 `56df2a3`, R4 `88c5c93`, R5 `b35bcca`, R6 `f371b85`, R7 `0055b76`, R8 `1c4f3ce`, R9 `207e4eb`, R10 `b54805b`, R11 `3dece10`, R12 (해시는 `git log`) |
+| 14 | Rust 전환(기능 변경 없음, R0~R13, `docs/RUST_MIGRATION.md`) | R0~R13 구현 끝(커밋 전), 배포 대기 | 설계 `92e956d`, R0 `ef6257d`, R1 `f142410`, R2 `5e03ee5`, R3 `56df2a3`, R4 `88c5c93`, R5 `b35bcca`, R6 `f371b85`, R7 `0055b76`, R8 `1c4f3ce`, R9 `207e4eb`, R10 `b54805b`, R11 `3dece10`, R12 `31d962f`, R13 (커밋 전) |
 
 릴리스: **v0.1.0 (MVP)**, 태그 `v0.1.0`. **v0.2.0**(2026-10-23, 10·11단계: 시사·시장 토픽·Jev 점수 기반·같은 소식 묶기·항목별 비용), 태그 `v0.2.0`, GitHub 릴리스 페이지에 `gh release create`로 올림(이제 `gh`가 있음, 커밋 `4626733`).
 
@@ -69,10 +69,12 @@
 
 | 명령 | 내용 |
 |---|---|
-| `pnpm lint` / `pnpm typecheck` / `pnpm format:check` | 검사 |
-| `pnpm test` | Vitest(실제 마이그레이션으로 만든 임시 DB) |
+| `cd rust && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` | Rust 검사와 단위·통합 테스트(실제 마이그레이션으로 만든 임시 DB) |
+| `pnpm typecheck` / `pnpm format:check` / `pnpm lint` | E2E·스크립트의 타입, 서식, ESLint(typescript-eslint) |
+| `pnpm test` | Vitest(커밋 전 비밀 값 검사 스크립트의 테스트) |
 | `pnpm test:e2e` | Playwright. 가짜 외부 서비스(4200), 시험용 worker(4100)·web(3100)을 띄운다. `.e2e/ripple.db`를 새로 만든다 |
-| `pnpm build` / `pnpm build:worker` | Next 빌드 / worker 번들 |
+| `cd rust && ./build.sh --release` | Tailwind CSS와 release 실행 파일(E2E가 쓴다, 고친 뒤 다시) |
+| `docker build --target ripple .` | 이미지 하나(`ripple`)를 만든다. 본 Docker와 무관(컨테이너를 건드리지 않음) |
 | `node scripts/check-secrets.mjs` | 스테이징한 변경에 `.env`의 비밀 값·흔한 키 형식이 없는지 본다(값은 출력하지 않음). `--history`는 모든 커밋 기록(푸시 전) |
 | `/check` | 위 검사를 모두 돌리고 결과 표를 돌려준다(따로 떨어진 컨텍스트에서 실행). `/check 빠르게`는 서식·린트·타입·단위만 |
 | `/deploy` | 본 Docker 배포(백업 → 다시 빌드 → 확인). 사용자가 요청할 때만, 사용자가 직접 부른다 |
@@ -93,7 +95,7 @@ E2E에서 알아 둘 것
 - 띄우기: `WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups OPENROUTER_API_KEY= TYPESAFE_API_KEY= FINNHUB_API_KEY= KIS_APP_KEY= KIS_APP_SECRET= APP_PASSWORD=… SESSION_SECRET=… docker compose -p ripple-check up -d --build`
   - AI 키를 비워 비용이 생기지 않게 한다. 터널까지 뜨므로 공개 주소가 생긴다. 외부에서 확인할 때는 공개된 시험 비밀번호(`e2e/test-env.ts`) 대신 무작위 비밀번호를 파일로 만들어 쓰고(출력하지 않음) 끝나면 지운다.
   - 임시 주소: `docker compose -p ripple-check logs tunnel | grep trycloudflare` 또는 http://127.0.0.1:3300/status
-- 내리기: `WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups docker compose -p ripple-check down -v`, `rm -rf .check-backups`, 시험 이미지 `docker image rm ripple-check-web ripple-check-worker ripple-check-migrate`
+- 내리기: `WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups docker compose -p ripple-check down -v`, `rm -rf .check-backups`(이미지 `ripple-app`은 본 배포와 같은 이름이라 지우지 않는다)
 - 복원 시험: `down` → 시험 볼륨(`ripple-check_ripple-data`)에 README의 복원 명령 → `up -d`
 
 ## 5. 데이터·비용 메모
@@ -103,6 +105,8 @@ E2E에서 알아 둘 것
 - 토픽 유지 비교(2026-10-30): OpenRouter 14회 약 $0.086, 본 DB 이번 달 합계 $1.0364 → $1.1244(`topic_refresh_check` 7줄).
 - 이번 달 AI 사용: $0.1424(2026-10-22, 한도 $5, 개발 중 시험 호출 포함).
 - 단계별 실제 API 사용: 2단계 OpenRouter 약 20회, 3단계 약 $0.016(누적), 5단계 Jev $0.0195(548회), 6단계 $0.0205(OpenRouter 15회, Jev 339회), 7·8단계 0원, 10단계 실측 $0.0281(OpenRouter 10회, Jev 80회)과 실제 AI 확인 $0.0132(OpenRouter 3회, Jev 88회), 10단계 보완 실측 $0.0077(OpenRouter 4회), 11단계 실측 $0.0241(OpenRouter 5회, Jev 137회), 모두 본 DB 사용량 기록에 `*_check`로 넣음. 11단계 무료 실제 확인은 0원, 실제 AI 확인 $0.0284(OpenRouter 5회, Jev 300회, 본 DB에 `*_check`로 옮김). 본 DB 이번 달 합계 약 $0.186(배포 직후).
+
+- 14단계 R13 실제 확인(2026-11-05, 승인 뒤, 시험 Docker): 종목 등록 1회, 호출 51회, 합계 $0.003319(OpenRouter 2회 $0.001966, Jev 49회 $0.001353). 본 DB 사용량은 옮기지 않기로 함(2026-11-07).
 
 ## 6. 다시 잴 때의 방법
 
@@ -120,18 +124,24 @@ DECISIONS.md 2장 "다시 잴 때의 방법"으로 옮겼다. 시험용 Docker �
 - 새로 등록한 종목의 지난 24시간 기사 연결은 그 회차에 실패한 소스에서는 놓칠 수 있다.
 - (10단계) 시장 이슈 정리는 회사 한 곳의 큰 소식(실적·신차)도 넣고, 기사가 흩어진 주제(예: 트럼프 기사 하루 43건)는 이슈로 따로 잡지 않기도 한다. 시사 키워드 중 넓은 말('기준금리 동결' 하루 17건, 'AI 투자 우려' 15.5건)은 연결이 많지만 대부분 기준 미만이다. 큰 사건 때 시사 연결이 6점을 넘는지는 아직 재지 못했다(DECISIONS.md 2장).
 - (고침, 2026-10-23) 국민일보 피드가 다음 날 지면 기사에 4~24시간 미래 시각을 붙여 와 타임라인에 미래 시각으로 보였다. 받은 시각보다 10분 넘게 미래면 받은 시각으로 저장하고, 저장된 것은 마이그레이션 0008로 고침(DECISIONS.md 1장 "미래 발행 시각"). 2026-10-23 11:59 배포, 본 DB 기사 14건·제목 126건 고침
+- (14단계 R13, 2026-11-05 추천대로) `scripts/analysis/`(일회성 분석 스크립트)는 지웠다. 전부 본 DB를 worker 컨테이너의 node로 읽었는데 이미지에 node가 없어 돌지 않았다. 옛 파일은 커밋 `31d962f`에 남아 있다.
+- (14단계 R13, 2026-11-05 추천대로) ESLint는 `typescript-eslint`로 바꿨고 `next`·`eslint-config-next`는 뺐다. Prettier와 vitest(비밀 값 검사 테스트)는 남겼다.
+- (14단계 R13) `.claude/settings.json` 허용 목록에 `pnpm build` 두 줄이 남아 있고 `cargo` 줄은 없다. 권한 파일 변경은 자동 승인이 거부돼서 사용자가 고치거나 허락해야 한다.
+- (14단계 R13) `scripts/release.sh`는 이미지 하나로 바꿨지만 아직 실행하지 않았다(두 종류 빌드와 압축 파일이 크다).
 - MVP 범위 밖(SPEC 2.2): 요약, 외부 알림, 미국 증권사 리포트, 다중 사용자, 종목별 수집 간격, 고정 도메인.
 
 ## 8. 코드 지도
 
-폴더 구조는 README "폴더 구조". 자주 보는 진입점:
-- worker 시작과 의존성 조립: `src/worker/index.ts`, 내부 API: `src/worker/server.ts`
-- 정기 작업: `src/server/schedule/`(plan = 다음 시각 계산, scheduler = 1분 루프)
-- 수집: `src/server/collect/run.ts`, 평가: `src/server/evaluate/run.ts`, Jev: `src/server/ai/decider/`
-- 키워드: `src/server/keywords/`(tree = 프롬프트·검증·점수로 고르기(구조 키워드만), generate = 생성·Jev 평가·저장, queue = 대기열, headlines = 종목의 최근 기사 제목), 피드 제목 보관: `src/server/collect/feed-headlines.ts`, 지난 기사 걸기: `src/server/collect/backfill.ts`
-- 시장·주제·토픽(11단계): `src/server/topics/`(store = 항목·토픽 저장과 가지 붙이기, plan = 갱신 시각, refresh = 프롬프트, run = 갱신 실행, read = 화면 읽기), 같은 소식 기준: `src/server/similar-title.ts`, 토픽 카드: `src/server/timeline/read.ts`의 `readTopicCards`
-- 화면: `src/app/(app)/`(page = 타임라인, status/, stocks/, settings/)
-- 읽은 기사 표시(12단계): 저장·조회 `src/server/timeline/reads.ts`, 카드의 `read`는 `timeline/read.ts`, worker `PUT /articles/read`(`src/worker/server.ts`), 서버 액션 `setArticlesReadAction`(`src/app/(app)/actions.ts`), 카드 겉틀 `src/app/(app)/read-card.tsx`
-- 주가(13단계): `src/server/prices/`(kis = KIS 클라이언트, plan = 장 시간, run = 1분마다 받기, store = 저장·띠 읽기), Finnhub 현재가는 `src/server/collect/finnhub.ts`의 `quote`, 띠 화면 `src/app/(app)/price-strip.tsx`
-- 설정 값 기본: `src/server/settings.ts`, 설정 화면 검사·저장: `src/server/settings-form.ts`
-- Rust 웹의 종목·설정 화면(14단계 R12, 전환 중): `rust/ripple/src/web/stocks.rs`(종목·시장·주제 화면과 POST), `rust/ripple/src/web/settings.rs`(설정·사용량), 템플릿 `rust/ripple/templates/stocks/`·`settings/`, 확인창과 폴링 동작 `rust/ripple/static/app.js`
+폴더 구조는 README "폴더 구조". 14단계 R13 뒤 서버 코드는 Rust만 있다. 자주 보는 진입점(모두 `rust/ripple/src/`):
+- 실행 파일: `main.rs`(하위 명령 migrate · worker · web · healthcheck), worker 조립·시작: `worker/index.rs`, 내부 API: `worker/server.rs`, 마이그레이션 진입점: `worker/migrate.rs`, 마이그레이션 목록: `server/db/migrate.rs`(`MIGRATION_SQL`)
+- 정기 작업: `server/schedule/`(plan = 다음 시각 계산, scheduler = 1분 루프)
+- 수집: `server/collect/run.rs`, 평가: `server/evaluate/run.rs`, Jev: `server/ai/decider/`
+- 키워드: `server/keywords/`(tree = 프롬프트·검증·점수로 고르기(구조 키워드만), generate = 생성·Jev 평가·저장, queue = 대기열, headlines = 종목의 최근 기사 제목), 피드 제목 보관: `server/collect/feed_headlines.rs`, 지난 기사 걸기: `server/collect/backfill.rs`
+- 시장·주제·토픽(11단계): `server/topics/`(store = 항목·토픽 저장과 가지 붙이기, plan = 갱신 시각, refresh = 프롬프트, run = 갱신 실행, read = 화면 읽기), 같은 소식 기준: `server/similar_title.rs`, 토픽 카드: `server/timeline/read.rs`의 `read_topic_cards`
+- 화면(axum): `web/`(index = 조립, login·status·timeline·stocks·settings = 각 화면, assets = 정적 파일, guard = 로그인 확인, layout = 공통 틀), 템플릿 `templates/`(Askama, htmx 조각)
+- 읽은 기사 표시(12단계): 저장·조회 `server/timeline/reads.rs`, 카드의 `read`는 `server/timeline/read.rs`, worker `PUT /articles/read`(`worker/server.rs`), 화면 `web/timeline.rs`, 카드 `templates/timeline/card.html`
+- 주가(13단계): `server/prices/`(kis = KIS 클라이언트, plan = 장 시간, run = 1분마다 받기, store = 저장·띠 읽기), Finnhub 현재가는 `server/collect/finnhub.rs`, 띠 화면은 `templates/timeline/`
+- 설정 값 기본: `server/settings.rs`, 설정 화면 검사·저장: `server/settings_form.rs`, 화면 `web/settings.rs`, `templates/settings/`
+- 종목·시장·주제 화면과 POST(14단계 R12): `web/stocks.rs`, `templates/stocks/`, 확인창과 폴링 동작 `static/app.js`
+- 시험 자료: `rust/ripple/tests/fixtures/`(표본 파일, TS 시절 drizzle 고정본 `drizzle/`·`applied.sql` = 업그레이드 시험), 시험 도우미 `test_support.rs`
+- 운영: `scripts/release.sh`(이미지 하나를 두 종류로 빌드)

@@ -138,7 +138,7 @@ pub fn ms(iso: &str) -> crate::server::time::EpochMs {
         .timestamp_millis()
 }
 
-/// 실제 KIND·NASDAQ 파일에서 고른 표본(KIND는 원본처럼 EUC-KR). 저장소 루트의 `tests/fixtures`를 그대로 읽는다.
+/// 실제 KIND·NASDAQ 파일에서 고른 표본(KIND는 원본처럼 EUC-KR). `rust/ripple/tests/fixtures`(TS 시절 `tests/fixtures`에서 옮김)를 읽는다.
 pub struct FixtureFiles {
     pub kind: &'static str,
     pub nasdaq_listed: &'static str,
@@ -153,7 +153,7 @@ pub const FIXTURE_FILES: FixtureFiles = FixtureFiles {
 
 pub fn fixture_bytes(name: &str) -> Vec<u8> {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/fixtures")
+        .join("tests/fixtures")
         .join(name);
     std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
 }

@@ -18,7 +18,7 @@ description: 버그, 테스트 실패, 빌드 실패, 예상과 다른 동작을
 ## 2. 비교
 
 - 같은 코드베이스에서 잘 되는 비슷한 코드를 찾아 다른 점을 모두 적는다. "상관없겠지"로 지우지 않는다.
-- 라이브러리 동작이 의심되면 공식 문서와 실제 소스(`node_modules/`)를 끝까지 읽는다. Next.js는 `node_modules/next/dist/docs/`(AGENTS.md).
+- 라이브러리 동작이 의심되면 공식 문서와 실제 소스(Rust 크레이트는 `rust/`의 `cargo` 소스 캐시나 docs.rs, TS 도구는 `node_modules/`)를 끝까지 읽는다.
 
 ## 3. 가설 하나씩
 

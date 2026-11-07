@@ -30,7 +30,7 @@ WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups docker compose -p ripple-check ru
   -v "$PWD/backups":/restore:ro worker sh -c 'cp /restore/<백업 파일> /data/ripple.db'
 ```
 
-- 켜자마자 정기 작업(06:00 키워드 재생성 등)이 돌면 확인이 흐려진다. 막아야 하면 같은 방식으로 **web 이미지**(Node와 better-sqlite3가 있다. worker 이미지는 14단계 R9부터 Rust라 Node가 없다)의 `run --rm --no-deps web node -e …`로 시험 DB의 settings 값을 바꾼다. 키 이름과 값 형식은 `src/server/settings.ts`에서 확인한다. 키워드 재생성은 `keywords.autoRegeneratedAt`을 지금 시각으로 두면 이번 주기에 이미 한 것으로 본다(`src/server/schedule/plan.ts`).
+- 켜자마자 정기 작업(06:00 키워드 재생성 등)이 돌면 확인이 흐려진다. 막아야 하면 같은 방식으로 `run --rm --no-deps --entrypoint sqlite3 worker /data/ripple.db "update settings …"`로 시험 DB의 settings 값을 바꾼다(이미지에 sqlite3가 있다. Node는 없다). 키 이름과 값 형식은 `rust/ripple/src/server/settings.rs`에서 확인한다. 키워드 재생성은 `keywords.autoRegeneratedAt`을 지금 시각으로 두면 이번 주기에 이미 한 것으로 본다(`rust/ripple/src/server/schedule/plan.rs`).
 
 ## 3. 띄우기
 
@@ -48,22 +48,23 @@ WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups OPENROUTER_API_KEY= TYPESAFE_API_
 ## 4. 확인
 
 - 화면: http://127.0.0.1:3300 (캡처는 Playwright로 찍어 직접 본다. 시험용 Docker에 E2E를 돌릴 때는 `E2E_BASE_URL=http://127.0.0.1:3300 pnpm test:e2e`, 가짜 서비스가 필요한 시험은 건너뛴다).
-- 데이터(읽기 전용): `… exec -T web node -e '…'`(web 컨테이너, worker에는 Node가 없다)로 better-sqlite3를 `{ readonly: true }`로 연다(`/deploy` 1장의 조회와 같은 식). 긴 스크립트는 표준 입력으로 넘긴다(`node - < 스크립트.cjs`, 컨테이너 밖 `/tmp`에 두면 패키지를 못 찾는다).
+- 데이터(읽기 전용): `… exec -T worker sqlite3 -readonly /data/ripple.db "select …; select …;"`(`/deploy` 1장의 조회와 같은 식).
 - worker 내부 API는 web 컨테이너 안에서 부른다(web에도 `WORKER_API_TOKEN`이 있다). 토큰을 밖으로 꺼내지 않는다:
-  `… exec -T web node -e 'fetch("http://worker:4000/<경로>", { method: "POST", headers: { authorization: "Bearer " + process.env.WORKER_API_TOKEN } })…'`
+  `… exec -T web sh -c 'curl -s -X POST -H "authorization: Bearer $WORKER_API_TOKEN" http://worker:4000/<경로>'`
 - 지난 기사까지 보려면 시험 DB의 `stocks.backfill_from`을 24시간 전으로 두고 `POST /collect`.
 
 ## 5. AI 확인이었으면 사용량 옮기기
 
-시험 DB의 이번 `usage_logs`를 용도(`purpose`) 끝에 `_check`를 붙여 본 DB에 넣는다(월 합계를 맞추려고, 본 DB에 쓰는 것은 이것뿐). 쓰기 연결, `busy_timeout` 5초, 한 트랜잭션. 넣기 전에 몇 줄·얼마인지 보고 넣은 뒤 본 DB 합계를 다시 본다. 열 이름은 `src/server/db/schema.ts`의 `usageLogs`.
+시험 DB의 이번 `usage_logs`를 용도(`purpose`) 끝에 `_check`를 붙여 본 DB에 넣는다(월 합계를 맞추려고, 본 DB에 쓰는 것은 이것뿐). 쓰기 연결, `busy_timeout` 5초, 한 트랜잭션. 넣기 전에 몇 줄·얼마인지 보고 넣은 뒤 본 DB 합계를 다시 본다. 열 이름은 `rust/ripple/migrations/0001_stocks_listings_usage.sql`의 `usage_logs`. 쓰기는 `sqlite3`로 한 번에 보낸다(`PRAGMA busy_timeout = 5000; BEGIN; … COMMIT;`를 한 인자로).
 
 ## 6. 내리기
 
 ```bash
 WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups docker compose -p ripple-check down -v
 rm -rf .check-backups
-docker image rm ripple-check-web ripple-check-worker ripple-check-migrate
 ```
+
+이미지 `ripple-app`은 본 배포와 이름이 같아서 지우지 않는다(다음 배포 때 다시 빌드된다).
 
 `docker compose ls`로 `ripple-check`가 없어졌고 `ripple`은 그대로인지 본다.
 

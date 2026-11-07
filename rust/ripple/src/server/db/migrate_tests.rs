@@ -1,5 +1,4 @@
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Instant;
 
 use rusqlite::Connection;
@@ -8,11 +7,9 @@ use tempfile::TempDir;
 use super::*;
 use crate::server::db::client::{DbAccess, enable_wal, open_db};
 
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()
-        .unwrap()
+/// TS(drizzle) 시절의 고정 파일: `drizzle/`(마이그레이션 원본과 journal)와 TS로 만든 DB의 `.dump`(`applied.sql`).
+fn drizzle_fixtures() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/drizzle")
 }
 
 fn columns_of(conn: &Connection, table: &str) -> Vec<String> {
@@ -30,19 +27,13 @@ fn user_version(conn: &Connection) -> i64 {
         .unwrap()
 }
 
-/// TS(drizzle)로 DB를 만든다: `pnpm exec tsx src/worker/migrate.ts`
+/// TS(drizzle)로 적용한 DB를 그대로 만든다: TS 제거 전에 `sqlite3 .dump`로 떠 둔 `applied.sql`을 실행한다.
 fn apply_with_drizzle(db_path: &Path) {
-    let output = Command::new("pnpm")
-        .args(["exec", "tsx", "src/worker/migrate.ts"])
-        .current_dir(repo_root())
-        .env("DATABASE_PATH", db_path)
-        .output()
-        .expect("pnpm을 실행할 수 없습니다");
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let sql = std::fs::read_to_string(drizzle_fixtures().join("applied.sql")).unwrap();
+    Connection::open(db_path)
+        .unwrap()
+        .execute_batch(&sql)
+        .unwrap();
 }
 
 type SchemaRow = (String, String, String, Option<String>);
@@ -160,23 +151,23 @@ fn migration_0008_fixes_future_published_times() {
 // 설계 3.4의 테스트 3개와 복사본 확인
 #[test]
 fn migration_sql_files_are_identical_to_drizzle_folder() {
-    // 설계 3.4: `drizzle/*.sql`을 내용 그대로 복사했다.
-    let mut names: Vec<_> = std::fs::read_dir(repo_root().join("drizzle"))
+    // 설계 3.4: `drizzle/*.sql`을 내용 그대로 복사했다(고정 복사본과 같은지 본다).
+    let mut names: Vec<_> = std::fs::read_dir(drizzle_fixtures())
         .unwrap()
         .map(|e| e.unwrap().file_name().into_string().unwrap())
-        .filter(|n| n.ends_with(".sql"))
+        .filter(|n| n.ends_with(".sql") && n != "applied.sql")
         .collect();
     names.sort();
     assert_eq!(names.len(), MIGRATION_SQL.len());
     for (name, sql) in names.iter().zip(MIGRATION_SQL) {
-        let original = std::fs::read_to_string(repo_root().join("drizzle").join(name)).unwrap();
+        let original = std::fs::read_to_string(drizzle_fixtures().join(name)).unwrap();
         assert_eq!(original, sql, "{name}");
     }
 }
 
 #[test]
 fn drizzle_baseline_constants_match_journal() {
-    let journal = std::fs::read_to_string(repo_root().join("drizzle/meta/_journal.json")).unwrap();
+    let journal = std::fs::read_to_string(drizzle_fixtures().join("meta/_journal.json")).unwrap();
     let journal: serde_json::Value = serde_json::from_str(&journal).unwrap();
     let entries = journal["entries"].as_array().unwrap();
     assert_eq!(entries.len() as i64, DRIZZLE_APPLIED_COUNT);

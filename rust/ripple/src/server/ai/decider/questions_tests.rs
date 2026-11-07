@@ -1,8 +1,4 @@
-use std::path::{Path, PathBuf};
-use std::process::Command;
-
 use serde_json::{Value, json};
-use tempfile::TempDir;
 
 use super::*;
 use crate::server::ai::decider::types::{DecisionArticle, DecisionLink, LeadSubject};
@@ -301,27 +297,4 @@ fn compare_with_fixture(fixture: &Value) {
 #[test]
 fn questions_and_states_equal_ts_output_character_by_character() {
     compare_with_fixture(&serde_json::from_str(FIXTURE).unwrap());
-}
-
-#[test]
-fn fixture_file_equals_what_ts_dump_script_makes_now() {
-    // 파일이 TS와 어긋나지 않는지 TS를 다시 돌려 확인한다. 질문 문구를 TS에서 고치면 여기서 알게 된다.
-    let root: PathBuf = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()
-        .unwrap();
-    let dir = TempDir::new().unwrap();
-    let out = dir.path().join("fixture.json");
-    let output = Command::new("pnpm")
-        .args(["exec", "tsx", "rust/tools/dump-questions.ts"])
-        .arg(&out)
-        .current_dir(root)
-        .output()
-        .expect("pnpm을 실행할 수 없습니다");
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(std::fs::read_to_string(out).unwrap(), FIXTURE);
 }

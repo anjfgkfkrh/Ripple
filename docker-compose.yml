@@ -1,13 +1,15 @@
 # 본 실행: docker compose up -d --build (프로젝트 이름 ripple)
 # 시험용으로 따로 띄울 때는 -p ripple-check와 WEB_PORT·BACKUP_HOST_DIR를 바꿔 볼륨·포트·백업 폴더를 나눈다(docs/DEVELOPMENT.md).
+# 세 서비스는 같은 이미지(ripple-app)를 쓴다. 명령(command)만 다르다.
 name: ripple
 
 services:
-  # 마이그레이션을 적용하고 끝난다(Rust worker 이미지 사용). worker·web은 이것이 성공한 뒤 뜬다.
+  # 마이그레이션을 적용하고 끝난다. worker·web은 이것이 성공한 뒤 뜬다.
   migrate:
     build:
       context: .
-      target: rust-worker
+      target: ripple
+    image: ripple-app
     command: ["ripple", "migrate"]
     environment:
       DATABASE_PATH: /data/ripple.db
@@ -19,7 +21,8 @@ services:
   worker:
     build:
       context: .
-      target: rust-worker
+      target: ripple
+    image: ripple-app
     command: ["ripple", "worker"]
     environment:
       DATABASE_PATH: /data/ripple.db
@@ -56,11 +59,16 @@ services:
   web:
     build:
       context: .
-      target: web
+      target: ripple
+    image: ripple-app
+    command: ["ripple", "web"]
     environment:
       DATABASE_PATH: /data/ripple.db
       WORKER_URL: http://worker:4000
       TZ: Asia/Seoul
+      # Docker가 HOSTNAME을 컨테이너 번호로 채우므로, 바깥에서 들어올 수 있게 모든 주소에 연다.
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
       # 로그인 비밀번호·세션 서명 키는 .env에서 읽어 web에만 넘긴다. 없거나 짧으면 web이 시작하지 않는다.
       APP_PASSWORD: ${APP_PASSWORD:-}
       SESSION_SECRET: ${SESSION_SECRET:-}

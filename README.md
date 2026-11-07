@@ -19,7 +19,7 @@
 
 ## 1. 처음 설치
 
-준비물: Docker Desktop(compose v2). 개발할 때만 Node.js 24와 pnpm 12가 더 필요하다.
+준비물: Docker Desktop(compose v2). 개발할 때만 Rust 1.99.1(rustup)과 Node.js 24·pnpm 12가 더 필요하다(실행 파일 빌드와 E2E).
 
 ```bash
 cp .env.example .env    # 아직 .env가 없을 때만
@@ -133,7 +133,7 @@ docker compose up -d --build
 - 토픽마다 AI가 검색어와 영향을 받을 내 종목·이유를 내고, Jev가 토픽–종목 쌍을 평가해 기준을 넘으면 그 종목 트리에 토픽 가지를 붙인다(떨어지거나 토픽이 끝나면 뗌). 새 토픽과 새로 붙인 가지에는 지난 24시간 기사를 바로 건다(평가는 다음 수집 때).
 
 ### 기사 수집
-- 소스: 언론사 RSS 29곳(피드 56개, `src/server/collect/feeds.ts`)과 Finnhub. 약관·robots.txt가 자동 수집이나 AI 이용을 명시적으로 막는 곳은 넣지 않았다(SPEC 11장). 증권사 리포트는 따로 모으지 않는다.
+- 소스: 언론사 RSS 29곳(피드 56개, `rust/ripple/src/server/collect/feeds.rs`)과 Finnhub. 약관·robots.txt가 자동 수집이나 AI 이용을 명시적으로 막는 곳은 넣지 않았다(SPEC 11장). 증권사 리포트는 따로 모으지 않는다.
 - 제목과 요약 앞 300자에 종목 이름이나 키워드의 낱말이 모두 있으면 그 종목에 건다. Finnhub 종목 뉴스는 그 종목에 바로 건다. 걸린 기사만 제목·요약(300자)·원문 링크·언론사·시각을 저장한다(본문은 저장하지 않음).
 - 시장 토픽용으로 언론사 RSS와 Finnhub 시장 뉴스는 종목에 안 걸린 기사도 제목·언론사·피드·시각·원문 주소·요약(300자)을 3일 둔다(같은 제목은 하나).
 - 시장·주제는 이름으로 걸지 않고 키워드로만 건다.
@@ -190,24 +190,28 @@ ARCHS=arm64 scripts/release.sh   # 한 종류만 다시 만들 때
 자세한 현황·규칙·검사 절차는 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Claude Code(터미널)로 개발한다. 규칙은 `CLAUDE.md`, 권한·hook·skill(`/check`, `/deploy` 등)은 `.claude/`(DEVELOPMENT.md 4장).
 
 ```bash
-pnpm install
-cp .env.example .env  # 위 "처음 설치"대로 값을 넣는다
-pnpm db:migrate       # ./data/ripple.db 생성·마이그레이션 적용
-pnpm dev:worker       # 터미널 1: worker  http://127.0.0.1:4000
-pnpm dev              # 터미널 2: web     http://localhost:3000
+cp .env.example .env                 # 위 "처음 설치"대로 값을 넣는다
+(cd rust && ./build.sh)              # CSS와 실행 파일(debug) 만들기. 고친 뒤마다 다시
+set -a && . ./.env && set +a         # 실행 파일은 .env를 직접 읽지 않으므로 셸에 값을 올린다
+export DATABASE_PATH=./data/ripple.db
+rust/target/debug/ripple migrate     # ./data/ripple.db 생성·마이그레이션 적용
+WORKER_HOST=127.0.0.1 rust/target/debug/ripple worker   # 터미널 1: worker  http://127.0.0.1:4000
+HOSTNAME=127.0.0.1 rust/target/debug/ripple web         # 터미널 2: web     http://127.0.0.1:3000
 ```
 
 - Docker의 web도 3000번을 쓰므로 함께 띄우지 않는다(또는 Docker 쪽을 `WEB_PORT`로 바꾼다).
-- 스키마 변경: `src/server/db/schema.ts`를 고친 뒤 `pnpm db:generate --name <이름>`, `pnpm db:migrate`.
-- UI 부품 추가: `pnpm dlx shadcn@latest add <이름>`(shadcn/ui, Base UI 기반) 뒤 `pnpm format`.
+- 스키마 변경: `rust/ripple/migrations/`에 다음 번호의 SQL 파일을 두고, `rust/ripple/src/server/db/migrate.rs`의 `MIGRATION_SQL` 목록에 넣은 뒤 `cargo test`로 확인한다.
+- 화면 부품: `rust/ripple/templates/`의 Askama 템플릿(htmx로 조각을 바꾼다). 스타일은 Tailwind 클래스.
 - 환경변수는 `.env.example`. Docker에서는 compose가 컨테이너용 값을 정하고 비밀 값만 `.env`에서 필요한 컨테이너에 넘긴다(로그인 값은 web, AI·Finnhub·KIS 키는 worker, 내부 토큰은 둘 다).
 
 ### 검사·테스트
 
 | 명령 | 내용 |
 |---|---|
-| `pnpm lint` / `pnpm typecheck` / `pnpm format:check` | 검사 |
-| `pnpm test` | Vitest 단위·통합 테스트(실제 마이그레이션으로 만든 임시 DB) |
+| `cd rust && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` | Rust 검사와 단위·통합 테스트(실제 마이그레이션으로 만든 임시 DB) |
+| `pnpm typecheck` / `pnpm format:check` / `pnpm lint` | E2E·스크립트의 타입, 서식, ESLint(typescript-eslint) |
+| `pnpm test` | Vitest(커밋 전 비밀 값 검사 스크립트의 테스트) |
+| `cd rust && ./build.sh --release` | E2E 전에 release 실행 파일을 새로 만든다(옛 파일이면 `/`가 404) |
 | `pnpm test:e2e` | Playwright(데스크톱·Pixel 7). 가짜 외부 서비스(4200)와 시험용 worker(4100)·web(3100)을 띄워 화면을 검사하고 `test-results/`에 캡처한다. 유료 API나 실제 언론사를 부르지 않는다 |
 | `node scripts/check-secrets.mjs` | 커밋 전: 스테이징한 변경에 `.env`의 비밀 값·흔한 키 형식이 없는지 본다(값은 출력하지 않음). 푸시 전에는 `--history`로 모든 커밋 기록 |
 
@@ -230,34 +234,37 @@ WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups docker compose -p ripple-check do
 ### 폴더 구조
 
 ```
-src/app/            화면(App Router). (app)/ = 로그인 후 화면(page = 타임라인, status/, stocks/, settings/), login/ = 로그인
-src/proxy.ts        모든 요청의 로그인 확인(1차)
-src/components/     공용 부품: shadcn/ui(ui/), 화면 자동 새로 고침
-src/server/         web·worker 공용 서버 코드(db, 환경변수, 시간, 상태 확인, 백업, 터널 주소, 설정, 같은 소식 판단)
-src/server/auth/    로그인: 설정 확인, 세션 쿠키, 실패 제한, 서버 코드용 2차 확인, worker 내부 토큰
-src/server/ai/llm/  생성형 LLM 인터페이스, OpenRouter 구현, 모델 목록 확인
-src/server/ai/decider/ 기사 평가(Jev) 인터페이스, 질문 문구, TypeSafe 구현
-src/server/budget/  AI 사용량 기록과 월 한도 검사(AI 호출은 반드시 여기를 거침), 이번 달 사용량 보고(기능별·항목별)
-src/server/listings/ 공식 종목 목록 받기·읽기(KIND, NASDAQ Trader)
-src/server/stocks/  종목 매칭(LLM + 공식 목록 대조)·등록·삭제
-src/server/keywords/ 연관 키워드: 프롬프트·트리 검증, 참고할 최근 기사 제목, 생성·Jev 평가·저장, worker 대기열, 읽기
-src/server/collect/ 기사 수집: RSS 목록·읽기, 요청 간격, robots.txt, 종목 연결, Finnhub, 피드 제목 보관, 보관한 제목으로 지난 기사 걸기, 회차 실행, 읽기
-src/server/evaluate/ 기사 평가 흐름(같은 소식 점수 재사용)과 읽기
-src/server/topics/  시장·주제 항목과 토픽 저장, 토픽 갱신(계획·프롬프트·실행), 화면 읽기
-src/server/prices/  주가(13단계): KIS 클라이언트, 장 시간, 받기 실행, 저장·화면 읽기
-src/server/timeline/ 타임라인 읽기(필터·같은 소식 묶기·더 보기·토픽 카드)
-src/server/schedule/ 정기 작업(다음 시각 계산, 1분 루프)
-src/server/db/      스키마, 연결, 마이그레이션 적용
-src/worker/         worker 진입점, 내부 API, 마이그레이션 진입점
-drizzle/            마이그레이션 SQL(drizzle-kit이 생성)
-scripts/            worker 번들, Docker용 스크립트, 릴리스 묶음, 커밋 전 비밀 값 검사
-tests/  e2e/        테스트 도우미·표본 파일, Playwright 테스트와 가짜 외부 서비스
-docs/               개발 현황·작업 방법(DEVELOPMENT.md), 구현 세부 결정·실측·진행 기록(DECISIONS.md)
-.claude/            Claude Code 설정(권한, hook)과 skill
+rust/ripple/src/main.rs     실행 파일 진입점: migrate · worker · web · healthcheck
+rust/ripple/src/server/     web·worker 공용 코드(설정·시간·DB·상태·백업·터널 주소·설정 값·같은 소식 판단)
+rust/ripple/src/server/auth/    로그인: 설정 확인, 세션 쿠키, 실패 제한, worker 내부 토큰
+rust/ripple/src/server/ai/llm/  생성형 LLM 인터페이스, OpenRouter 구현, 구조화 출력 스키마
+rust/ripple/src/server/ai/decider/ 기사 평가(Jev) 인터페이스, 질문 문구, TypeSafe 구현
+rust/ripple/src/server/budget/  AI 사용량 기록과 월 한도 검사(AI 호출은 반드시 여기를 거침), 이번 달 사용량 보고
+rust/ripple/src/server/listings/ 공식 종목 목록 받기·읽기(KIND, NASDAQ Trader)
+rust/ripple/src/server/stocks/  종목 매칭(LLM + 공식 목록 대조)·등록·삭제
+rust/ripple/src/server/keywords/ 연관 키워드: 프롬프트·트리 검증, 참고할 최근 기사 제목, 생성·Jev 평가·저장, worker 대기열
+rust/ripple/src/server/collect/ 기사 수집: RSS(feeds.rs 목록), 요청 간격, robots.txt, 종목 연결, Finnhub, 피드 제목 보관, 지난 기사 걸기, 회차 실행
+rust/ripple/src/server/evaluate/ 기사 평가 흐름(같은 소식 점수 재사용)
+rust/ripple/src/server/topics/  시장·주제 항목과 토픽 저장, 토픽 갱신(계획·프롬프트·실행), 화면 읽기
+rust/ripple/src/server/prices/  주가(13단계): KIS 클라이언트, 장 시간, 받기 실행, 저장·화면 읽기
+rust/ripple/src/server/timeline/ 타임라인 읽기(필터·같은 소식 묶기·더 보기·토픽 카드)
+rust/ripple/src/server/schedule/ 정기 작업(다음 시각 계산, 1분 루프)
+rust/ripple/src/server/db/      스키마, 연결, 마이그레이션 적용(MIGRATION_SQL 목록)
+rust/ripple/src/worker/         worker 진입점, 내부 API, 마이그레이션 진입점
+rust/ripple/src/web/            화면(axum): 로그인·상태·타임라인·종목·설정, 정적 파일
+rust/ripple/templates/          화면 템플릿(Askama·htmx), 공통 틀·부품(ui/)
+rust/ripple/styles/             Tailwind 입력 CSS와 테마 복사본(node_modules 없이 빌드)
+rust/ripple/static/             app.js·htmx·favicon(app.css는 build.sh가 만듦)
+rust/ripple/migrations/         마이그레이션 SQL(0000~, 순서대로 적용)
+rust/ripple/tests/fixtures/     테스트 표본 파일과 TS 시절 drizzle 고정본(업그레이드 시험용)
+rust/build.sh                   CSS → cargo build
+e2e/                            Playwright 테스트, 가짜 외부 서비스(mock-services.mjs)
+scripts/                        커밋 전 비밀 값 검사, 릴리스 묶음
+docs/                           개발 현황·작업 방법(DEVELOPMENT.md), 구현 세부 결정·실측·진행 기록(DECISIONS.md), 설계(RUST_MIGRATION.md)
+.claude/                        Claude Code 설정(권한, hook)과 skill
 ```
 
 ### 참고
 
-- `AGENTS.md`는 `next dev`가 AI 코딩 에이전트를 감지하면 만들거나 고치는 파일이다(Next.js 기본 동작). `CLAUDE.md`가 `@AGENTS.md`로 가져온다(CLAUDE.md가 있으면 Claude Code는 AGENTS.md를 따로 읽지 않는다).
-- Docker 이미지에서는 Next.js의 사용 통계 전송을 끈다.
+- 이 저장소는 14단계(2026-11, Rust 전환)로 Next.js·TypeScript 서버를 걷어냈다. 전환 전 기록(TS 구조)은 로컬 git 태그 `ts-final`에 남아 있다.
 - 시간 표시와 스케줄은 한국 시간(Asia/Seoul)이다.

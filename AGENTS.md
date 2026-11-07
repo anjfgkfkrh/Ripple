@@ -1,9 +1,3 @@
-<!-- BEGIN:nextjs-agent-rules -->
+# 에이전트 안내
 
-## This is NOT the Next.js you know
-
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
-
-This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
-
-<!-- END:nextjs-agent-rules -->
+이 저장소의 작업 규칙(응답 언어, 결정 절차, 검사, 안전)은 `CLAUDE.md`에 있다. 구조와 현재 상태는 `docs/DEVELOPMENT.md`에서 읽는다.

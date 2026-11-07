@@ -202,28 +202,6 @@ fn feed_dates_equal_ts_results_for_live_samples_and_edge_cases() {
 }
 
 #[test]
-fn date_fixture_equals_what_ts_dump_script_makes_now() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()
-        .unwrap();
-    let dir = tempfile::TempDir::new().unwrap();
-    let out = dir.path().join("date_fixture.json");
-    let output = std::process::Command::new("pnpm")
-        .args(["exec", "tsx", "rust/tools/dump-dates.ts"])
-        .arg(&out)
-        .current_dir(root)
-        .output()
-        .expect("pnpm을 실행할 수 없습니다");
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(std::fs::read_to_string(out).unwrap(), DATE_FIXTURE);
-}
-
-#[test]
 fn written_year_finds_first_four_digit_run() {
     assert_eq!(written_year("Tue, 20 Oct 2026 17:36:24"), Some(2026));
     assert_eq!(written_year("12345 2026"), Some(2026));

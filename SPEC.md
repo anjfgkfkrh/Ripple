@@ -104,7 +104,7 @@
 - 소스 (2026-10-20 결정, 처음 계획했던 네이버 뉴스 검색 API·Google News RSS·네이버 금융 리서치·한경 컨센서스는 약관·robots.txt 때문에 쓰지 않음 → 11장):
   | 소스 | 대상 | 방식 |
   |---|---|---|
-  | 언론사 RSS 29곳(피드 56개) | 한국 뉴스 | 공개 RSS. 목록은 `src/server/collect/feeds.ts` |
+  | 언론사 RSS 29곳(피드 56개) | 한국 뉴스 | 공개 RSS. 목록은 `rust/ripple/src/server/collect/feeds.rs` |
   | Finnhub | 미국 종목 뉴스, 시장 전체 뉴스 | 공식 API (무료 키 `FINNHUB_API_KEY`) |
 - 증권사 리포트는 따로 수집하지 않는다. 리포트 내용을 다룬 뉴스 기사("○○증권, X 목표가↑")로 대신한다.
 - RSS는 검색이 안 되므로 받은 기사의 제목+요약(앞 300자)에서 종목 이름이나 키워드의 낱말이 모두 들어 있는지 찾아 종목에 건다. Finnhub 종목 뉴스는 그 종목에 바로 걸고, 시장 뉴스는 영어 키워드로 건다.
@@ -206,23 +206,23 @@
 ## 5. 기술 스택 (확정)
 | 영역 | 선택 |
 |---|---|
-| 언어 | TypeScript |
-| 런타임·패키지 매니저 | Node.js 24 LTS, pnpm 12 (D-34) |
-| 웹(화면+API) | Next.js 16.4, App Router (D-35) |
-| UI | Tailwind CSS 4 + shadcn/ui (D-33) |
-| 백그라운드 작업 | 별도 워커 프로세스(같은 코드베이스, 별도 컨테이너). 스케줄은 라이브러리 없이 자체 루프 (D-31) |
-| DB | SQLite + Drizzle ORM 0.45 (better-sqlite3 13) (D-30) |
+| 언어 | Rust(edition 2024, 툴체인 1.99.1). 테스트 도우미·E2E는 TypeScript(Playwright) |
+| 런타임 | tokio 1.54.1(단일 스레드 런타임). E2E·스크립트는 Node.js 24 LTS, pnpm 12 (D-34) |
+| 웹(화면+API) | axum 0.8.9 + askama 0.16.1(템플릿) + htmx 2.0.11, App 구조는 `rust/ripple/src/web` (D-35) |
+| UI | Tailwind CSS 4 standalone CLI 4.3.3 + 저장소 안 테마 CSS (D-33) |
+| 백그라운드 작업 | 별도 worker 프로세스(같은 실행 파일, 명령 `worker`, 별도 컨테이너). 스케줄은 라이브러리 없이 자체 루프 (D-31) |
+| DB | SQLite, rusqlite 0.40.2(bundled) + rusqlite_migration 2.6.0 (D-30) |
 | DB 쓰기 | worker만 쓴다. web은 읽기 전용, 쓰기는 worker 내부 API로 요청 (D-36) |
-| 크롤링·RSS 파싱 | cheerio + fast-xml-parser (D-32, 설치는 4단계) |
-| 테스트 | Vitest(단위·통합) + Playwright(화면 캡처·E2E) |
-| 린트·포맷 | ESLint + Prettier |
-| 선별 AI | Jev (TypeSafe AI) — MVP는 TypeSafe 직접 호출, 추후 OpenRouter |
+| 크롤링·RSS 파싱 | reqwest 0.13.5 + 자체 RSS 파서(`collect/rss.rs`), 외부 파서 크레이트 없음 (D-32) |
+| 테스트 | cargo test(단위·통합, tempfile·wiremock) + Playwright(화면 캡처·E2E) |
+| 린트·포맷 | rustfmt·clippy(Rust), Prettier, ESLint(typescript-eslint, E2E·스크립트) |
+| 선별 AI | Jev (TypeSafe AI) — MVP는 TypeSafe 직접 HTTP 호출(SDK 없이), 추후 OpenRouter |
 | 생성형 LLM | OpenRouter 경유 (모델은 설정에서 선택) |
-| 배포 | Docker / docker compose (한 Dockerfile에서 타깃별 이미지, 일회성 migrate 서비스는 worker 이미지로 실행) |
+| 배포 | Docker / docker compose. 이미지 하나(`ripple`, 명령만 달리해 migrate·worker·web에 씀) |
 | 외부 접속 | Cloudflare Tunnel (MVP는 임시 URL) |
 
 > 구현 시작 전 미결정이던 D-30~D-36은 2026-10-19 결정됨 → DECISIONS.md.
-> 14단계(Rust 전환, 2026-10-31 결정)가 끝나면 이 표는 Rust 스택(tokio·axum·askama·htmx·rusqlite, [docs/RUST_MIGRATION.md](docs/RUST_MIGRATION.md) 2장)으로 바뀐다. 전환 중에는 이 표가 지금 돌고 있는 TS 스택이다.
+> 14단계(Rust 전환, 2026-10-31 결정)가 끝나 이 표가 Rust 스택이다(R13, 2026-11-05 구현). 크레이트 버전 근거는 [docs/RUST_MIGRATION.md](docs/RUST_MIGRATION.md) 2장. 본 Docker 배포는 사용자가 요청할 때 한다.
 
 ---
 
@@ -235,7 +235,7 @@
 │  [migrate]  일회성: 마이그레이션 적용 후 종료       │
 │        │ 완료 후 web·worker 기동                    │
 │        ▼                                           │
-│  [web]  Next.js                                    │
+│  [web]  axum (Rust)                                │
 │   - 로그인, 타임라인, 종목 관리, 설정 화면          │
 │   - 종목 등록 시 LLM 매칭 API                       │
 │   - DB는 읽기 전용                                  │
@@ -260,13 +260,13 @@
 
 - DB 쓰기는 worker만 한다. web은 SQLite를 읽기 전용으로 열고, 쓰기가 필요하면 worker 내부 API를 호출한다(D-36). worker 내부 API는 compose 내부 네트워크에만 열고 호스트에 공개하지 않는다.
 - WAL 모드로 읽기와 쓰기가 서로 막지 않게 한다. WAL은 같은 호스트의 프로세스끼리만 동작하므로 두 컨테이너는 같은 Docker named volume을 쓴다(호스트 폴더 바인드 마운트 금지).
-- 마이그레이션은 migrate 서비스(worker 이미지)가 Drizzle 마이그레이터로 적용한다. 배타 잠금을 걸지 않아 web·worker가 DB를 열고 있어도 적용된다(2026-10-19 실측). 참고로 처음 쓴 Prisma 7은 배타 잠금 때문에 이 경우 실패했다.
+- 마이그레이션은 migrate 서비스(같은 이미지, `ripple migrate`)가 적용한다. TS 시절 drizzle로 만든 DB도 그대로 이어받는다(14단계 R1). 배타 잠금을 걸지 않아 web·worker가 DB를 열고 있어도 적용된다(2026-10-19 실측). 참고로 처음 쓴 Prisma 7은 배타 잠금 때문에 이 경우 실패했다.
 - 종목을 등록하면 worker가 등록 직후 따로(비동기로) 키워드를 만든다. 화면은 상태(만드는 중·완료·실패)를 보여 주고, 생성이 실패해도 등록은 유지된다 → D-37 결정됨
 - 임시 URL은 재시작 때마다 바뀌므로, 상태 화면에 지금 주소를 보여 주고(cloudflared의 `/quicktunnel`), 로그로 확인하는 방법도 README에 안내한다(9단계 결정).
 
 ### 6.2 모듈 구조(권장 경계)
 코드는 아래 경계를 지켜 나눈다. 디렉터리 이름·배치는 구현 시 확정한다.
-(현재 배치: `src/app` = web 화면, `src/proxy.ts` = 로그인 1차 확인, `src/worker` = worker 진입점·내부 API, `src/server` = 공용 서버 코드(db, auth, ai/llm, ai/decider, budget, listings, stocks, keywords, collect, evaluate, schedule). 키워드 생성 프롬프트는 `src/server/keywords/tree.ts`, 피드 제목 보관은 `src/server/collect/feed-headlines.ts`, 수집기·수집 흐름은 `src/server/collect/`, Jev 질문 문구와 TypeSafe 구현은 `src/server/ai/decider/`, 평가 흐름은 `src/server/evaluate/`, 정기 작업(다음 시각 계산과 1분 루프)은 `src/server/schedule/`, 타임라인 읽기는 `src/server/timeline/`, 설정 화면 항목 검사·저장은 `src/server/settings-form.ts`, 이번 달 사용량 보고(기능별·항목별)는 `src/server/budget/report.ts`, OpenRouter 모델 확인은 `src/server/ai/llm/models.ts`에 둔다. 11단계: 시장·주제 항목과 토픽 저장은 `src/server/topics/store.ts`, 토픽 갱신 계획·프롬프트·실행은 `src/server/topics/plan.ts`·`refresh.ts`·`run.ts`, web 읽기는 `src/server/topics/read.ts`, 같은 소식(비슷한 제목) 기준은 `src/server/similar-title.ts`, 보관한 제목으로 지난 기사 걸기는 `src/server/collect/backfill.ts`, 토픽 카드 읽기는 `src/server/timeline/read.ts`에 둔다. 나머지 모듈도 해당 단계에서 `src/server/` 아래에 둔다.)
+(현재 배치: `rust/ripple/src/web` = web 화면, `rust/ripple/src/worker` = worker 진입점·내부 API, `rust/ripple/src/server` = 공용 서버 코드(db, auth, ai/llm, ai/decider, budget, listings, stocks, keywords, collect, evaluate, schedule). 키워드 생성 프롬프트는 `src/server/keywords/tree.ts`, 피드 제목 보관은 `src/server/collect/feed-headlines.ts`, 수집기·수집 흐름은 `src/server/collect/`, Jev 질문 문구와 TypeSafe 구현은 `src/server/ai/decider/`, 평가 흐름은 `src/server/evaluate/`, 정기 작업(다음 시각 계산과 1분 루프)은 `src/server/schedule/`, 타임라인 읽기는 `src/server/timeline/`, 설정 화면 항목 검사·저장은 `src/server/settings-form.ts`, 이번 달 사용량 보고(기능별·항목별)는 `src/server/budget/report.ts`, OpenRouter 모델 확인은 `src/server/ai/llm/models.ts`에 둔다. 11단계: 시장·주제 항목과 토픽 저장은 `src/server/topics/store.ts`, 토픽 갱신 계획·프롬프트·실행은 `src/server/topics/plan.ts`·`refresh.ts`·`run.ts`, web 읽기는 `src/server/topics/read.ts`, 같은 소식(비슷한 제목) 기준은 `src/server/similar-title.ts`, 보관한 제목으로 지난 기사 걸기는 `src/server/collect/backfill.ts`, 토픽 카드 읽기는 `src/server/timeline/read.ts`에 둔다. 나머지 모듈도 해당 단계에서 `src/server/` 아래에 둔다.)
 - **ai/decider**: Jev 호출 인터페이스(`Decider`). TypeSafe 구현(`createTypeSafeDecider`, MVP), 추후 OpenRouter 경유 구현 추가.
 - **ai/llm**: 생성형 LLM 인터페이스. OpenRouter 구현. 종목 매칭·키워드 생성 프롬프트 포함.
 - **collectors**: 소스별 수집기. 공통 인터페이스(소스 → 기사 목록)를 구현. 한 소스가 실패해도 나머지는 계속한다.
@@ -280,7 +280,7 @@
 ### 6.3 Jev 연동 참고
 - Jev는 TypeSafe AI의 의사결정 모델로, 질문 유형은 boolean(0~1 확률), choice(지정 선택지 중 하나), score(정의한 척도의 점수) 세 가지다. 텍스트 입력만 받는다.
 - 이 프로젝트에서는 **score(관련도·영향도 0~10)** 와 **choice(호재/악재/중립)** 를 사용한다. 기사는 셋을 한 요청에, 키워드 후보와 토픽–종목 쌍은 관련도·영향도를 한 요청에 묻는다(11단계).
-- TypeScript 공식 SDK: `@typesafe-ai/sdk`. 모델 ID 예: `jev-latest`(최신 안정), `jev-1.13.0`(고정 버전).
+- TypeSafe 공식 TypeScript SDK(`@typesafe-ai/sdk`)는 쓰지 않는다. Rust는 HTTP로 직접 부른다(`rust/ripple/src/server/ai/decider/typesafe.rs`, 14단계 R2). 모델 ID 예: `jev-latest`(최신 안정), `jev-1.13.0`(고정 버전).
 - OpenRouter 경유 시 모델 ID 예: `~typesafe/jev-latest`.
 - **SDK 사용법은 반드시 공식 문서로 확인하고, 추측해서 코드를 작성하지 않는다.**
 - 참고 링크:

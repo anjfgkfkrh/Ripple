@@ -255,31 +255,6 @@ fn prompts_equal_ts_prompts_character_by_character() {
     }
 }
 
-#[test]
-fn prompt_fixture_equals_what_ts_dump_script_makes_now() {
-    // 파일이 TS와 어긋나지 않는지 TS를 다시 돌려 확인한다.
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()
-        .unwrap();
-    let dir = tempfile::TempDir::new().unwrap();
-    let output = std::process::Command::new("pnpm")
-        .args(["exec", "tsx", "rust/tools/dump-prompts.ts"])
-        .arg(dir.path())
-        .current_dir(root)
-        .output()
-        .expect("pnpm을 실행할 수 없습니다");
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(
-        std::fs::read_to_string(dir.path().join("keywords.json")).unwrap(),
-        PROMPT_FIXTURE
-    );
-}
-
 // describe("buildKeywordTree")
 #[test]
 fn depth_two_gives_five_per_level_with_paths_from_the_stock_name() {

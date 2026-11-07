@@ -5,7 +5,9 @@ import { createServer } from "node:http";
 
 const port = Number(process.env.MOCK_PORT ?? 4200);
 const fixture = (name) =>
-  readFileSync(new URL(`../tests/fixtures/${name}`, import.meta.url));
+  readFileSync(
+    new URL(`../rust/ripple/tests/fixtures/${name}`, import.meta.url),
+  );
 
 const SAMSUNG = {
   market: "KR",

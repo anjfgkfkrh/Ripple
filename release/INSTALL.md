@@ -79,7 +79,7 @@ docker compose up -d
 
 ```bash
 docker compose down
-docker run --rm -v ripple_ripple-data:/data -v "$PWD/backups":/backups:ro ripple-worker:__VERSION__ \
+docker run --rm -v ripple_ripple-data:/data -v "$PWD/backups":/backups:ro ripple-app:__VERSION__ \
   sh -c 'cp /backups/되돌릴파일.db /data/ripple.db && rm -f /data/ripple.db-wal /data/ripple.db-shm'
 docker compose up -d
 ```

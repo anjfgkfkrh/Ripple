@@ -19,17 +19,15 @@ Rust(14단계, `rust/`가 있을 때. 명령은 `rust/` 폴더에서):
 - R3. `cargo test`
 - R4. `./build.sh --release`(CSS + 빌드). "빠르게"면 건너뜀
 
-TS(R13에서 TS를 지우기 전까지):
+저장소 루트(TS는 E2E와 스크립트만 남았다, 14단계 R13):
 
 1. `pnpm format:check`
-2. `pnpm lint`
+2. `pnpm lint` — ESLint(typescript-eslint).
 3. `pnpm typecheck`
-4. `pnpm test`
-5. `pnpm build`
-6. `pnpm build:worker`
-7. `pnpm test:e2e` — 몇 분 걸리므로 명령 시간 제한을 10분으로 준다. 가짜 외부 서비스(4200)와 시험용 worker(4100)·web(3100)을 띄우고 유료 API는 부르지 않는다.
+4. `pnpm test` — 커밋 전 비밀 값 검사 스크립트의 테스트
+5. `pnpm test:e2e` — 몇 분 걸리므로 명령 시간 제한을 10분으로 준다. R4의 release 실행 파일을 쓴다. 가짜 외부 서비스(4200)와 시험용 worker(4100)·web(3100)을 띄우고 유료 API는 부르지 않는다.
 
-앞 검사가 실패해도 나머지는 돈다. 단, 5가 실패하면 7은 건너뛰고 그렇게 적는다.
+앞 검사가 실패해도 나머지는 돈다. 단, R4가 실패하면 5는 건너뛰고 그렇게 적는다.
 
 보고(한국어, 이 형식만):
 

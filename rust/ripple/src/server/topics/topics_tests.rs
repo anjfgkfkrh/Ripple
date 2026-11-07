@@ -592,30 +592,6 @@ fn prompts_equal_ts_prompts_character_by_character() {
 }
 
 #[test]
-fn prompt_fixture_equals_what_ts_dump_script_makes_now() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()
-        .unwrap();
-    let dir = tempfile::TempDir::new().unwrap();
-    let output = std::process::Command::new("pnpm")
-        .args(["exec", "tsx", "rust/tools/dump-prompts.ts"])
-        .arg(dir.path())
-        .current_dir(root)
-        .output()
-        .expect("pnpm을 실행할 수 없습니다");
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(
-        std::fs::read_to_string(dir.path().join("topics.json")).unwrap(),
-        PROMPT_FIXTURE
-    );
-}
-
-#[test]
 fn topics_without_id_are_continued_by_same_name_or_shared_term_once_each() {
     // it("id 없이 온 토픽은 이름이 같거나 검색어가 겹치는 이전 토픽으로 잇는다(한 번씩만)")
     let prev = |id: i64, name: &str, terms: &[&str]| Topic {
