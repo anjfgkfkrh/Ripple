@@ -9,9 +9,10 @@ RUN ./build.sh --release
 
 # ── 실행 ────────────────────────────────────────────
 FROM debian:trixie-slim AS ripple
+# libssl3t64: 수집용 HTTP 클라이언트가 OpenSSL(native-tls)을 쓴다(rustls가 받지 못하는 TLS 1.2 CBC 전용 서버 대비).
 # 운영 확인용: sqlite3는 본 DB를 읽기 전용으로 조회하고 백업하며, curl은 worker 내부 API를 부른다(화면에 쓰는 것은 앱뿐).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl sqlite3 \
+    && apt-get install -y --no-install-recommends ca-certificates libssl3t64 curl sqlite3 \
     && rm -rf /var/lib/apt/lists/* \
     # 기존 볼륨(/data)과 같은 uid·gid로 DB 파일을 만든다(web이 -shm·-wal을 읽어야 한다). 이름은 예전 node 이미지와 같다.
     && groupadd --gid 1000 node \

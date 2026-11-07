@@ -13,7 +13,10 @@ pub fn run(url: &str) -> i32 {
         return 1;
     };
     runtime.block_on(async {
-        let client = match reqwest::Client::builder().timeout(TIMEOUT).build() {
+        let client = match crate::server::http_client::client_builder()
+            .timeout(TIMEOUT)
+            .build()
+        {
             Ok(client) => client,
             Err(_) => return 1,
         };

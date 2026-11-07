@@ -14,7 +14,7 @@ fn source(label: &str, error: Option<&str>) -> RunSource {
 // it("실패한 소스를 같은 이유끼리 묶어 많은 것부터, 성공한 소스는 뺀다")
 #[test]
 fn groups_failures_by_reason_most_first() {
-    let robots = "robots.txt가 막고 있거나 확인하지 못해 건너뛰었습니다.";
+    let robots = "robots.txt가 막고 있어 건너뛰었습니다.";
     let groups = group_failures(&[
         source("가경제 경제", Some(robots)),
         source("나일보 전체", None),

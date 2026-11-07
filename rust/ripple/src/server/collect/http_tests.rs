@@ -182,6 +182,20 @@ async fn too_large_failed_and_slow_are_http_errors() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn network_error_names_the_underlying_cause() {
+    // reqwest의 겉 문구("error sending request ...")만으로는 원인(연결 거부·TLS 실패 등)을 알 수 없다.
+    let down = client(0)
+        .get("http://127.0.0.1:1/x", &[])
+        .await
+        .unwrap_err();
+    assert!(
+        down.message.to_lowercase().contains("connection refused"),
+        "{}",
+        down.message
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn invalid_url_is_a_network_error_not_a_panic() {
     // Rust에서만 생기는 경우: 주소를 읽지 못해도 오류로 돌려준다(JS는 `new URL`이 예외를 던진다).
     let error = client(0).get("not a url", &[]).await.unwrap_err();

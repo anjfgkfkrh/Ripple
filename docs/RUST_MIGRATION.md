@@ -37,7 +37,7 @@ TS(Next.js + Node worker)로 된 Ripple을 기능 변경 없이 Rust로 옮기�
 | HTTP 서버 | axum | 0.8.9 | 기본 features(`json`, `form`, `query` 포함) |
 | 쿠키 | axum-extra | 0.12.6 | `cookie` |
 | HTTP 미들웨어 | tower-http | 0.7.1 | `trace`, `timeout`(필요한 것만) |
-| HTTP 클라이언트 | reqwest | 0.13.5 | 기본(rustls, `charset`, `http2`) + `json`, `stream`. 리다이렉트 따라감(기본) |
+| HTTP 클라이언트 | reqwest | 0.13.5 | 기본(rustls, `charset`, `http2`) + `json`, `stream`, `native-tls`. 리다이렉트 따라감(기본). 수집용만 native-tls(OpenSSL), 나머지는 rustls를 직접 고른다(`server/http_client.rs`, 2026-11-07 노컷뉴스 TLS 회귀, DECISIONS.md 1장 "수집 TLS 회귀"). native-tls가 끌어온 openssl 0.10.81·openssl-sys 0.9.117은 2주 규칙에 맞춰 `Cargo.lock`에서 고정 |
 | SQLite | rusqlite | 0.40.2 | `bundled`, `backup`. 0.41은 마이그레이션 도구가 아직 지원하지 않아 쓰지 않는다 |
 | 마이그레이션 | rusqlite_migration | 2.6.0 | 2026-10-31 결정(3.4) |
 | 템플릿 | askama | 0.16.1 | 렌더링 결과 `String`을 `axum::response::Html`로 감싼다(askama_web은 쓰지 않음) |

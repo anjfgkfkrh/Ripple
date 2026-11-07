@@ -4,6 +4,7 @@ use std::sync::Arc;
 use crate::server::auth::config::AuthConfig;
 use crate::server::auth::rate_limit::LoginRateLimiter;
 use crate::server::db::web::WebDb;
+use crate::server::http_client::new_client;
 use crate::server::time::{EpochMs, now_ms};
 use crate::server::worker_client::WorkerApi;
 use crate::web::assets::Assets;
@@ -35,7 +36,7 @@ impl WebState {
             auth: config.auth.clone(),
             limiter: LoginRateLimiter::default(),
             db: WebDb::new(database_path),
-            http: reqwest::Client::new(),
+            http: new_client(),
             worker_url: config.worker_url.clone(),
             worker_token: config.worker_token.clone(),
             tunnel_metrics_url: config.tunnel_metrics_url.clone(),

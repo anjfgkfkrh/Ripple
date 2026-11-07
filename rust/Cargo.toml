@@ -8,7 +8,7 @@ tokio = { version = "=1.54.1", features = ["rt", "macros", "time", "sync", "sign
 axum = "=0.8.9"
 axum-extra = { version = "=0.12.6", features = ["cookie"] }
 tower-http = { version = "=0.7.1", features = ["trace", "timeout"] }
-reqwest = { version = "=0.13.5", features = ["charset", "http2", "json", "stream"] }
+reqwest = { version = "=0.13.5", features = ["charset", "http2", "json", "stream", "native-tls"] }
 rusqlite = { version = "=0.40.2", features = ["bundled", "backup"] }
 rusqlite_migration = "=2.6.0"
 askama = "=0.16.1"

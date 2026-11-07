@@ -117,14 +117,23 @@ fn pattern_matches(pattern: &str, path: &str) -> bool {
     Regex::new(&source).is_ok_and(|re| re.is_match(path))
 }
 
+/// 이 주소를 가져가도 되는지에 대한 답
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RobotsVerdict {
+    Allowed,
+    Disallowed,
+    /// robots.txt를 확인하지 못했다(이번에는 가져가지 않는다). 값은 원인.
+    Unknown(String),
+}
+
 /// 이 주소를 가져가도 되는지 묻는 쪽(`RobotsChecker`, 테스트의 가짜)
 pub trait RobotsCheck: Send + Sync {
-    fn allowed(&self, url: &str) -> impl std::future::Future<Output = bool> + Send;
+    fn check(&self, url: &str) -> impl std::future::Future<Output = RobotsVerdict> + Send;
 }
 
 impl<H: HttpClient> RobotsCheck for RobotsChecker<H> {
-    fn allowed(&self, url: &str) -> impl std::future::Future<Output = bool> + Send {
-        RobotsChecker::allowed(self, url)
+    fn check(&self, url: &str) -> impl std::future::Future<Output = RobotsVerdict> + Send {
+        RobotsChecker::check(self, url)
     }
 }
 
@@ -155,25 +164,26 @@ impl<H: HttpClient> RobotsChecker<H> {
         }
     }
 
-    /// 확인하지 못했으면 None
-    async fn rules_for(&self, origin: &str) -> Option<Vec<Rule>> {
+    /// 확인하지 못했으면 그 원인
+    async fn rules_for(&self, origin: &str) -> Result<Vec<Rule>, String> {
         {
             let cache = self.cache.lock().expect("robots 캐시 잠금이 깨졌습니다");
             if let Some(hit) = cache.get(origin)
                 && (self.now)() - hit.at < self.ttl_ms
             {
-                return Some(hit.rules.clone());
+                return Ok(hit.rules.clone());
             }
         }
         let rules = match self.http.get(&format!("{origin}/robots.txt"), &[]).await {
             Ok(response) if (200..300).contains(&response.status) => {
-                Some(parse_robots(&response.text, ROBOTS_AGENT))
+                Ok(parse_robots(&response.text, ROBOTS_AGENT))
             }
-            Ok(response) if (400..500).contains(&response.status) => Some(Vec::new()),
-            _ => None,
+            Ok(response) if (400..500).contains(&response.status) => Ok(Vec::new()),
+            Ok(response) => Err(format!("HTTP {}", response.status)),
+            Err(error) => Err(error.message),
         };
         // 확인하지 못한 경우는 기억하지 않고 다음 회차에 다시 본다.
-        if let Some(rules) = &rules {
+        if let Ok(rules) = &rules {
             self.cache
                 .lock()
                 .expect("robots 캐시 잠금이 깨졌습니다")
@@ -189,19 +199,27 @@ impl<H: HttpClient> RobotsChecker<H> {
     }
 
     /// 이 주소를 가져가도 되는지. robots.txt를 확인하지 못하면 이번에는 가져가지 않는다.
-    pub async fn allowed(&self, url: &str) -> bool {
-        let Ok(parsed) = url::Url::parse(url) else {
-            return false;
+    pub async fn check(&self, url: &str) -> RobotsVerdict {
+        let parsed = match url::Url::parse(url) {
+            Ok(parsed) => parsed,
+            Err(error) => {
+                return RobotsVerdict::Unknown(format!("주소를 읽지 못했습니다: {error}"));
+            }
         };
         let origin = parsed.origin().ascii_serialization();
-        let Some(rules) = self.rules_for(&origin).await else {
-            return false;
+        let rules = match self.rules_for(&origin).await {
+            Ok(rules) => rules,
+            Err(cause) => return RobotsVerdict::Unknown(cause),
         };
         let search = parsed
             .query()
             .filter(|q| !q.is_empty())
             .map_or(String::new(), |q| format!("?{q}"));
-        is_allowed(&rules, &format!("{}{search}", parsed.path()))
+        if is_allowed(&rules, &format!("{}{search}", parsed.path())) {
+            RobotsVerdict::Allowed
+        } else {
+            RobotsVerdict::Disallowed
+        }
     }
 }
 

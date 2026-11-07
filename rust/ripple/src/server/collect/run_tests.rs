@@ -183,16 +183,27 @@ impl HttpClient for FakeHttp {
     }
 }
 
-/// 모두 허용하거나, 주소가 `blocked_prefix`로 시작하는 것만 막는 가짜
+/// 모두 허용하거나, 주소가 `blocked_prefix`로 시작하면 막고 `unknown_prefix`로 시작하면 확인하지 못하는 가짜
 struct FakeRobots {
     blocked_prefix: Option<&'static str>,
+    unknown_prefix: Option<&'static str>,
 }
 
 impl RobotsCheck for FakeRobots {
-    async fn allowed(&self, url: &str) -> bool {
-        !self
+    async fn check(&self, url: &str) -> RobotsVerdict {
+        if self
             .blocked_prefix
             .is_some_and(|prefix| url.starts_with(prefix))
+        {
+            RobotsVerdict::Disallowed
+        } else if self
+            .unknown_prefix
+            .is_some_and(|prefix| url.starts_with(prefix))
+        {
+            RobotsVerdict::Unknown("연결하지 못했습니다: handshake failure".into())
+        } else {
+            RobotsVerdict::Allowed
+        }
     }
 }
 
@@ -267,6 +278,7 @@ type TestDeps = CollectDeps<FakeHttp, FakeRobots, FakeNews, FakeDecider>;
 struct Setup {
     feeds: Vec<RssFeed>,
     robots_blocked: Option<&'static str>,
+    robots_unknown: Option<&'static str>,
     finnhub: Option<FakeNews>,
     decider: Option<FakeDecider>,
     now: EpochMs,
@@ -277,6 +289,7 @@ impl Default for Setup {
         Self {
             feeds: feeds(),
             robots_blocked: None,
+            robots_unknown: None,
             finnhub: None,
             decider: None,
             now: now(),
@@ -297,6 +310,7 @@ fn build(shared: &SharedTestDb, routes: Vec<(&str, Route)>, setup: Setup) -> Arc
         }),
         robots: FakeRobots {
             blocked_prefix: setup.robots_blocked,
+            unknown_prefix: setup.robots_unknown,
         },
         feeds: setup.feeds,
         finnhub: setup.finnhub,
@@ -608,6 +622,30 @@ async fn robots_block_means_no_download_and_the_reason_is_recorded() {
             .as_deref()
             .unwrap()
             .contains("robots.txt")
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn robots_unknown_is_told_apart_from_blocked_and_keeps_the_cause() {
+    // robots.txt를 확인하지 못한 것(연결 실패 등)은 막힌 것과 다른 문구로, 실제 원인을 함께 남긴다.
+    let shared = seeded();
+    add_stocks(&shared);
+    let deps = build(
+        &shared,
+        vec![("https://b.example/all.xml", ok(rss(&[])))],
+        Setup {
+            robots_unknown: Some("https://a.example"),
+            ..Setup::default()
+        },
+    );
+    run(&deps).await;
+    assert_eq!(
+        *deps.http.calls.lock().unwrap(),
+        ["https://b.example/all.xml"]
+    );
+    assert_eq!(
+        run_records(&shared)[0].sources[0].error.as_deref(),
+        Some("robots.txt를 확인하지 못해 건너뛰었습니다: 연결하지 못했습니다: handshake failure")
     );
 }
 
@@ -1498,6 +1536,7 @@ async fn runner_returns_none_while_running_and_can_start_again_after() {
             }),
             robots: FakeRobots {
                 blocked_prefix: None,
+                unknown_prefix: None,
             },
             feeds: feeds(),
             finnhub: None,

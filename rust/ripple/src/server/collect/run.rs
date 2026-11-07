@@ -17,7 +17,7 @@ use crate::server::collect::r#match::{
     MatchKeyword, MatchStock, Matcher, StockMatch, create_matcher,
 };
 use crate::server::collect::published::effective_published_at;
-use crate::server::collect::robots::RobotsCheck;
+use crate::server::collect::robots::{RobotsCheck, RobotsVerdict};
 use crate::server::collect::rss::parse_feed;
 use crate::server::collect::url::url_key;
 use crate::server::db::client::Db;
@@ -396,8 +396,16 @@ where
     let deps = ctx.deps;
     match &source.kind {
         SourceKind::Feed(feed) => {
-            if !deps.robots.allowed(&feed.url).await {
-                return Err("robots.txt가 막고 있거나 확인하지 못해 건너뛰었습니다.".to_string());
+            match deps.robots.check(&feed.url).await {
+                RobotsVerdict::Allowed => {}
+                RobotsVerdict::Disallowed => {
+                    return Err("robots.txt가 막고 있어 건너뛰었습니다.".to_string());
+                }
+                RobotsVerdict::Unknown(cause) => {
+                    return Err(format!(
+                        "robots.txt를 확인하지 못해 건너뛰었습니다: {cause}"
+                    ));
+                }
             }
             let response = deps.http.get(&feed.url, &[]).await.map_err(describe)?;
             if response.status != 200 {

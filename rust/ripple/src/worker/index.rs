@@ -15,6 +15,7 @@ use crate::server::collect::run::{CollectDeps, close_stale_runs};
 use crate::server::collect::runner::CollectionRunner;
 use crate::server::db::client::{Db, DbAccess, enable_wal, into_db, open_db};
 use crate::server::env::Env;
+use crate::server::http_client::{collector_client, new_client};
 use crate::server::keywords::generate::stocks_awaiting_keywords;
 use crate::server::keywords::queue::KeywordQueue;
 use crate::server::listings::sync::{
@@ -71,7 +72,7 @@ async fn start(env: &Env) -> Result<(), Box<dyn std::error::Error>> {
     if config.open_router_api_key.is_none() {
         log("OPENROUTER_API_KEY가 없어 AI 기능(종목 찾기 등)은 쓸 수 없습니다.");
     }
-    let client = reqwest::Client::new();
+    let client = new_client();
     let llm = Arc::new(OpenRouterClient::new(
         config.open_router_api_key.clone(),
         Some(config.open_router_base_url.clone()),
@@ -109,7 +110,7 @@ async fn start(env: &Env) -> Result<(), Box<dyn std::error::Error>> {
         log("TYPESAFE_API_KEY가 없어 기사 평가(Jev)는 하지 않습니다.");
     }
     let http: Http = Arc::new(ReqwestHttpClient::new(
-        client.clone(),
+        collector_client(),
         HttpClientOptions::default(),
     ));
     let finnhub: Option<Finnhub> = config.finnhub_api_key.clone().map(|key| {

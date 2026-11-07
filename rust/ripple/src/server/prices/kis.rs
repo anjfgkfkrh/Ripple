@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use serde_json::{Map, Value};
 
+use crate::server::http_client::new_client;
 use crate::server::text::{js_parse_number, js_trim};
 use crate::server::time::{EpochMs, now_ms};
 
@@ -100,7 +101,7 @@ impl ReqwestKisClient {
             .base_url
             .unwrap_or_else(|| kis_base_url(options.env).to_string());
         Self {
-            http: options.http.unwrap_or_default(),
+            http: options.http.unwrap_or_else(new_client),
             app_key: options.app_key,
             app_secret: options.app_secret,
             base: base.trim_end_matches('/').to_string(),

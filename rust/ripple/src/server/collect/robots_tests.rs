@@ -5,6 +5,12 @@ use std::sync::{Arc, Mutex};
 use super::*;
 use crate::server::collect::http::{HttpError, HttpErrorKind, HttpResponse};
 
+impl<H: HttpClient> RobotsChecker<H> {
+    async fn allowed(&self, url: &str) -> bool {
+        self.check(url).await == RobotsVerdict::Allowed
+    }
+}
+
 fn rules(text: &str) -> Vec<Rule> {
     parse_robots(text, ROBOTS_AGENT)
 }
@@ -181,7 +187,15 @@ async fn missing_robots_allows_but_server_error_or_failure_blocks_without_rememb
     assert!(robots.allowed("https://none.example/feed").await);
     assert!(!robots.allowed("https://down.example/feed").await);
     assert!(!robots.allowed("https://err.example/feed").await);
-    robots.allowed("https://down.example/feed").await;
+    // 확인하지 못한 것은 막힌 것과 나누고 원인을 함께 돌려준다.
+    assert_eq!(
+        robots.check("https://down.example/feed").await,
+        RobotsVerdict::Unknown("HTTP 503".into())
+    );
+    assert_eq!(
+        robots.check("https://err.example/feed").await,
+        RobotsVerdict::Unknown("network".into())
+    );
     let calls = robots.http.calls.lock().unwrap();
     assert_eq!(
         calls.iter().filter(|c| c.contains("down.example")).count(),

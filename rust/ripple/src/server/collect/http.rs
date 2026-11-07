@@ -190,10 +190,25 @@ fn to_http_error(error: &reqwest::Error) -> HttpError {
         HttpError::new("응답이 늦어 중단했습니다.", HttpErrorKind::Timeout)
     } else {
         HttpError::new(
-            format!("연결하지 못했습니다: {error}"),
+            format!("연결하지 못했습니다: {}", with_causes(error)),
             HttpErrorKind::Network,
         )
     }
+}
+
+/// 겉 문구("error sending request ...")에 안쪽 원인(연결 거부·TLS 실패 등)을 이어 붙인다. 이미 담긴 문구는 거듭 쓰지 않는다.
+fn with_causes(error: &dyn std::error::Error) -> String {
+    let mut text = error.to_string();
+    let mut source = error.source();
+    while let Some(cause) = source {
+        let line = cause.to_string();
+        if !text.contains(&line) {
+            text.push_str(": ");
+            text.push_str(&line);
+        }
+        source = cause.source();
+    }
+    text
 }
 
 static CHARSET: LazyLock<Regex> = LazyLock::new(|| {

@@ -14,11 +14,13 @@
 
 ## 1. 지금 상태
 
-마지막 갱신: 2026-11-05 (한국 시간), 14단계(Rust 전환) R0~R13 구현 끝(커밋 전), 실제 AI 확인 끝, 허용 목록·배포 대기
+마지막 갱신: 2026-11-07 14:48 (한국 시간), 노컷뉴스 TLS 회귀 수정 끝(커밋·본 Docker 배포 14:36·회차 765 확인)
 
-- **14단계 Rust 전환(R0~R13 구현 끝, 커밋 전)**: 설계 문서 [RUST_MIGRATION.md](RUST_MIGRATION.md)(하위 단계 R0~R13, 1장 규칙·2장 크레이트·6장 단계표). 결정은 DECISIONS.md 1장 "14단계" 줄 3개. 설계는 Opus, 구현은 Sonnet이 한다(사용자 운영 방식). **전환이 끝날 때까지 기능 변경을 멈춘다**(결정 ⑦): 아래 답 대기 두 건과 13단계 남은 확인도 보류.
+- **수집 TLS 회귀 수정(끝, 2026-11-07 14:36 본 Docker 배포)**: 노컷뉴스 서버는 TLS 1.2 CBC만 받는데 rustls가 CBC를 지원하지 않아 회차 764가 partial이었다. 수집용 클라이언트만 native-tls(OpenSSL)로 바꾸고 robots 확인 실패 때 원인을 기록한다. 배포 뒤 첫 정기 회차 765는 success(소스 73개 실패 0, Finnhub 포함). 기록은 DECISIONS.md 1장 "수집 TLS 회귀"·"구현 세부", 2장, 3장 맨 위.
+
+- **14단계 Rust 전환(끝: R13 커밋 `bc97679`, 2026-11-07 본 Docker 배포)**: 설계 문서 [RUST_MIGRATION.md](RUST_MIGRATION.md)(하위 단계 R0~R13, 1장 규칙·2장 크레이트·6장 단계표). 결정은 DECISIONS.md 1장 "14단계" 줄 3개. 설계는 Opus, 구현은 Sonnet이 한다(사용자 운영 방식). **전환이 끝날 때까지 기능 변경을 멈춘다**(결정 ⑦): 아래 답 대기 두 건과 13단계 남은 확인도 보류.
   - **14단계 R12(종목·설정 화면) 커밋됨**(2026-11-05, R11 커밋 `3dece10` 이후, 해시는 `git log`): `/check` 전체 통과(Rust 598개, TS 446개, E2E 39개·건너뜀 5 모바일). 결정은 DECISIONS.md 1장 "14단계 R12 결정"·"R12 구현 세부", 기록은 3장. 같은 DB 사본으로 Next와 Rust를 데스크톱·휴대폰 캡처 비교: 높이·요소별 클래스 같음, 로그인 폼도 같음(R10에서 남았던 것). 임시 `e2e/status-r10.spec.ts`는 이 커밋에서 지움.
-  - **14단계 R13(정리·교체) 구현 끝, 커밋 전**(2026-11-05): TS 제거(`src/`·`tests/`·`drizzle/`·Next 설정·TS 시험 설정, `rust/tools`의 TS 도구), 이미지 하나 `ripple`(migrate·worker·web은 명령만 다름), compose·`release.sh`·README·SPEC 5·6장·CLAUDE.md·skill 수정. 결정은 DECISIONS.md 1장 "14단계 R13 결정"·"R13 구현 세부", 기록은 3장. `/check`(R1~R4, format·lint·typecheck, Vitest 7개, E2E 39개·건너뜀 5 모바일) 통과, Rust 테스트 592개. 무료 실제 확인 끝(시험 Docker `ripple-check`, AI 키 비움, 터널 없음): 최신 백업 사본(`ripple-20261105-040021.db`)에서 drizzle 이력 DB가 업그레이드됨(`user_version` 11, 이력 11줄 유지, 기사 수 유지), web 307→로그인·worker 상태 정상, 화면 캡처 3장(타임라인·상태·종목) 직접 봄, E2E `E2E_BASE_URL`로 16개 통과·28개 건너뜀(목 서비스 필요). 시험 Docker는 AI 확인 뒤 내렸다(볼륨·백업 사본 삭제). **남은 것**: ① `.claude/settings.json` 허용 목록(`pnpm build` 두 줄 제거, `cargo *`·`cd rust && *` 추가)도 자동 승인이 두 번 거부돼 사용자가 고친다 ② 본 Docker 배포는 요청할 때만(`/deploy`). 배포 뒤 SPEC 10장 14단계 완료 기준("본 Docker가 Rust 이미지 하나로 돈다")을 확인한다. 그 전까지 14단계는 끝이 아니다.
+  - **14단계 R13(정리·교체) 커밋 `bc97679`, 본 Docker 배포 2026-11-07**(구현 2026-11-05): TS 제거(`src/`·`tests/`·`drizzle/`·Next 설정·TS 시험 설정, `rust/tools`의 TS 도구), 이미지 하나 `ripple`(migrate·worker·web은 명령만 다름), compose·`release.sh`·README·SPEC 5·6장·CLAUDE.md·skill 수정. 결정은 DECISIONS.md 1장 "14단계 R13 결정"·"R13 구현 세부", 기록은 3장. `/check`(R1~R4, format·lint·typecheck, Vitest 7개, E2E 39개·건너뜀 5 모바일) 통과, Rust 테스트 592개. 무료 실제 확인 끝(시험 Docker `ripple-check`, AI 키 비움, 터널 없음): 최신 백업 사본(`ripple-20261105-040021.db`)에서 drizzle 이력 DB가 업그레이드됨(`user_version` 11, 이력 11줄 유지, 기사 수 유지), web 307→로그인·worker 상태 정상, 화면 캡처 3장(타임라인·상태·종목) 직접 봄, E2E `E2E_BASE_URL`로 16개 통과·28개 건너뜀(목 서비스 필요). 시험 Docker는 AI 확인 뒤 내렸다(볼륨·백업 사본 삭제). **남은 것**: ① `.claude/settings.json` 허용 목록(`pnpm build` 두 줄 제거, `cargo *`·`cd rust && *` 추가)도 자동 승인이 두 번 거부돼 사용자가 고친다 ② 본 Docker 배포 끝(2026-11-07). SPEC 10장 14단계 완료 기준("본 Docker가 Rust 이미지 하나로 돈다")도 같은 날 확인함. 허용 목록(`cargo` 허용, `pnpm build` 제거)은 커밋에 들어감. 남은 것: ① Rust 첫 정기 수집(회차 764)은 partial이었고 TLS 수정 배포 뒤 회차 765부터 success(위 "수집 TLS 회귀 수정") ② KIS 주가 띠(Rust)는 실제 키로 아직 안 돌았다(토요일이라 장이 닫힘, 월요일 09:00 첫 갱신 뒤 확인) ③ 휴대폰·PC 화면 확인(사용자 몫).
   - rustup 1.29.2와 Rust 1.99.1(rustfmt·clippy 포함)은 2026-10-31 사용자가 설치함(기본 툴체인 1.99.1).
 
 - **토픽 유지 개선(끝, 커밋 `46e3f58`, 2026-10-30 14:14 배포)**: 첫 정기 토픽 갱신 확인 끝. 15:57:32 시작, Haiku 1회 $0.0078(15:57:44) 성공, 실패 기록 없음, 진행 중 토픽 15개(끝남 136). 로그 줄은 16:00 배포로 컨테이너가 바뀌어 남지 않아 DB(`settings`·`usage_logs`·`topics`)로 확인.
@@ -51,7 +53,7 @@
 | - | 개발 환경 정리(문서 나누기, `.claude/`, 비밀 값 검사) | 완료(2026-10-30 커밋) | `4c4f259` |
 | - | 토픽 유지 개선(24시간 기사 수로 유지, 끝난 토픽 되살림, 최대 토큰 10,000) | 완료(2026-10-30 배포) | `46e3f58` |
 | 13 | 보유 종목 주가 띠(한국 KIS, 미국 Finnhub, 장중 1분, 이력) | 완료(2026-10-30 배포) | `ddde1a5` |
-| 14 | Rust 전환(기능 변경 없음, R0~R13, `docs/RUST_MIGRATION.md`) | R0~R13 구현 끝(커밋 전), 배포 대기 | 설계 `92e956d`, R0 `ef6257d`, R1 `f142410`, R2 `5e03ee5`, R3 `56df2a3`, R4 `88c5c93`, R5 `b35bcca`, R6 `f371b85`, R7 `0055b76`, R8 `1c4f3ce`, R9 `207e4eb`, R10 `b54805b`, R11 `3dece10`, R12 `31d962f`, R13 (커밋 전) |
+| 14 | Rust 전환(기능 변경 없음, R0~R13, `docs/RUST_MIGRATION.md`) | 완료(2026-11-07 배포) | 설계 `92e956d`, R0 `ef6257d`, R1 `f142410`, R2 `5e03ee5`, R3 `56df2a3`, R4 `88c5c93`, R5 `b35bcca`, R6 `f371b85`, R7 `0055b76`, R8 `1c4f3ce`, R9 `207e4eb`, R10 `b54805b`, R11 `3dece10`, R12 `31d962f`, R13 `bc97679` |
 
 릴리스: **v0.1.0 (MVP)**, 태그 `v0.1.0`. **v0.2.0**(2026-10-23, 10·11단계: 시사·시장 토픽·Jev 점수 기반·같은 소식 묶기·항목별 비용), 태그 `v0.2.0`, GitHub 릴리스 페이지에 `gh release create`로 올림(이제 `gh`가 있음, 커밋 `4626733`).
 
