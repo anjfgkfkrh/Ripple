@@ -75,6 +75,14 @@ docker compose up -d
 
 데이터(DB)는 그대로 남고, 필요한 DB 변경은 자동으로 적용됩니다.
 
+**v0.2.0 이하에서 v0.3.0 이후로는 업데이트할 수 없습니다.** v0.3.0부터 앱을 Rust로 다시 만들면서 옛 DB를 이어받지 못합니다. 그대로 켜면 `migrate`가 "drizzle 이력이 기대와 다릅니다"로 멈추고(DB는 바뀌지 않음) web·worker가 뜨지 않습니다. 옛 버전을 계속 쓰거나, 데이터(종목·기사·설정)를 버리고 새로 설치합니다:
+
+```bash
+docker compose down
+docker volume rm ripple_ripple-data   # DB를 지운다(되돌릴 수 없음). backups/ 폴더는 남는다
+docker compose up -d                   # 새 버전의 docker-compose.yml로
+```
+
 ## 백업 복원
 
 `backups/` 폴더의 `ripple-날짜-시각.db`로 되돌립니다(종목·기사·설정이 그 시각으로 돌아감).
