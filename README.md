@@ -38,6 +38,7 @@ cp .env.example .env    # 아직 .env가 없을 때만
 | `FINNHUB_API_KEY` | 선택 | 미국 종목 뉴스와 주가(무료 가입 https://finnhub.io). 없으면 미국 뉴스·주가는 건너뛴다 |
 | `KIS_APP_KEY`, `KIS_APP_SECRET` | 선택 | 한국 종목 주가(한국투자증권 계좌로 KIS Developers https://apiportal.koreainvestment.com 에서 앱 키 발급). 없으면 한국 종목 주가는 보이지 않는다 |
 | `KIS_ENV` | 선택 | KIS 앱 키 종류: `demo`(모의투자, 기본) 또는 `real`(실전). 키가 새어도 실제 계좌로 주문되지 않게 모의투자 키를 권한다 |
+| `TUNNEL_TOKEN`, `PUBLIC_URL` | 선택 | 고정 주소용 Cloudflare 터널 토큰(비밀 값)과 그 주소. 비우면 임시 주소. 아래 "선택: 고정 도메인" |
 
 그리고 켠다(처음엔 이미지를 만드느라 몇 분 걸린다).
 
@@ -70,7 +71,7 @@ docker compose up -d --build
 Cloudflare에 내 도메인이 등록돼 있어야 한다. 메뉴 이름은 Cloudflare 공식 문서(2026-11-07 확인) 기준이며 바뀔 수 있다.
 
 1. Cloudflare 대시보드에서 **Networking** > **Tunnels** > **Create a tunnel**. 이름을 넣고 **Create Tunnel**.
-2. 설치 명령에 나오는 토큰(`--token` 뒤의 긴 문자열)을 복사한다. 설치 명령 자체는 실행하지 않는다(Ripple의 `tunnel` 컨테이너가 대신 연결한다).
+2. 운영 체제를 고르는 화면에서 **Docker**를 고르면 나오는 명령의 `--token` 뒤 긴 문자열이 토큰이다(다른 운영 체제 명령에 붙은 긴 문자열도 같은 값). 복사만 하고 설치 명령은 실행하지 않는다(Ripple의 `tunnel` 컨테이너가 대신 연결한다).
 3. 만든 터널의 **Routes** 탭에서 **Add route** > **Published application**. 서브도메인과 **Domain**을 고르고(예: `ripple` + `example.com`), **Service URL**에 `http://web:3000`을 넣고 **Add route**.
 4. 환경 변수 파일(`.env`)에 토큰과 주소를 넣는다.
 
@@ -255,12 +256,13 @@ HOSTNAME=127.0.0.1 rust/target/debug/ripple web         # 터미널 2: web     h
 
 ```bash
 # 시험용 띄우기: 포트 3300, 백업 .check-backups, AI 키 비움(비용 없음), 시험 비밀번호
-WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups OPENROUTER_API_KEY= TYPESAFE_API_KEY= FINNHUB_API_KEY= KIS_APP_KEY= KIS_APP_SECRET= \
+# TUNNEL_TOKEN·PUBLIC_URL도 비운다(본 터널 토큰으로 시험 tunnel이 뜨면 Cloudflare가 실제 접속을 둘로 나눠 보낸다)
+TUNNEL_TOKEN= PUBLIC_URL= WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups OPENROUTER_API_KEY= TYPESAFE_API_KEY= FINNHUB_API_KEY= KIS_APP_KEY= KIS_APP_SECRET= \
   APP_PASSWORD=e2e-password-not-secret SESSION_SECRET=e2e-session-secret-not-for-production-use \
   docker compose -p ripple-check up -d --build
 E2E_BASE_URL=http://127.0.0.1:3300 pnpm test:e2e   # 가짜 서비스·시험 DB가 필요한 테스트는 건너뜀
 # 내리기(시험 볼륨까지 지움)
-WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups docker compose -p ripple-check down -v && rm -rf .check-backups
+TUNNEL_TOKEN= PUBLIC_URL= WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups docker compose -p ripple-check down -v && rm -rf .check-backups
 ```
 
 ### 폴더 구조

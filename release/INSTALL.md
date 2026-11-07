@@ -43,6 +43,7 @@ cp env.example .env
 | `FINNHUB_API_KEY` | 선택 | https://finnhub.io 에서 무료 가입(미국 종목 뉴스·주가) |
 | `KIS_APP_KEY`, `KIS_APP_SECRET` | 선택 | 한국투자증권 KIS Open API 앱 키·시크릿(https://apiportal.koreainvestment.com, 한국 종목 주가). 없으면 한국 종목 주가는 보이지 않음 |
 | `KIS_ENV` | 선택 | `demo`(모의투자, 기본) 또는 `real`. 키가 새어도 실제 계좌로 주문되지 않게 모의투자 키를 권장 |
+| `TUNNEL_TOKEN`, `PUBLIC_URL` | 선택 | 고정 주소용 Cloudflare 터널 토큰(비밀 값)과 그 주소. 비우면 임시 주소. 아래 "선택: 고정 도메인" |
 
 ```bash
 # 4. 켜기
@@ -61,7 +62,7 @@ docker compose up -d
 Cloudflare 계정에 내 도메인이 있으면 바뀌지 않는 주소를 쓸 수 있습니다. 메뉴 이름은 Cloudflare 공식 문서(2026-11-07 확인) 기준이며 바뀔 수 있습니다.
 
 1. Cloudflare 대시보드에서 **Networking** > **Tunnels** > **Create a tunnel**. 이름을 넣고 **Create Tunnel**.
-2. 설치 명령에 나오는 토큰(`--token` 뒤의 긴 문자열)을 복사합니다. 설치 명령은 실행하지 않습니다(이 앱의 `tunnel` 컨테이너가 연결합니다).
+2. 운영 체제를 고르는 화면에서 **Docker**를 고르면 나오는 명령의 `--token` 뒤 긴 문자열이 토큰입니다(다른 운영 체제 명령에 붙은 긴 문자열도 같은 값). 복사만 하고 설치 명령은 실행하지 않습니다(이 앱의 `tunnel` 컨테이너가 연결합니다).
 3. 터널의 **Routes** 탭에서 **Add route** > **Published application**. 서브도메인과 **Domain**을 고르고(예: `ripple` + `example.com`), **Service URL**에 `http://web:3000`을 넣고 **Add route**.
 4. 설정 파일(위 3단계에서 만든 것)의 `TUNNEL_TOKEN=`·`PUBLIC_URL=` 줄을 채웁니다.
 
