@@ -98,3 +98,72 @@ async fn unreachable_is_error() {
     };
     assert!(!reason.is_empty());
 }
+
+async fn ready_of(server: &MockServer, response: ResponseTemplate) -> ReadyStatus {
+    Mock::given(method("GET"))
+        .and(path("/ready"))
+        .respond_with(response)
+        .mount(server)
+        .await;
+    fetch_ready_status(Some(&server.uri()), &reqwest::Client::new(), 1500).await
+}
+
+#[tokio::test]
+async fn ready_reads_connection_count() {
+    let server = MockServer::start().await;
+    let status = ready_of(
+        &server,
+        ResponseTemplate::new(200).set_body_json(json!({"status": 200, "readyConnections": 4})),
+    )
+    .await;
+    assert_eq!(
+        status,
+        ReadyStatus::Connected {
+            connections: Some(4)
+        }
+    );
+
+    let no_body = MockServer::start().await;
+    assert_eq!(
+        ready_of(&no_body, ResponseTemplate::new(200).set_body_string("ok")).await,
+        ReadyStatus::Connected { connections: None }
+    );
+}
+
+#[tokio::test]
+async fn ready_503_is_disconnected() {
+    let server = MockServer::start().await;
+    let status = ready_of(
+        &server,
+        ResponseTemplate::new(503).set_body_json(json!({"status": 503, "readyConnections": 0})),
+    )
+    .await;
+    assert_eq!(status, ReadyStatus::Disconnected);
+}
+
+#[tokio::test]
+async fn ready_unreachable_is_error_and_no_url_is_unknown() {
+    let http = reqwest::Client::new();
+    let status = fetch_ready_status(Some("http://127.0.0.1:1"), &http, 1500).await;
+    assert!(matches!(status, ReadyStatus::Error { .. }));
+    assert_eq!(
+        fetch_ready_status(None, &http, 1500).await,
+        ReadyStatus::Unknown
+    );
+}
+
+#[test]
+fn public_url_format() {
+    assert_eq!(
+        parse_public_url("https://example.com").as_deref(),
+        Some("https://example.com")
+    );
+    assert_eq!(
+        parse_public_url(" https://example.com/ ").as_deref(),
+        Some("https://example.com")
+    );
+    assert_eq!(parse_public_url("http://example.com"), None);
+    assert_eq!(parse_public_url("https://example.com/path"), None);
+    assert_eq!(parse_public_url("https://example.com:8080"), None);
+    assert_eq!(parse_public_url(""), None);
+}

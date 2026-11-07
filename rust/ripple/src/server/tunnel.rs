@@ -76,6 +76,69 @@ async fn request_hostname(
     })
 }
 
+/// cloudflared 연결 상태(고정 주소 모드, 15단계). 메트릭 서버의 `/ready`는 연결이 하나 이상이면 200,
+/// 아니면 503이고 본문에 `readyConnections`를 준다(cloudflared 2026.10.0 `metrics/readiness.go`로 확인).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReadyStatus {
+    /// 메트릭 주소가 없어 알 수 없음
+    Unknown,
+    Connected {
+        connections: Option<u64>,
+    },
+    Disconnected,
+    Error {
+        reason: String,
+    },
+}
+
+/// `PUBLIC_URL`을 `https://호스트` 꼴로 검사한다. 끝 `/` 하나는 떼어 낸다. 틀리면 `None`.
+pub fn parse_public_url(raw: &str) -> Option<String> {
+    let raw = raw.trim();
+    let rest = raw.strip_prefix("https://")?;
+    let host = rest.strip_suffix('/').unwrap_or(rest);
+    HOSTNAME.is_match(host).then(|| format!("https://{host}"))
+}
+
+pub async fn fetch_ready_status(
+    metrics_url: Option<&str>,
+    http: &reqwest::Client,
+    timeout_ms: u64,
+) -> ReadyStatus {
+    let Some(metrics_url) = metrics_url.map(str::trim).filter(|u| !u.is_empty()) else {
+        return ReadyStatus::Unknown;
+    };
+    let url = match url::Url::parse(metrics_url).and_then(|base| base.join("/ready")) {
+        Ok(url) => url,
+        Err(error) => {
+            return ReadyStatus::Error {
+                reason: error.to_string(),
+            };
+        }
+    };
+    let response = match http
+        .get(url)
+        .timeout(Duration::from_millis(timeout_ms))
+        .send()
+        .await
+    {
+        Ok(response) => response,
+        Err(error) => {
+            return ReadyStatus::Error {
+                reason: describe_request_error(&error),
+            };
+        }
+    };
+    if response.status().as_u16() != 200 {
+        return ReadyStatus::Disconnected;
+    }
+    let connections = response
+        .json::<Value>()
+        .await
+        .ok()
+        .and_then(|body| body.get("readyConnections").and_then(Value::as_u64));
+    ReadyStatus::Connected { connections }
+}
+
 /// `메시지 (원인)` 모양으로 줄인다(TS `describeError`와 같은 꼴, 글자는 reqwest 쪽 문구).
 pub fn describe_request_error(error: &reqwest::Error) -> String {
     use std::error::Error;
