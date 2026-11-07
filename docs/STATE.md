@@ -5,7 +5,7 @@
 
 마지막 갱신: 2026-11-07 (한국 시간), 15단계(커스텀도메인) tunnel-docs 리뷰 통과, 단계 작업 모두 통과
 
-- **지금 하는 일: 15단계 고정 주소(커스텀도메인), 브랜치 `af/커스텀도메인`, 작업 둘 다 통과 → 사람이 할 일 차례**: 계획 `work/커스텀도메인/PLAN.md`, 결정은 DECISIONS.md 1장 "15단계" 줄 4개. ① `tunnel-mode`: compose tunnel 명령 끝 `${TUNNEL_TOKEN:+run}`, `TUNNEL_TOKEN`은 tunnel에만·`PUBLIC_URL`은 web에만, 상태 화면 고정 주소 모드(`/ready`로 연결 여부), `.env.example` "15단계" 묶음, SPEC 수정. `/check` 전체 통과(Rust 601개, Vitest 7개, E2E 39개·건너뜀 5 모바일). ② `tunnel-docs`: README·INSTALL "선택: 고정 도메인"과 문제 해결 줄, `/deploy`(첫 배포에 tunnel 다시 만들어짐), `/real-check`(모든 시험 compose 앞머리 `TUNNEL_TOKEN= PUBLIC_URL=`, 4-1장 고정 주소 확인), `.gitignore`의 `check-tunnel.vars`. `/check 빠르게` 통과(Rust 601, Vitest 7).
+- **지금 하는 일: 15단계 고정 주소(커스텀도메인), 2026-11-07 17:10 본 Docker 배포함(main `9155cc6`, 고정 주소(`PUBLIC_URL`)) → 사용자의 휴대폰·상태 화면 확인 대기**(아래 "사람이 할 일"의 1~2는 끝남, 3은 배포까지 끝, 기록은 DECISIONS.md 3장): 계획 `work/커스텀도메인/PLAN.md`, 결정은 DECISIONS.md 1장 "15단계" 줄 4개. ① `tunnel-mode`: compose tunnel 명령 끝 `${TUNNEL_TOKEN:+run}`, `TUNNEL_TOKEN`은 tunnel에만·`PUBLIC_URL`은 web에만, 상태 화면 고정 주소 모드(`/ready`로 연결 여부), `.env.example` "15단계" 묶음, SPEC 수정. `/check` 전체 통과(Rust 601개, Vitest 7개, E2E 39개·건너뜀 5 모바일). ② `tunnel-docs`: README·INSTALL "선택: 고정 도메인"과 문제 해결 줄, `/deploy`(첫 배포에 tunnel 다시 만들어짐), `/real-check`(모든 시험 compose 앞머리 `TUNNEL_TOKEN= PUBLIC_URL=`, 4-1장 고정 주소 확인), `.gitignore`의 `check-tunnel.vars`. `/check 빠르게` 통과(Rust 601, Vitest 7).
   - **사람이 할 일(PLAN.md 끝)**: 1) Cloudflare 대시보드에서 터널 둘(본·시험 `check.anjfgkfkrh.com`, 둘 다 Service URL `http://web:3000`). 이때 README 2번의 토큰 위치 문구("Docker를 고르면 나오는 명령의 `--token` 뒤")가 실제 화면과 맞는지 봐 준다(공식 문서에 없어 확인 못 함) 2) 시험 값을 `check-tunnel.vars`에 넣고 `/real-check` 4-1장(비용 0원) 3) 본 토큰·주소를 `.env`에 넣고 `/deploy`, 휴대폰 확인. 그 뒤 `/agentflow:close 커스텀도메인`.
   - **아직 실제 컨테이너로 확인하지 않은 것(2단계 `/real-check`에서)**: 빈 `TUNNEL_TOKEN`에서 Quick Tunnel이 뜨는지, `--url`과 `run`을 함께 줄 때 tunnel 로그에 ingress 경고·오류가 없는지, 로그인 쿠키 `Secure`, tunnel 재시작 뒤 같은 주소.
 - **최근 끝난 일(2026-11-07)**: ① 노컷뉴스 TLS 회귀 수정(수집용 클라이언트 native-tls) 본 Docker 배포 14:36, 회차 765 success(소스 73개 실패 0), 커밋 `0125dc3` ② v0.3.0 GitHub 릴리스(태그 `v0.3.0`, `06b11d7`). **v0.2.0 이하에서는 업데이트할 수 없음**(사용자 답 B, DEVELOPMENT.md 7장). 기록은 DECISIONS.md 3장 맨 위 두 줄.
@@ -13,7 +13,7 @@
 - **14단계 Rust 전환(끝: R13 커밋 `bc97679`, 2026-11-07 본 Docker 배포)**: 설계 문서 [RUST_MIGRATION.md](RUST_MIGRATION.md), 결정은 DECISIONS.md 1장 "14단계" 줄들, 기록은 3장. 남은 확인: ① KIS 주가 띠(Rust)를 실제 키로 아직 안 돌렸다(월요일 09:00 첫 갱신 뒤 확인) ② 휴대폰·PC 화면 확인(사용자 몫). rustup 1.29.2·Rust 1.99.1은 2026-10-31 사용자가 설치함.
 
 - **토픽 유지 개선(끝, 커밋 `46e3f58`, 2026-10-30 14:14 배포)**: 첫 정기 토픽 갱신 확인 끝. 15:57:32 시작, Haiku 1회 $0.0078(15:57:44) 성공, 실패 기록 없음, 진행 중 토픽 15개(끝남 136). 로그 줄은 16:00 배포로 컨테이너가 바뀌어 남지 않아 DB(`settings`·`usage_logs`·`topics`)로 확인.
-- **단계**: 0~14단계 완료, 15단계 진행 중. 본 Docker는 14단계와 TLS 수정까지 배포됨(2026-11-07 14:36, 기록은 DECISIONS.md 3장). 12·13단계 휴대폰·PC 화면 확인 결과는 기록이 없다.
+- **단계**: 0~14단계 완료, 15단계는 배포함·사용자 확인 대기. 본 Docker는 15단계(고정 주소)까지 배포됨(2026-11-07 17:10, 기록은 DECISIONS.md 3장). 12·13단계 휴대폰·PC 화면 확인 결과는 기록이 없다.
 - **사용자가 할 일(개발 환경 정리에서 남음)**: ① `sudo chown -R "$(whoami)":staff ~/.npm`(playwright MCP) ② GitHub 토큰을 `GITHUB_PERSONAL_ACCESS_TOKEN`으로 셸 환경에 넣기(github MCP, 이번 세션에서도 연결 실패로 표시됨) ③ 새 세션에서 `/mcp`로 확인.
 - **사용자 답 대기: 키워드·채점 점검의 개선안 I1~I9(2026-10-30, DECISIONS.md 2장 "키워드·채점 점검")**: 코드 오류 B1·B2 수정과 개선 후보. I4·I6·I8은 아래 AI 비용 질문과 겹치므로 합쳐 A/B·추천으로 다시 묻는다.
 - **사용자 답 대기: AI 비용 줄이기(2026-10-23, 무료 조사만, 구현 전)**: 본 DB 사용량으로 월 약 $2.6 추정. 조사 결과는 DECISIONS.md 2장 "AI 비용 줄이기 조사".
