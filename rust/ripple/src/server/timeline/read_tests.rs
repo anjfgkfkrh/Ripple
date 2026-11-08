@@ -863,6 +863,7 @@ fn parse_timeline_params_ignores_unknown_values_and_rounds_limit() {
         ]),
         &[1, 2],
         &[7],
+        TIMELINE_MAX,
     );
     assert_eq!(
         filter,
@@ -883,31 +884,54 @@ fn parse_timeline_params_ignores_unknown_values_and_rounds_limit() {
         ]),
         &[1],
         &[7],
+        TIMELINE_MAX,
     );
     assert_eq!(filter, ALL);
     assert_eq!(limit, 30);
     assert_eq!(
-        parse_timeline_params(&query(&[("limit", "99999")]), &[], &[]).1,
+        parse_timeline_params(&query(&[("limit", "99999")]), &[], &[], TIMELINE_MAX).1,
         TIMELINE_MAX
     );
     // 같은 이름이 여러 번이면 첫 값
     assert_eq!(
-        parse_timeline_params(&query(&[("limit", "60"), ("limit", "90")]), &[], &[]).1,
+        parse_timeline_params(
+            &query(&[("limit", "60"), ("limit", "90")]),
+            &[],
+            &[],
+            TIMELINE_MAX
+        )
+        .1,
         60
     );
-    assert_eq!(parse_timeline_params(&[], &[], &[]).1, TIMELINE_PAGE_SIZE);
+    assert_eq!(
+        parse_timeline_params(&[], &[], &[], TIMELINE_MAX).1,
+        TIMELINE_PAGE_SIZE
+    );
+}
+
+#[test]
+fn guest_max_caps_limit_and_members_keep_600() {
+    let limit = |max: usize| parse_timeline_params(&query(&[("limit", "600")]), &[], &[], max).1;
+    assert_eq!(limit(GUEST_TIMELINE_MAX), 90);
+    assert_eq!(limit(TIMELINE_MAX), 600);
 }
 
 #[test]
 fn parse_timeline_params_handles_odd_numbers() {
     // Rust에서만 생기는 경우: JS Number()가 읽는 모양과 못 읽는 모양
-    let limit = |value: &str| parse_timeline_params(&query(&[("limit", value)]), &[], &[]).1;
+    let limit =
+        |value: &str| parse_timeline_params(&query(&[("limit", value)]), &[], &[], TIMELINE_MAX).1;
     assert_eq!(limit("abc"), 30);
     assert_eq!(limit("-5"), 30);
     assert_eq!(limit("Infinity"), 30);
     assert_eq!(limit(" 31 "), 60);
     assert_eq!(limit(""), 30);
-    let (filter, _) = parse_timeline_params(&query(&[("stock", "2.0"), ("topic", "")]), &[2], &[0]);
+    let (filter, _) = parse_timeline_params(
+        &query(&[("stock", "2.0"), ("topic", "")]),
+        &[2],
+        &[0],
+        TIMELINE_MAX,
+    );
     assert_eq!(filter.stock_id, Some(2));
     // Number("") === 0 이라 id 0이 있으면 통과한다(실제 id는 1부터라 일어나지 않음)
     assert_eq!(filter.topic_id, Some(0));

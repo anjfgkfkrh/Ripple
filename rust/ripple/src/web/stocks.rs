@@ -79,6 +79,8 @@ pub struct KeywordsView {
     pub making: bool,
     pub failed: bool,
     pub failed_text: String,
+    /// `failed_text`의 앞 문장(손님에게는 이유 없이 이것만 보인다)
+    pub failed_lead: String,
     pub count: usize,
     pub depth: i64,
     pub generated_text: Option<String>,
@@ -304,6 +306,7 @@ fn keywords_view(stock: &Stock, keywords: &[Keyword]) -> KeywordsView {
         making: is_making(stock.keywords_status),
         failed: stock.keywords_status == KeywordStatus::Failed,
         failed_text: format!("{lead} {}", stock.keywords_error.as_deref().unwrap_or("")),
+        failed_lead: lead.to_string(),
         count,
         depth,
         generated_text: stock
@@ -328,6 +331,7 @@ fn blank_keywords(stock_id: i64) -> KeywordsView {
         making: false,
         failed: false,
         failed_text: String::new(),
+        failed_lead: String::new(),
         count: 0,
         depth: 0,
         generated_text: None,
@@ -379,6 +383,30 @@ pub struct StocksData {
     stocks: Vec<StockView>,
     markets: Vec<MarketRowView>,
     topics: Vec<TopicView>,
+}
+
+impl StocksData {
+    /// 손님에게는 키워드 실패의 자세한 이유(외부 오류 글자)를 숨기고 앞 문장만 보인다.
+    fn hide_failure_reasons(&mut self) {
+        let market_keywords = self.markets.iter_mut().filter_map(|m| m.keywords.as_mut());
+        let stock_keywords = self.stocks.iter_mut().map(|s| &mut s.keywords);
+        let lens_keywords = self
+            .topics
+            .iter_mut()
+            .flat_map(|t| t.lenses.iter_mut().map(|l| &mut l.keywords));
+        for keywords in stock_keywords.chain(market_keywords).chain(lens_keywords) {
+            keywords.failed_text = keywords.failed_lead.clone();
+        }
+    }
+}
+
+/// 손님이면 키워드 실패 이유를 가린 채 읽는다.
+async fn reload_for(state: &WebState, access: &Access) -> Result<StocksData, String> {
+    let mut data = reload(state).await?;
+    if !access.is_member() {
+        data.hide_failure_reasons();
+    }
+    Ok(data)
 }
 
 /// DB에서 화면 자료를 한꺼번에 읽는다(Next 페이지의 `StockList`·`MarketTopicSection`과 같은 자료)
@@ -515,6 +543,7 @@ fn clone_keywords(keywords: &KeywordsView) -> KeywordsView {
         making: keywords.making,
         failed: keywords.failed,
         failed_text: keywords.failed_text.clone(),
+        failed_lead: keywords.failed_lead.clone(),
         count: keywords.count,
         depth: keywords.depth,
         generated_text: keywords.generated_text.clone(),
@@ -796,7 +825,7 @@ pub async fn page(
     State(state): State<Arc<WebState>>,
     Extension(access): Extension<Access>,
 ) -> Response {
-    let data = match reload(&state).await {
+    let data = match reload_for(&state, &access).await {
         Ok(data) => data,
         Err(reason) => return db_error(&reason),
     };
@@ -813,8 +842,11 @@ pub async fn page(
 }
 
 /// 만드는 중인 종목 목록을 3초마다 다시 읽는 조각(`AutoRefresh`의 자리)
-pub async fn list(State(state): State<Arc<WebState>>) -> Response {
-    match reload(&state).await {
+pub async fn list(
+    State(state): State<Arc<WebState>>,
+    Extension(access): Extension<Access>,
+) -> Response {
+    match reload_for(&state, &access).await {
         Ok(data) => render(&StockListTemplate {
             stock_list: stock_list_view(&data, false),
         }),
@@ -823,8 +855,11 @@ pub async fn list(State(state): State<Arc<WebState>>) -> Response {
 }
 
 /// 시장 목록 조각(만드는 중일 때만 3초마다 다시 읽는다)
-pub async fn markets(State(state): State<Arc<WebState>>) -> Response {
-    match reload(&state).await {
+pub async fn markets(
+    State(state): State<Arc<WebState>>,
+    Extension(access): Extension<Access>,
+) -> Response {
+    match reload_for(&state, &access).await {
         Ok(data) => render(&MarketListTemplate {
             market_list: market_list_view(&data, false),
         }),
@@ -833,8 +868,11 @@ pub async fn markets(State(state): State<Arc<WebState>>) -> Response {
 }
 
 /// 주제 목록 조각(만드는 중일 때만 3초마다 다시 읽는다)
-pub async fn topic_list(State(state): State<Arc<WebState>>) -> Response {
-    match reload(&state).await {
+pub async fn topic_list(
+    State(state): State<Arc<WebState>>,
+    Extension(access): Extension<Access>,
+) -> Response {
+    match reload_for(&state, &access).await {
         Ok(data) => render(&TopicListTemplate {
             topic_list: topic_list_view(&data, false),
         }),

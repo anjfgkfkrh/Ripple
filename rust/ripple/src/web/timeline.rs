@@ -26,8 +26,8 @@ use crate::server::time::{
     EpochMs, format_seoul_date_time, format_timeline_time, seoul_date_key, timeline_day_label,
 };
 use crate::server::timeline::read::{
-    TIMELINE_PAGE_SIZE, TimelineCard, TimelineFilter, TimelineStock, TopicCard,
-    parse_timeline_params, read_timeline, read_topic_cards,
+    GUEST_TIMELINE_MAX, TIMELINE_MAX, TIMELINE_PAGE_SIZE, TimelineCard, TimelineFilter,
+    TimelineStock, TopicCard, parse_timeline_params, read_timeline, read_topic_cards,
 };
 use crate::server::timeline::reads::MAX_READ_BATCH;
 use crate::server::topics::read::{
@@ -550,7 +550,13 @@ pub fn build_body(
     conn: &Connection,
     now: EpochMs,
     params: &[(String, String)],
+    guest: bool,
 ) -> rusqlite::Result<TimelineBody> {
+    let max_limit = if guest {
+        GUEST_TIMELINE_MAX
+    } else {
+        TIMELINE_MAX
+    };
     let stocks = list_active_stocks(conn)?;
     let stock_chips: Vec<(i64, String)> = stocks
         .iter()
@@ -589,7 +595,8 @@ pub fn build_body(
         .chain(&markets)
         .map(|(id, _)| *id)
         .collect();
-    let (filter, limit) = parse_timeline_params(params, &active_ids, &filterable_topic_ids(conn)?);
+    let (filter, limit) =
+        parse_timeline_params(params, &active_ids, &filterable_topic_ids(conn)?, max_limit);
     let page = read_timeline(conn, &filter, limit)?;
     let pending = count_pending_evaluations(conn, now)?;
     let filtered =
@@ -632,8 +639,8 @@ pub fn build_body(
             }
         }),
         days: day_groups(&page.cards, now),
-        more_href: page
-            .has_more
+        // 손님은 상한에 닿으면 더 보기를 그리지 않는다.
+        more_href: (page.has_more && (!guest || limit < max_limit))
             .then(|| timeline_href(&filter, Some(limit + TIMELINE_PAGE_SIZE))),
         min_relevance,
         min_magnitude,
@@ -671,9 +678,10 @@ pub async fn page(
     Query(params): Query<Vec<(String, String)>>,
 ) -> Response {
     let now = state.now();
+    let guest = !access.is_member();
     let mut body = match state
         .db
-        .read(move |conn| build_body(conn, now, &params))
+        .read(move |conn| build_body(conn, now, &params, guest))
         .await
     {
         Ok(body) => body,

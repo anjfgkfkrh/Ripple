@@ -476,3 +476,33 @@ async fn guest_never_sees_read_state() {
     assert_eq!(guest.matches("data-read=\"false\"").count(), 2);
     assert!(!guest.contains("data-testid=\"read-label\""));
 }
+
+#[tokio::test]
+async fn guest_is_capped_at_90_cards_without_a_more_link_but_members_are_not() {
+    let web = start_web(None).await;
+    seed(&web, 100);
+    let guest = web
+        .client
+        .get(web.url("/?limit=600"))
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    assert_eq!(guest.matches("data-testid=\"timeline-card\"").count(), 90);
+    assert!(!guest.contains(">더 보기</a>"));
+    // 90 미만이면 손님도 더 볼 수 있다
+    let guest_first = web
+        .client
+        .get(web.url("/?limit=60"))
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    assert!(guest_first.contains("href=\"/?limit=90\""));
+    let member = text(&web, "/?limit=600").await;
+    assert_eq!(member.matches("data-testid=\"timeline-card\"").count(), 100);
+}

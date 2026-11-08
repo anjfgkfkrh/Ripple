@@ -19,6 +19,8 @@ use crate::server::topics::store::{TOPIC_COLUMNS, row_to_topic};
 pub const TIMELINE_PAGE_SIZE: usize = 30;
 /// 주소를 손으로 바꿔도 조회가 지나치게 무거워지지 않게 하는 상한
 pub const TIMELINE_MAX: usize = 600;
+/// 손님(`GUEST_VIEW`)이 볼 수 있는 상한. 공개 주소로 오는 무거운 조회를 막는다.
+pub const GUEST_TIMELINE_MAX: usize = 90;
 /// 같은 소식(비슷한 제목)을 한 카드로 묶는 기간(11단계, 평가 복사와 같은 기준)
 pub const SAME_TITLE_WINDOW_MS: i64 = SAME_NEWS_WINDOW_MS;
 /// 기사를 이만큼씩 읽어 카드를 만든다.
@@ -76,12 +78,13 @@ pub struct TimelineCard {
     pub read: bool,
 }
 
-/// 주소의 검색 값(stock, topic, impact, limit)을 읽는다. 없거나 맞지 않는 값은 무시한다.
+/// 주소의 검색 값(stock, topic, impact, limit)을 읽는다. 개수는 `max_limit`(회원 `TIMELINE_MAX`, 손님 `GUEST_TIMELINE_MAX`)까지. 없거나 맞지 않는 값은 무시한다.
 /// 같은 이름이 여러 번 나오면 첫 값을 쓴다.
 pub fn parse_timeline_params(
     params: &[(String, String)],
     active_stock_ids: &[i64],
     topic_ids: &[i64],
+    max_limit: usize,
 ) -> (TimelineFilter, usize) {
     let one = |key: &str| {
         params
@@ -101,7 +104,7 @@ pub fn parse_timeline_params(
             impact: one("impact").and_then(|value| value.parse().ok()),
         },
         if limit.is_finite() {
-            (TIMELINE_MAX as f64).min(page.max((limit / page).ceil() * page)) as usize
+            (max_limit as f64).min(page.max((limit / page).ceil() * page)) as usize
         } else {
             TIMELINE_PAGE_SIZE
         },

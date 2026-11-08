@@ -433,3 +433,36 @@ async fn stock_pages_need_a_login_for_posts_too() {
         .unwrap();
     assert_eq!(response.status().as_u16(), 403);
 }
+
+#[tokio::test]
+async fn keyword_failure_reason_is_hidden_from_guests_only() {
+    let web = start_web(None).await;
+    {
+        let conn = web.writer();
+        insert_stock(&conn, "005380", "현대차", "failed");
+        conn.execute(
+            "UPDATE stocks SET keywords_error = 'SECRET-UPSTREAM-REASON' WHERE code = '005380'",
+            [],
+        )
+        .unwrap();
+    }
+    let lead = "키워드를 만들지 못했습니다.";
+    for path in ["/stocks", "/stocks/list"] {
+        let guest = web
+            .client
+            .get(web.url(path))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        assert!(guest.contains(lead), "{path}");
+        assert!(!guest.contains("SECRET-UPSTREAM-REASON"), "{path}");
+        let member = text(&web, path).await;
+        assert!(
+            member.contains(&format!("{lead} SECRET-UPSTREAM-REASON")),
+            "{path}"
+        );
+    }
+}
