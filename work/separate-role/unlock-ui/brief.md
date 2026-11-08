@@ -1,5 +1,5 @@
 # unlock-ui: 비밀번호 창, 손님 읽음, 안내 문서
-모델: Sonnet / effort: medium | 선행: role-guard 통과
+모델: Sonnet / effort: medium | 선행: guest-limits 통과
 
 ## 목표
 수정 권한 없이 수정 동작을 하면 비밀번호 창이 뜨고, 맞으면 원래 요청을 한 번 다시 보낸다. 손님의 읽음 표시는 브라우저에만 저장한다. README·INSTALL·`.env.example`에 손님 보기와 새 환경 변수를 안내한다.
@@ -44,7 +44,13 @@
 - 403을 받으면 `lockButton`으로 잠긴 제출 단추를 풀어 둔다(지금은 응답이 바꿔 끼워질 때만 단추가 새로 그려진다).
 - 손님 읽음: `document.body.dataset.access === "guest"`면 `saveRead`가 서버 대신 `localStorage` 키 `ripple:reads`(기사 id 배열, 최근 3000개, 넘치면 오래된 것부터 지움)를 고친다. 페이지를 불러올 때와 htmx로 카드가 새로 붙을 때(`htmx:afterSettle`) 카드의 기사 id 중 하나라도 저장돼 있으면 읽음으로 보인다. `localStorage`를 못 쓰면 조용히 화면만 바꾼다(try/catch).
   이유: 결정 ③·⑨. 서버 카드 읽음 규칙(하나라도 읽었으면 읽음)과 같게 한다.
-- README 환경 변수 표와 `release/INSTALL.md` 표에 `GUEST_VIEW`·`EDIT_UNLOCK_MINUTES` 줄을 더하고, "손님 보기" 짧은 절을 쓴다. 쓸 내용: 주소를 아는 사람은 누구나 타임라인·종목을 봄, 끄는 법, 수정할 때 비밀번호 창, 30분, 배포 뒤 한 번 다시 로그인.
+- README 환경 변수 표와 `release/INSTALL.md` 표에 `GUEST_VIEW`·`EDIT_UNLOCK_MINUTES` 줄을 더하고, "손님 보기" 짧은 절을 쓴다. 쓸 내용:
+  - 주소를 아는 사람은 누구나 타임라인·종목을 봄
+  - 끄는 법
+  - 수정할 때 비밀번호 창, 30분
+  - 배포 뒤 한 번 다시 로그인
+  - 손님은 IP별 1분 60번·최대 90개
+  - "선택: Cloudflare 요청 제한 규칙" 절. 무료 요금제 규칙 1개로 모든 경로, IP별 10초에 50번을 넘으면 10초 막기. 메뉴 이름은 Cloudflare 공식 문서(`developers.cloudflare.com/waf/rate-limiting-rules/` 아래 만들기 안내)를 읽고 그대로 쓴다. 문서에 없는 단계는 "대시보드에서 확인"이라고 적는다
 
 ## 체크포인트 (각각 검사 통과 후 커밋)
 1. 비밀번호 창과 원래 요청 다시 보내기 → `guest.spec.ts`의 비밀번호 창 시험 통과
