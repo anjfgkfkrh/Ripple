@@ -436,7 +436,7 @@ async fn set_read_without_worker_says_it_is_unreachable() {
 
 #[tokio::test]
 async fn set_read_and_timeline_need_a_login() {
-    let web = start_web(None).await;
+    let web = crate::web::test_support::start_web_guest_off().await;
     let timeline = web.client.get(web.url("/")).send().await.unwrap();
     assert_eq!(timeline.status(), StatusCode::TEMPORARY_REDIRECT);
     let read = web
@@ -446,7 +446,7 @@ async fn set_read_and_timeline_need_a_login() {
         .send()
         .await
         .unwrap();
-    assert_eq!(read.status(), StatusCode::TEMPORARY_REDIRECT);
+    assert_eq!(read.status(), StatusCode::UNAUTHORIZED);
     // 다른 출처에서 온 쓰기는 막는다
     let cross = web
         .post("/articles/read")

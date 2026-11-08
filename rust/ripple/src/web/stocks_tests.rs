@@ -115,7 +115,8 @@ async fn text(web: &TestWeb, path: &str) -> String {
 
 #[tokio::test]
 async fn stocks_page_needs_a_login() {
-    let web = start_web(None).await;
+    // 손님 보기를 끄면 로그인이 필요하다
+    let web = crate::web::test_support::start_web_guest_off().await;
     let response = web.client.get(web.url("/stocks")).send().await.unwrap();
     assert_eq!(response.status().as_u16(), 307);
     assert_eq!(response.headers()["location"], "/login?next=%2Fstocks");
@@ -430,5 +431,5 @@ async fn stock_pages_need_a_login_for_posts_too() {
         .send()
         .await
         .unwrap();
-    assert_eq!(response.status().as_u16(), 307);
+    assert_eq!(response.status().as_u16(), 403);
 }

@@ -1,4 +1,4 @@
-use crate::web::test_support::start_web;
+use crate::web::test_support::{start_web, start_web_guest_off};
 
 fn location(response: &reqwest::Response) -> String {
     response.headers()["location"].to_str().unwrap().to_string()
@@ -7,7 +7,8 @@ fn location(response: &reqwest::Response) -> String {
 // it("페이지는 로그인 화면으로 보내고, 가려던 경로를 next로 남긴다")
 #[tokio::test]
 async fn pages_redirect_to_login_with_next() {
-    let web = start_web(None).await;
+    // 손님 보기를 끄면 홈·종목도 로그인 화면으로 간다
+    let web = start_web_guest_off().await;
     for (path, expected) in [
         ("/", "/login"),
         (
@@ -42,7 +43,7 @@ async fn api_is_401() {
 // it("잘못된 세션 쿠키도 막는다")
 #[tokio::test]
 async fn forged_cookie_is_blocked() {
-    let web = start_web(None).await;
+    let web = start_web_guest_off().await;
     let response = web
         .client
         .get(web.url("/"))
@@ -118,4 +119,132 @@ async fn htmx_request_gets_hx_redirect() {
         response.headers()["hx-redirect"],
         "/login?next=%2Fstatus%2Fcollection"
     );
+}
+
+// ---- 손님·회원·수정 권한 ----
+
+#[tokio::test]
+async fn guest_can_view_home_and_stocks() {
+    let web = start_web(None).await;
+    for path in ["/", "/stocks", "/stocks/list"] {
+        let response = web.client.get(web.url(path)).send().await.unwrap();
+        assert_eq!(response.status(), 200, "{path}");
+    }
+}
+
+#[tokio::test]
+async fn guest_is_sent_to_login_for_member_pages() {
+    let web = start_web(None).await;
+    for path in ["/status", "/settings"] {
+        let response = web.client.get(web.url(path)).send().await.unwrap();
+        assert_eq!(response.status(), 307, "{path}");
+        assert_eq!(
+            location(&response),
+            format!("/login?next=%2F{}", &path[1..])
+        );
+    }
+    let htmx = web
+        .client
+        .get(web.url("/status/system"))
+        .header("hx-request", "true")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(htmx.status(), 401);
+    assert_eq!(
+        htmx.headers()["hx-redirect"],
+        "/login?next=%2Fstatus%2Fsystem"
+    );
+}
+
+#[tokio::test]
+async fn guest_view_off_sends_home_to_login() {
+    let web = start_web_guest_off().await;
+    let response = web.client.get(web.url("/")).send().await.unwrap();
+    assert_eq!(response.status(), 307);
+    assert_eq!(location(&response), "/login");
+}
+
+#[tokio::test]
+async fn writes_need_edit_permission() {
+    let web = start_web(None).await;
+    let expired = web.expired_edit_cookie();
+    for path in [
+        "/settings",
+        "/stocks/register",
+        "/status/collect",
+        "/no/such/post",
+    ] {
+        // 손님
+        let guest = web
+            .client
+            .post(web.url(path))
+            .header("hx-request", "true")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(guest.status(), 403, "guest {path}");
+        assert_eq!(guest.headers()["hx-trigger"], "unlock-required");
+        // 수정 권한이 지난 회원
+        let member = web
+            .client
+            .post(web.url(path))
+            .header("cookie", &expired)
+            .header("hx-request", "true")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(member.status(), 403, "member {path}");
+        assert_eq!(member.headers()["hx-trigger"], "unlock-required");
+    }
+    // htmx가 아니면 글자로 알린다
+    let plain = web.client.post(web.url("/settings")).send().await.unwrap();
+    assert_eq!(plain.status(), 403);
+    assert_eq!(
+        plain.text().await.unwrap(),
+        "수정하려면 비밀번호가 필요합니다."
+    );
+}
+
+#[tokio::test]
+async fn articles_read_needs_member_only() {
+    let web = start_web(None).await;
+    let expired = web.expired_edit_cookie();
+    let member = web
+        .client
+        .post(web.url("/articles/read"))
+        .header("cookie", &expired)
+        .body("{}")
+        .send()
+        .await
+        .unwrap();
+    // 가드는 통과한다(본문이 틀려 핸들러가 400을 돌려준다)
+    assert_ne!(member.status(), 401);
+    assert_ne!(member.status(), 403);
+    let guest = web
+        .client
+        .post(web.url("/articles/read"))
+        .body("{}")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(guest.status(), 401);
+    assert_eq!(
+        guest.json::<serde_json::Value>().await.unwrap(),
+        serde_json::json!({"error": "unauthorized"})
+    );
+}
+
+#[tokio::test]
+async fn every_response_is_noindex() {
+    let web = start_web(None).await;
+    for response in [
+        web.client.get(web.url("/")).send().await.unwrap(),
+        web.client.get(web.url("/status")).send().await.unwrap(),
+        web.client.post(web.url("/settings")).send().await.unwrap(),
+        web.client.get(web.url("/login")).send().await.unwrap(),
+        web.get("/status").send().await.unwrap(),
+    ] {
+        assert_eq!(response.headers()["x-robots-tag"], "noindex, nofollow");
+    }
 }

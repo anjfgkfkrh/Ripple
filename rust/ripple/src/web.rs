@@ -108,6 +108,13 @@ pub mod test_support {
                 .header("cookie", self.cookie())
         }
 
+        /// 로그인했지만 수정 권한 시간이 지난 회원의 쿠키
+        pub fn expired_edit_cookie(&self) -> String {
+            let cookie = self.cookie();
+            self.clock.fetch_add(31 * 60 * 1000, Ordering::SeqCst);
+            cookie
+        }
+
         pub fn writer(&self) -> rusqlite::Connection {
             crate::server::db::client::open_db(
                 &self.file.path,
@@ -126,6 +133,20 @@ pub mod test_support {
         tunnel_metrics_url: Option<String>,
         public_url: Option<String>,
     ) -> TestWeb {
+        start_web_with(worker_url, tunnel_metrics_url, public_url, true).await
+    }
+
+    /// 손님 보기(`GUEST_VIEW`)를 끈 web
+    pub async fn start_web_guest_off() -> TestWeb {
+        start_web_with(None, None, None, false).await
+    }
+
+    async fn start_web_with(
+        worker_url: Option<String>,
+        tunnel_metrics_url: Option<String>,
+        public_url: Option<String>,
+        guest_view: bool,
+    ) -> TestWeb {
         let file = test_db_file();
         let env = Env::from_pairs([
             ("APP_PASSWORD", PASSWORD),
@@ -140,7 +161,7 @@ pub mod test_support {
             worker_url,
             tunnel_metrics_url,
             public_url,
-            guest_view: true,
+            guest_view,
             edit_unlock_minutes: 30,
         };
         let clock = Arc::new(AtomicI64::new(T0));

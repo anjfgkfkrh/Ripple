@@ -9,7 +9,7 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use url::Url;
 
-use crate::server::auth::session::{SESSION_COOKIE, is_valid_session_token};
+use crate::server::auth::session::{SESSION_COOKIE, is_valid_session_token, read_access};
 use crate::web::response::redirect;
 use crate::web::state::WebState;
 
@@ -31,8 +31,40 @@ pub fn has_valid_session(state: &WebState, headers: &HeaderMap) -> bool {
     is_valid_session_token(token.as_deref(), &state.auth, state.now())
 }
 
-fn is_public(path: &str) -> bool {
-    path == "/login" || path == "/favicon.ico" || path.starts_with("/static/")
+/// 요청이 요구하는 권한
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Need {
+    /// 누구나
+    Public,
+    /// 손님 보기(`GUEST_VIEW`)가 켜졌을 때 손님도 본다
+    Guest,
+    /// 로그인한 회원
+    Member,
+    /// 회원 + 수정 권한(비밀번호를 다시 넣은 뒤 일정 시간)
+    Edit,
+}
+
+/// 경로·메서드로 필요한 권한을 가른다. 목록에 없는 요청은 수정 권한이 필요하다(기본 닫힘).
+pub fn required(method: &Method, path: &str, guest_view: bool) -> Need {
+    let read_only = matches!(*method, Method::GET | Method::HEAD);
+    let post = *method == Method::POST;
+    if (post && matches!(path, "/login" | "/unlock" | "/logout"))
+        || (*method == Method::GET && path == "/login")
+        || (read_only && (path == "/favicon.ico" || path.starts_with("/static/")))
+    {
+        return Need::Public;
+    }
+    if read_only && (path == "/" || path == "/stocks" || path.starts_with("/stocks/")) {
+        return if guest_view {
+            Need::Guest
+        } else {
+            Need::Member
+        };
+    }
+    if read_only || *method == Method::OPTIONS || (post && path == "/articles/read") {
+        return Need::Member;
+    }
+    Need::Edit
 }
 
 fn first_value(headers: &HeaderMap, name: &str) -> Option<String> {
@@ -90,30 +122,46 @@ pub fn login_location(path_and_query: &str) -> String {
     format!("/login?next={encoded}")
 }
 
-pub async fn guard(
-    State(state): State<Arc<WebState>>,
-    request: Request<Body>,
-    next: Next,
-) -> Response {
+fn json_error(status: StatusCode, error: &str) -> Response {
+    let mut response = (status, format!("{{\"error\":\"{error}\"}}")).into_response();
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+    response
+}
+
+/// 수정 권한이 모자랄 때의 응답. 손님이어도 로그인 화면으로 보내지 않는다(비밀번호 창이 받는다).
+fn unlock_required(request: &Request<Body>) -> Response {
+    if request.headers().contains_key("hx-request") {
+        let mut response = StatusCode::FORBIDDEN.into_response();
+        response
+            .headers_mut()
+            .insert("hx-trigger", HeaderValue::from_static("unlock-required"));
+        return response;
+    }
+    if request.uri().path().starts_with("/api/") {
+        return json_error(StatusCode::FORBIDDEN, "unlock_required");
+    }
+    (StatusCode::FORBIDDEN, "수정하려면 비밀번호가 필요합니다.").into_response()
+}
+
+/// 회원이 필요한데 손님일 때의 응답
+fn login_required(request: &Request<Body>) -> Response {
     let safe_method = matches!(
         *request.method(),
         Method::GET | Method::HEAD | Method::OPTIONS
     );
-    if !safe_method && !origin_allowed(request.headers()) {
-        return (StatusCode::FORBIDDEN, "요청 출처가 맞지 않습니다.").into_response();
-    }
-    let path = request.uri().path().to_string();
-    if is_public(&path) || has_valid_session(&state, request.headers()) {
-        return next.run(request).await;
-    }
-    if path.starts_with("/api/") {
+    let path = request.uri().path();
+    // GET이 아닌 요청을 /login으로 307 이동시키면 본문째 다시 보내진다.
+    if !safe_method || path.starts_with("/api/") {
         return unauthorized_json();
     }
     let location = login_location(
         request
             .uri()
             .path_and_query()
-            .map_or(path.as_str(), |pq| pq.as_str()),
+            .map_or(path, |pq| pq.as_str()),
     );
     // htmx 요청은 로그인 화면을 조각으로 바꿔 끼우지 않고 화면 전체를 이동시킨다.
     if request.headers().contains_key("hx-request") {
@@ -124,6 +172,43 @@ pub async fn guard(
         return response;
     }
     redirect(StatusCode::TEMPORARY_REDIRECT, &location)
+}
+
+pub async fn guard(
+    State(state): State<Arc<WebState>>,
+    request: Request<Body>,
+    next: Next,
+) -> Response {
+    let mut response = check(&state, request, next).await;
+    response.headers_mut().insert(
+        "x-robots-tag",
+        HeaderValue::from_static("noindex, nofollow"),
+    );
+    response
+}
+
+async fn check(state: &WebState, mut request: Request<Body>, next: Next) -> Response {
+    let safe_method = matches!(
+        *request.method(),
+        Method::GET | Method::HEAD | Method::OPTIONS
+    );
+    if !safe_method && !origin_allowed(request.headers()) {
+        return (StatusCode::FORBIDDEN, "요청 출처가 맞지 않습니다.").into_response();
+    }
+    let now = state.now();
+    let token = session_cookie(request.headers());
+    let access = read_access(token.as_deref(), &state.auth, now);
+    let need = required(request.method(), request.uri().path(), state.guest_view);
+    let denied = match need {
+        Need::Public | Need::Guest => None,
+        Need::Member => (!access.is_member()).then(|| login_required(&request)),
+        Need::Edit => (!access.can_edit(now)).then(|| unlock_required(&request)),
+    };
+    if let Some(response) = denied {
+        return response;
+    }
+    request.extensions_mut().insert(access);
+    next.run(request).await
 }
 
 #[cfg(test)]
