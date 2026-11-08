@@ -2,6 +2,7 @@
 use std::sync::Arc;
 
 use crate::server::auth::config::AuthConfig;
+use crate::server::auth::guest_limit::GuestRateLimiter;
 use crate::server::auth::rate_limit::LoginRateLimiter;
 use crate::server::db::web::WebDb;
 use crate::server::http_client::new_client;
@@ -16,6 +17,8 @@ pub struct WebState {
     pub auth: AuthConfig,
     /// web 프로세스 하나에 하나(로그인 실패 제한, 메모리에만 둔다)
     pub limiter: LoginRateLimiter,
+    /// 손님 GET 요청 제한(IP별 1분 60번, 메모리에만 둔다)
+    pub guest_limiter: GuestRateLimiter,
     pub db: Arc<WebDb>,
     pub http: reqwest::Client,
     pub worker_url: Option<String>,
@@ -38,6 +41,7 @@ impl WebState {
         Self {
             auth: config.auth.clone(),
             limiter: LoginRateLimiter::default(),
+            guest_limiter: GuestRateLimiter::default(),
             db: Arc::new(WebDb::new(database_path)),
             http: new_client(),
             worker_url: config.worker_url.clone(),

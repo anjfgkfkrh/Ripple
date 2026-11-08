@@ -9,6 +9,7 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use url::Url;
 
+use crate::server::auth::request::client_key;
 use crate::server::auth::session::{SESSION_COOKIE, is_valid_session_token, read_access};
 use crate::web::response::redirect;
 use crate::web::state::WebState;
@@ -146,6 +147,19 @@ fn unlock_required(request: &Request<Body>) -> Response {
     (StatusCode::FORBIDDEN, "수정하려면 비밀번호가 필요합니다.").into_response()
 }
 
+/// 손님 요청이 너무 많을 때의 응답
+fn too_many_requests(retry_after: u64) -> Response {
+    let mut response = (
+        StatusCode::TOO_MANY_REQUESTS,
+        "요청이 너무 많습니다. 잠시 뒤 다시 시도하세요.",
+    )
+        .into_response();
+    response
+        .headers_mut()
+        .insert(header::RETRY_AFTER, HeaderValue::from(retry_after));
+    response
+}
+
 /// 회원이 필요한데 손님일 때의 응답
 fn login_required(request: &Request<Body>) -> Response {
     let safe_method = matches!(
@@ -206,6 +220,13 @@ async fn check(state: &WebState, mut request: Request<Body>, next: Next) -> Resp
     };
     if let Some(response) = denied {
         return response;
+    }
+    // 손님 GET만 센다. 정적 파일·로그인(Public)과 회원은 세지 않는다.
+    if need == Need::Guest && !access.is_member() {
+        let key = client_key(request.headers());
+        if let Err(retry_after) = state.guest_limiter.check(&key, now) {
+            return too_many_requests(retry_after);
+        }
     }
     request.extensions_mut().insert(access);
     next.run(request).await

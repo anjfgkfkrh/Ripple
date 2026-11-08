@@ -248,3 +248,51 @@ async fn every_response_is_noindex() {
         assert_eq!(response.headers()["x-robots-tag"], "noindex, nofollow");
     }
 }
+
+// ---- 손님 요청 제한 ----
+
+#[tokio::test]
+async fn guest_get_is_limited_to_60_per_minute() {
+    let web = start_web(None).await;
+    for i in 1..=60 {
+        let response = web.client.get(web.url("/")).send().await.unwrap();
+        assert_eq!(response.status(), 200, "{i}번째");
+    }
+    let response = web.client.get(web.url("/")).send().await.unwrap();
+    assert_eq!(response.status(), 429);
+    assert_eq!(response.headers()["retry-after"], "60");
+    assert_eq!(response.headers()["x-robots-tag"], "noindex, nofollow");
+    assert_eq!(
+        response.text().await.unwrap(),
+        "요청이 너무 많습니다. 잠시 뒤 다시 시도하세요."
+    );
+    // 1분이 지나면 다시 받는다
+    web.clock
+        .fetch_add(60 * 1000, std::sync::atomic::Ordering::SeqCst);
+    let response = web.client.get(web.url("/")).send().await.unwrap();
+    assert_eq!(response.status(), 200);
+}
+
+#[tokio::test]
+async fn members_are_not_limited() {
+    let web = start_web(None).await;
+    for i in 1..=61 {
+        let response = web.get("/").send().await.unwrap();
+        assert_eq!(response.status(), 200, "{i}번째");
+    }
+}
+
+#[tokio::test]
+async fn static_files_and_login_are_not_counted() {
+    let web = start_web(None).await;
+    for _ in 0..70 {
+        web.client
+            .get(web.url("/static/none.css"))
+            .send()
+            .await
+            .unwrap();
+        web.client.get(web.url("/login")).send().await.unwrap();
+    }
+    let response = web.client.get(web.url("/")).send().await.unwrap();
+    assert_eq!(response.status(), 200);
+}
