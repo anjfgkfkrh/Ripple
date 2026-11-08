@@ -5,8 +5,17 @@
     const label = form.dataset.pendingLabel;
     const button = form.querySelector("button[type=submit]");
     if (!label || !button || button.disabled) return;
+    button.dataset.idleLabel = button.textContent;
     button.disabled = true;
     button.textContent = label;
+  }
+
+  // 요청이 실패해도 응답이 바꿔 끼워지지 않으면 단추가 새로 그려지지 않으므로 직접 푼다.
+  function unlockButton(form) {
+    const button = form.querySelector("button[type=submit]");
+    if (!button || !button.disabled) return;
+    button.disabled = false;
+    if (button.dataset.idleLabel) button.textContent = button.dataset.idleLabel;
   }
 
   // 위 메뉴에서 지금 있는 곳을 굵게 표시한다. 타임라인("/")은 정확히 같을 때만, 나머지는 하위 경로까지 맞춘다.
@@ -96,7 +105,55 @@
     alert.textContent = message;
   }
 
+  // 손님의 읽음은 이 브라우저에만 저장한다(서버 읽음은 건드리지 않는다). 기사 id 배열, 최근 3000개.
+  const GUEST_READS_KEY = "ripple:reads";
+  const GUEST_READS_MAX = 3000;
+  const isGuest = () => document.body.dataset.access === "guest";
+
+  function guestReadIds() {
+    try {
+      const ids = JSON.parse(localStorage.getItem(GUEST_READS_KEY) || "[]");
+      return Array.isArray(ids) ? ids.filter(Number.isFinite) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveGuestRead(articleIds, read) {
+    try {
+      const rest = guestReadIds().filter((id) => !articleIds.includes(id));
+      const next = read ? rest.concat(articleIds) : rest;
+      localStorage.setItem(
+        GUEST_READS_KEY,
+        JSON.stringify(next.slice(-GUEST_READS_MAX)),
+      );
+    } catch {
+      // 저장소를 못 쓰면 화면만 바꾼다.
+    }
+  }
+
+  // 서버 카드 읽음 규칙과 같게, 카드의 기사 중 하나라도 읽었으면 읽음으로 보인다.
+  function applyGuestReads() {
+    if (!isGuest()) return;
+    const saved = new Set(guestReadIds());
+    if (saved.size === 0) return;
+    document.querySelectorAll(CARD).forEach((article) => {
+      if (article.dataset.read === "true") return;
+      const ids = article.dataset.articleIds.split(",").map(Number);
+      if (ids.some((id) => saved.has(id))) showRead(article, true);
+    });
+  }
+  applyGuestReads();
+  document.addEventListener("htmx:afterSettle", applyGuestReads);
+
   async function saveRead(article, read) {
+    if (isGuest()) {
+      const ids = article.dataset.articleIds.split(",").map(Number);
+      showReadError(article, null);
+      showRead(article, read);
+      saveGuestRead(ids, read);
+      return;
+    }
     const before = article.dataset.read === "true";
     const articleIds = article.dataset.articleIds.split(",").map(Number);
     showReadError(article, null);
@@ -185,4 +242,100 @@
       event.preventDefault();
     }
   });
+
+  // 수정 권한이 없을 때(손님이거나 시간이 지남) 서버가 403과 `HX-Trigger: unlock-required`로 답한다.
+  // 비밀번호 창을 열고, 맞으면 그 요청을 한 번 다시 보낸다. 비밀번호 검사와 권한 판단은 서버만 한다.
+  const unlockDialog = document.getElementById("unlock-dialog");
+  const unlockForm = document.getElementById("unlock-form");
+  const unlockInput = document.getElementById("unlock-password");
+  const unlockError = document.getElementById("unlock-error");
+  const NO_PERMISSION = "수정 권한을 얻지 못했습니다.";
+  let pendingElt = null; // 비밀번호를 기다리는 원래 요소
+  let retryElt = null; // 비밀번호 뒤 다시 보낸 요소(또 403이면 창을 다시 열지 않는다)
+
+  function showUnlockError(message) {
+    unlockError.textContent = message || "";
+    unlockError.classList.toggle("hidden", !message);
+  }
+
+  function failureNote(elt) {
+    return (
+      elt.parentElement &&
+      elt.parentElement.querySelector("[data-unlock-failed]")
+    );
+  }
+
+  document.addEventListener("htmx:beforeRequest", (event) => {
+    const elt = event.detail && event.detail.elt;
+    const note = elt && failureNote(elt);
+    if (note) note.remove();
+  });
+
+  document.addEventListener("htmx:afterRequest", (event) => {
+    const elt = event.detail && event.detail.elt;
+    if (elt && elt === retryElt) retryElt = null;
+  });
+
+  document.addEventListener("htmx:responseError", (event) => {
+    const { elt, xhr } = event.detail;
+    if (!xhr || xhr.status !== 403) return;
+    const trigger = xhr.getResponseHeader("HX-Trigger") || "";
+    if (!trigger.includes("unlock-required") || !unlockDialog) return;
+    if (elt instanceof HTMLFormElement) unlockButton(elt);
+    if (elt === retryElt) {
+      retryElt = null;
+      if (!failureNote(elt)) {
+        const note = document.createElement("p");
+        note.dataset.unlockFailed = "";
+        note.setAttribute("role", "alert");
+        note.className = "text-sm text-destructive";
+        note.textContent = NO_PERMISSION;
+        elt.insertAdjacentElement("afterend", note);
+      }
+      return;
+    }
+    pendingElt = elt;
+    unlockInput.value = "";
+    showUnlockError(null);
+    if (!unlockDialog.open) unlockDialog.showModal();
+  });
+
+  if (unlockDialog && unlockForm) wireUnlockForm();
+
+  function wireUnlockForm() {
+    unlockDialog.addEventListener("close", () => {
+      pendingElt = null;
+    });
+
+    unlockForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const submit = unlockForm.querySelector("button[type=submit]");
+      submit.disabled = true;
+      try {
+        const response = await fetch("/unlock", {
+          method: "POST",
+          credentials: "same-origin",
+          body: new URLSearchParams({ password: unlockInput.value }),
+        });
+        if (response.status === 204) {
+          const elt = pendingElt;
+          unlockDialog.close();
+          if (elt && elt.isConnected) {
+            retryElt = elt;
+            htmx.trigger(
+              elt,
+              elt instanceof HTMLFormElement ? "submit" : "click",
+            );
+          }
+          return;
+        }
+        const data = await response.json().catch(() => ({}));
+        showUnlockError(data.error || "확인하지 못했습니다. 다시 시도하세요.");
+      } catch {
+        showUnlockError("확인하지 못했습니다. 다시 시도하세요.");
+      } finally {
+        submit.disabled = false;
+      }
+    });
+  }
 })();
