@@ -1,6 +1,6 @@
 {% import "ui/button.html" as button %}
 {% import "ui/icons.html" as icons %}
-<div id="topic-list"{% if topic_list.oob %} hx-swap-oob="true"{% endif %}{% if topic_list.poll %} hx-get="/stocks/topics/list" hx-trigger="every 3s" hx-swap="outerHTML" data-poll{% endif %}>
+<div id="topic-list"{% if topic_list.oob %} hx-swap-oob="true"{% endif %}{% if topic_list.poll %} hx-get="/stocks/topics/list" hx-trigger="every {{ topic_list.poll_secs }}s" hx-swap="outerHTML" data-poll{% endif %}>
 {% if !topic_list.topics.is_empty() %}
 <ul class="mt-3 divide-y rounded-lg border" data-testid="topic-list">
 

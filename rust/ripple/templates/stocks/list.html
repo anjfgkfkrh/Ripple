@@ -1,4 +1,4 @@
-<div id="stock-list"{% if stock_list.oob %} hx-swap-oob="true"{% endif %}{% if stock_list.poll %} hx-get="/stocks/list" hx-trigger="every 3s" hx-swap="outerHTML" data-poll{% endif %}>
+<div id="stock-list"{% if stock_list.oob %} hx-swap-oob="true"{% endif %}{% if stock_list.poll %} hx-get="/stocks/list" hx-trigger="every {{ stock_list.poll_secs }}s" hx-swap="outerHTML" data-poll{% endif %}>
 {% if stock_list.stocks.is_empty() %}
 <p class="mt-3 text-sm text-muted-foreground">아직 등록한 종목이 없습니다.</p>
 {% else %}

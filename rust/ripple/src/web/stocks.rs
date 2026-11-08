@@ -199,18 +199,21 @@ impl TopicFormView {
 pub struct StockListView {
     pub stocks: Vec<StockView>,
     pub poll: bool,
+    pub poll_secs: u32,
     pub oob: bool,
 }
 
 pub struct MarketListView {
     pub markets: Vec<MarketRowView>,
     pub poll: bool,
+    pub poll_secs: u32,
     pub oob: bool,
 }
 
 pub struct TopicListView {
     pub topics: Vec<TopicView>,
     pub poll: bool,
+    pub poll_secs: u32,
     pub oob: bool,
 }
 
@@ -400,6 +403,18 @@ impl StocksData {
     }
 }
 
+/// 만드는 중인 키워드를 다시 읽는 주기(초). 손님은 요청 제한(1분 60번) 안에 들도록 길게 둔다.
+const MEMBER_POLL_SECS: u32 = 3;
+const GUEST_POLL_SECS: u32 = 10;
+
+fn poll_secs(access: &Access) -> u32 {
+    if access.is_member() {
+        MEMBER_POLL_SECS
+    } else {
+        GUEST_POLL_SECS
+    }
+}
+
 /// 손님이면 키워드 실패 이유를 가린 채 읽는다.
 async fn reload_for(state: &WebState, access: &Access) -> Result<StocksData, String> {
     let mut data = reload(state).await?;
@@ -504,26 +519,28 @@ async fn reload(state: &WebState) -> Result<StocksData, String> {
     state.db.read(load).await
 }
 
-fn stock_list_view(data: &StocksData, oob: bool) -> StockListView {
+fn stock_list_view(data: &StocksData, oob: bool, poll_secs: u32) -> StockListView {
     StockListView {
         stocks: data.stocks.iter().map(clone_stock).collect(),
         poll: data.stocks.iter().any(|stock| stock.keywords.making),
+        poll_secs,
         oob,
     }
 }
 
-fn market_list_view(data: &StocksData, oob: bool) -> MarketListView {
+fn market_list_view(data: &StocksData, oob: bool, poll_secs: u32) -> MarketListView {
     MarketListView {
         markets: data.markets.iter().map(clone_market).collect(),
         poll: data
             .markets
             .iter()
             .any(|market| market.keywords.as_ref().is_some_and(|k| k.making)),
+        poll_secs,
         oob,
     }
 }
 
-fn topic_list_view(data: &StocksData, oob: bool) -> TopicListView {
+fn topic_list_view(data: &StocksData, oob: bool, poll_secs: u32) -> TopicListView {
     TopicListView {
         topics: data.topics.iter().map(clone_topic).collect(),
         poll: data
@@ -531,6 +548,7 @@ fn topic_list_view(data: &StocksData, oob: bool) -> TopicListView {
             .iter()
             .flat_map(|topic| topic.lenses.iter())
             .any(|lens| lens.keywords.making),
+        poll_secs,
         oob,
     }
 }
@@ -834,10 +852,10 @@ pub async fn page(
         banner: budget_banner_for(&state, &access).await,
         member: access.is_member(),
         search: SearchView::idle(),
-        stock_list: stock_list_view(&data, false),
-        market_list: market_list_view(&data, false),
+        stock_list: stock_list_view(&data, false, poll_secs(&access)),
+        market_list: market_list_view(&data, false, poll_secs(&access)),
         topic_form: TopicFormView::empty(),
-        topic_list: topic_list_view(&data, false),
+        topic_list: topic_list_view(&data, false, poll_secs(&access)),
     })
 }
 
@@ -848,7 +866,7 @@ pub async fn list(
 ) -> Response {
     match reload_for(&state, &access).await {
         Ok(data) => render(&StockListTemplate {
-            stock_list: stock_list_view(&data, false),
+            stock_list: stock_list_view(&data, false, poll_secs(&access)),
         }),
         Err(reason) => db_error(&reason),
     }
@@ -861,7 +879,7 @@ pub async fn markets(
 ) -> Response {
     match reload_for(&state, &access).await {
         Ok(data) => render(&MarketListTemplate {
-            market_list: market_list_view(&data, false),
+            market_list: market_list_view(&data, false, poll_secs(&access)),
         }),
         Err(reason) => db_error(&reason),
     }
@@ -874,7 +892,7 @@ pub async fn topic_list(
 ) -> Response {
     match reload_for(&state, &access).await {
         Ok(data) => render(&TopicListTemplate {
-            topic_list: topic_list_view(&data, false),
+            topic_list: topic_list_view(&data, false, poll_secs(&access)),
         }),
         Err(reason) => db_error(&reason),
     }
@@ -962,7 +980,7 @@ pub async fn register(State(state): State<Arc<WebState>>, Form(fields): Form<Fie
                 vec![
                     CandidateErrorTemplate { key, message: None }.render(),
                     StockListTemplate {
-                        stock_list: stock_list_view(&data, true),
+                        stock_list: stock_list_view(&data, true, MEMBER_POLL_SECS),
                     }
                     .render(),
                 ],
@@ -1037,12 +1055,12 @@ async fn delete_item(state: &WebState, fields: &Fields, topic: bool) -> Response
             };
             let list = if topic {
                 TopicListTemplate {
-                    topic_list: topic_list_view(&data, true),
+                    topic_list: topic_list_view(&data, true, MEMBER_POLL_SECS),
                 }
                 .render()
             } else {
                 StockListTemplate {
-                    stock_list: stock_list_view(&data, true),
+                    stock_list: stock_list_view(&data, true, MEMBER_POLL_SECS),
                 }
                 .render()
             };
@@ -1092,7 +1110,7 @@ pub async fn regenerate(
                 Ok(String::new()),
                 vec![
                     StockListTemplate {
-                        stock_list: stock_list_view(&data, true),
+                        stock_list: stock_list_view(&data, true, MEMBER_POLL_SECS),
                     }
                     .render(),
                 ],
@@ -1140,11 +1158,11 @@ pub async fn set_market(
             Ok(String::new()),
             vec![
                 MarketListTemplate {
-                    market_list: market_list_view(&data, true),
+                    market_list: market_list_view(&data, true, MEMBER_POLL_SECS),
                 }
                 .render(),
                 TopicListTemplate {
-                    topic_list: topic_list_view(&data, true),
+                    topic_list: topic_list_view(&data, true, MEMBER_POLL_SECS),
                 }
                 .render(),
             ],
@@ -1192,7 +1210,7 @@ pub async fn add_topic(State(state): State<Arc<WebState>>, Form(fields): Form<Fi
                 .render(),
                 vec![
                     TopicListTemplate {
-                        topic_list: topic_list_view(&data, true),
+                        topic_list: topic_list_view(&data, true, MEMBER_POLL_SECS),
                     }
                     .render(),
                 ],

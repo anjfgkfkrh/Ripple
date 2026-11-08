@@ -466,3 +466,28 @@ async fn keyword_failure_reason_is_hidden_from_guests_only() {
         );
     }
 }
+
+#[tokio::test]
+async fn guest_polls_slower_than_member() {
+    let web = start_web(None).await;
+    {
+        let conn = web.writer();
+        insert_stock(&conn, "005930", "삼성전자", "pending");
+    }
+    for path in ["/stocks", "/stocks/list"] {
+        let guest = web
+            .client
+            .get(web.url(path))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        assert!(guest.contains("hx-trigger=\"every 10s\""), "{path}");
+        assert!(!guest.contains("hx-trigger=\"every 3s\""), "{path}");
+        let member = text(&web, path).await;
+        assert!(member.contains("hx-trigger=\"every 3s\""), "{path}");
+        assert!(!member.contains("hx-trigger=\"every 10s\""), "{path}");
+    }
+}
