@@ -90,7 +90,7 @@ pub async fn submit(
     }
 
     state.limiter.reset(&key);
-    let token = create_session_token(&state.auth, now);
+    let token = create_session_token(&state.auth, now, state.edit_unlock_minutes);
     log(&format!("로그인 성공 ({key})"));
     let mut response = redirect(StatusCode::SEE_OTHER, &next);
     if let Ok(value) =

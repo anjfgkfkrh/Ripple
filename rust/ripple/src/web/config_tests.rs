@@ -28,6 +28,44 @@ fn reads_defaults_and_overrides() {
     assert_eq!(config.tunnel_metrics_url, None);
 }
 
+// 16단계: GUEST_VIEW — 비었음·on → 켬, off → 끔, 그 밖 → 오류(값은 메시지에 없음)
+#[test]
+fn reads_guest_view() {
+    assert!(read_web_config(&base()).unwrap().guest_view);
+    assert!(
+        read_web_config(&base().with("GUEST_VIEW", " "))
+            .unwrap()
+            .guest_view
+    );
+    assert!(
+        read_web_config(&base().with("GUEST_VIEW", "on"))
+            .unwrap()
+            .guest_view
+    );
+    assert!(
+        !read_web_config(&base().with("GUEST_VIEW", "off"))
+            .unwrap()
+            .guest_view
+    );
+    let err = read_web_config(&base().with("GUEST_VIEW", "SECRETVAL")).unwrap_err();
+    assert!(err.0.contains("GUEST_VIEW") && !err.0.contains("SECRETVAL"));
+}
+
+// 16단계: EDIT_UNLOCK_MINUTES — 비었음 30, 1~120 받음, 그 밖 → 오류(값은 메시지에 없음)
+#[test]
+fn reads_edit_unlock_minutes() {
+    let minutes = |v: &str| read_web_config(&base().with("EDIT_UNLOCK_MINUTES", v));
+    assert_eq!(read_web_config(&base()).unwrap().edit_unlock_minutes, 30);
+    assert_eq!(minutes(" ").unwrap().edit_unlock_minutes, 30);
+    assert_eq!(minutes("1").unwrap().edit_unlock_minutes, 1);
+    assert_eq!(minutes("120").unwrap().edit_unlock_minutes, 120);
+    for bad in ["0", "121", "abc"] {
+        let err = minutes(bad).unwrap_err();
+        assert!(err.0.contains("EDIT_UNLOCK_MINUTES"));
+        assert!(!err.0.contains(&format!(": {bad}")) && !err.0.contains(&format!("{bad}입")));
+    }
+}
+
 // Rust 전용: PUBLIC_URL은 앞뒤 공백을 떼고, 빈 값은 없음으로 읽는다(15단계)
 #[test]
 fn reads_public_url_trimmed() {

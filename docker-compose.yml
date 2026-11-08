@@ -77,6 +77,9 @@ services:
       TUNNEL_METRICS_URL: http://tunnel:20241
       # 고정 주소(15단계, 선택). 있으면 상태 화면이 이 주소와 cloudflared 연결 여부를 보인다.
       PUBLIC_URL: ${PUBLIC_URL:-}
+      # 보기·수정 권한 나누기(16단계). 비우면 손님 보기 켬, 수정 권한 30분.
+      GUEST_VIEW: ${GUEST_VIEW:-}
+      EDIT_UNLOCK_MINUTES: ${EDIT_UNLOCK_MINUTES:-}
     volumes:
       - ripple-data:/data
     ports:

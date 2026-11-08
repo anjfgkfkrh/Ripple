@@ -23,6 +23,8 @@ pub struct WebState {
     pub tunnel_metrics_url: Option<String>,
     pub public_url: Option<String>,
     pub assets: Assets,
+    pub guest_view: bool,
+    pub edit_unlock_minutes: i64,
     now: NowFn,
 }
 
@@ -43,6 +45,8 @@ impl WebState {
             tunnel_metrics_url: config.tunnel_metrics_url.clone(),
             public_url: config.public_url.clone(),
             assets: Assets::load(),
+            guest_view: config.guest_view,
+            edit_unlock_minutes: config.edit_unlock_minutes,
             now: now.unwrap_or_else(|| Arc::new(now_ms)),
         }
     }

@@ -14,6 +14,10 @@ pub struct WebConfig {
     pub tunnel_metrics_url: Option<String>,
     /// `PUBLIC_URL`(15단계, 상태 화면 표시용 고정 주소. 형식 검사는 화면에서 한다)
     pub public_url: Option<String>,
+    /// `GUEST_VIEW`(16단계, 비었음·on → 켬, off → 끔)
+    pub guest_view: bool,
+    /// `EDIT_UNLOCK_MINUTES`(16단계, 로그인 뒤 수정 권한 분. 1~120, 기본 30)
+    pub edit_unlock_minutes: i64,
 }
 
 impl std::fmt::Debug for WebConfig {
@@ -24,6 +28,28 @@ impl std::fmt::Debug for WebConfig {
             .field("database_path", &self.database_path)
             .field("worker_url", &self.worker_url)
             .finish_non_exhaustive()
+    }
+}
+
+fn read_guest_view(env: &Env) -> Result<bool, ConfigError> {
+    match env.get_trimmed("GUEST_VIEW") {
+        None | Some("on") => Ok(true),
+        Some("off") => Ok(false),
+        Some(_) => Err(ConfigError(
+            "환경변수 GUEST_VIEW는 on 또는 off여야 합니다.".to_string(),
+        )),
+    }
+}
+
+fn read_edit_unlock_minutes(env: &Env) -> Result<i64, ConfigError> {
+    let Some(raw) = env.get_trimmed("EDIT_UNLOCK_MINUTES") else {
+        return Ok(30);
+    };
+    match raw.parse::<i64>() {
+        Ok(minutes) if (1..=120).contains(&minutes) => Ok(minutes),
+        _ => Err(ConfigError(
+            "환경변수 EDIT_UNLOCK_MINUTES는 1에서 120 사이의 정수여야 합니다.".to_string(),
+        )),
     }
 }
 
@@ -39,6 +65,8 @@ pub fn read_web_config(env: &Env) -> Result<WebConfig, ConfigError> {
         worker_url: env.get_trimmed("WORKER_URL").map(str::to_string),
         tunnel_metrics_url: env.get_trimmed("TUNNEL_METRICS_URL").map(str::to_string),
         public_url: env.get_trimmed("PUBLIC_URL").map(str::to_string),
+        guest_view: read_guest_view(env)?,
+        edit_unlock_minutes: read_edit_unlock_minutes(env)?,
     })
 }
 

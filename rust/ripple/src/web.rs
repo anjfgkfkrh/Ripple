@@ -87,7 +87,11 @@ pub mod test_support {
         pub fn cookie(&self) -> String {
             format!(
                 "ripple_session={}",
-                create_session_token(&self.state.auth, self.clock.load(Ordering::SeqCst))
+                create_session_token(
+                    &self.state.auth,
+                    self.clock.load(Ordering::SeqCst),
+                    self.state.edit_unlock_minutes
+                )
             )
         }
 
@@ -136,6 +140,8 @@ pub mod test_support {
             worker_url,
             tunnel_metrics_url,
             public_url,
+            guest_view: true,
+            edit_unlock_minutes: 30,
         };
         let clock = Arc::new(AtomicI64::new(T0));
         let c = clock.clone();
