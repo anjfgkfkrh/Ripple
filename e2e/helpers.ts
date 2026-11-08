@@ -34,7 +34,8 @@ export async function submitPassword(page: Page, password: string) {
 }
 
 export async function login(page: Page, path = "/") {
-  await page.goto(path);
+  // 손님도 홈·종목을 볼 수 있으므로 로그인 화면으로 바로 간다.
+  await page.goto(`/login?next=${encodeURIComponent(path)}`);
   await expect(page).toHaveURL(/\/login/);
   await submitPassword(page, E2E_APP_PASSWORD);
   await expect(page).not.toHaveURL(/\/login/);

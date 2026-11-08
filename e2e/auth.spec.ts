@@ -3,13 +3,18 @@ import { asClient, login, submitPassword } from "./helpers";
 import { E2E_APP_PASSWORD } from "./test-env";
 
 test.describe("로그인 (SPEC FR-1, D-10)", () => {
-  test("미로그인으로 홈에 오면 로그인 화면으로 보낸다", async ({
+  test("손님은 홈을 보고, 상태로 오면 로그인 화면으로 보낸다", async ({
     page,
   }, testInfo) => {
     await asClient(page, testInfo, "redirect");
     await page.goto("/");
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.locator("body")).toHaveAttribute("data-access", "guest");
+    await expect(page.getByRole("button", { name: "로그아웃" })).toHaveCount(0);
 
-    await expect(page).toHaveURL(/\/login$/);
+    await page.goto("/status");
+
+    await expect(page).toHaveURL(/\/login\?next=%2Fstatus$/);
     // 접속한 호스트를 유지한다(127.0.0.1이 localhost로 바뀌면 쿠키가 따로 놀게 된다).
     expect(new URL(page.url()).host).toBe(
       new URL(testInfo.project.use.baseURL!).host,
@@ -61,8 +66,8 @@ test.describe("로그인 (SPEC FR-1, D-10)", () => {
 
     await page.getByRole("button", { name: "로그아웃" }).click();
     await expect(page).toHaveURL(/\/login$/);
-    await page.goto("/");
-    await expect(page).toHaveURL(/\/login$/);
+    await page.goto("/status");
+    await expect(page).toHaveURL(/\/login\?next=%2Fstatus$/);
   });
 
   test("이미 로그인했으면 로그인 화면 대신 가려던 곳으로 보낸다", async ({
