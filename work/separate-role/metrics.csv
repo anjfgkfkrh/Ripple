@@ -3,3 +3,5 @@ time,id,role,stage,task,attempt,model,effort,requests,input,cache_write_5m,cache
 2026-11-08 21:29:56,a2bbff2e5a7de7e41,review,separate-role,work/separate-role/access-token,1,claude-opus-5-5,기본,22,44,89074,0,1394724,11318,89076,0.9509,6.1617,5.2109,84.6
 2026-11-08 21:35:41,a9a68b417eb650dfa,work,separate-role,work/separate-role/role-guard,1,claude-sonnet-5-5,medium,35,70,86122,0,2708901,21868,104377,0.7050,5.8089,5.1039,87.9
 2026-11-08 21:38:49,a911256ff8b6c742e,review,separate-role,work/separate-role/role-guard,1,claude-opus-5-5,기본,28,56,107029,0,2089125,15122,107031,1.2556,9.0873,7.8316,86.2
+2026-11-08 21:45:15,a10ac9f0ee676551d,work,separate-role,work/separate-role/guest-limits,1,claude-sonnet-5-5,medium,42,88,88053,0,3256367,20618,106310,0.7521,6.8952,6.1431,89.1
+2026-11-08 21:49:58,a534b34b4f9a7333c,review,separate-role,work/separate-role/guest-limits,1,claude-opus-5-5,기본,41,86,123121,0,3653907,17783,217070,1.7024,15.4641,13.7617,89.0
