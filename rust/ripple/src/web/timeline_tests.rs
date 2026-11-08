@@ -457,3 +457,22 @@ async fn set_read_and_timeline_need_a_login() {
         .unwrap();
     assert_eq!(cross.status(), StatusCode::FORBIDDEN);
 }
+
+#[tokio::test]
+async fn guest_never_sees_read_state() {
+    let web = start_web(None).await;
+    let (_, articles) = seed(&web, 2);
+    set_articles_read(&web.writer(), &[articles[0]], true, T0).unwrap();
+    let guest = web
+        .client
+        .get(web.url("/"))
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    assert_eq!(guest.matches("data-read=\"true\"").count(), 0);
+    assert_eq!(guest.matches("data-read=\"false\"").count(), 2);
+    assert!(!guest.contains("data-testid=\"read-label\""));
+}

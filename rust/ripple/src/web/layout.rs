@@ -2,10 +2,12 @@
 use std::sync::Arc;
 
 use askama::Template;
+use axum::Extension;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::Response;
 
+use crate::server::auth::session::Access;
 use crate::server::budget::report::{BudgetLevel, budget_level};
 use crate::server::budget::usage::month_spend_usd;
 use crate::server::log::log_error;
@@ -41,6 +43,11 @@ pub fn budget_banner(state: &WebState) -> Option<BannerView> {
     banner_for(spent, limit)
 }
 
+/// 손님에게는 예산 배너를 보이지 않는다(주인의 사용량이므로).
+pub fn budget_banner_for(state: &WebState, access: &Access) -> Option<BannerView> {
+    access.is_member().then(|| budget_banner(state)).flatten()
+}
+
 pub fn banner_for(spent: f64, limit: f64) -> Option<BannerView> {
     match budget_level(spent, limit) {
         BudgetLevel::Ok => None,
@@ -70,15 +77,20 @@ pub fn banner_for(spent: f64, limit: f64) -> Option<BannerView> {
 struct NotFoundTemplate {
     assets: AssetUrls,
     banner: Option<BannerView>,
+    member: bool,
 }
 
 /// 없는 주소(로그인한 사용자). 로그인하지 않았으면 이 앞의 미들웨어가 로그인 화면으로 보낸다.
-pub async fn not_found(State(state): State<Arc<WebState>>) -> Response {
+pub async fn not_found(
+    State(state): State<Arc<WebState>>,
+    Extension(access): Extension<Access>,
+) -> Response {
     render_with_status(
         StatusCode::NOT_FOUND,
         &NotFoundTemplate {
             assets: state.assets.urls.clone(),
-            banner: budget_banner(&state),
+            banner: budget_banner_for(&state, &access),
+            member: access.is_member(),
         },
     )
 }

@@ -12,7 +12,7 @@
 <script src="{{ assets.htmx }}" defer></script>
 <script src="{{ assets.app_js }}" defer></script>
 </head>
-<body class="flex min-h-full flex-col break-keep wrap-break-word">
+<body class="flex min-h-full flex-col break-keep wrap-break-word"{% block body_attrs %}{% endblock %}>
 {% block body %}{% endblock %}
 </body>
 </html>

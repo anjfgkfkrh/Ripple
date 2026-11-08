@@ -358,6 +358,7 @@ fn panel_error(reason: &str) -> Response {
 struct StatusPageTemplate {
     assets: AssetUrls,
     banner: Option<BannerView>,
+    member: bool,
     collection: CollectionView,
     topics: TopicsView,
 }
@@ -392,6 +393,7 @@ pub async fn page(State(state): State<Arc<WebState>>) -> Response {
         Ok((collection, topics)) => render(&StatusPageTemplate {
             assets: state.assets.urls.clone(),
             banner: budget_banner(&state),
+            member: true,
             collection,
             topics,
         }),

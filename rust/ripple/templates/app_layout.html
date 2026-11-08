@@ -1,8 +1,9 @@
 {% extends "base.html" %}
+{% block body_attrs %} data-access="{% if member %}member{% else %}guest{% endif %}"{% endblock %}
 {% import "ui/button.html" as button %}
 {% block body %}
 
-<header class="border-b"><div class="mx-auto flex h-12 w-full max-w-xl items-center gap-4 px-4"><a class="font-semibold" href="/">Ripple</a><nav aria-label="메뉴" class="flex gap-3 text-sm"><a class="text-muted-foreground hover:text-foreground" href="/">타임라인</a><a class="text-muted-foreground hover:text-foreground" href="/stocks">종목</a><a class="text-muted-foreground hover:text-foreground" href="/status">상태</a><a class="text-muted-foreground hover:text-foreground" href="/settings">설정</a></nav><form method="post" action="/logout" class="ml-auto">{% call button::ghost_sm("로그아웃", "") %}{% endcall %}</form></div></header>
+<header class="border-b"><div class="mx-auto flex h-12 w-full max-w-xl items-center gap-4 px-4"><a class="font-semibold" href="/">Ripple</a><nav aria-label="메뉴" class="flex gap-3 text-sm"><a class="text-muted-foreground hover:text-foreground" href="/">타임라인</a><a class="text-muted-foreground hover:text-foreground" href="/stocks">종목</a><a class="text-muted-foreground hover:text-foreground" href="/status">상태</a><a class="text-muted-foreground hover:text-foreground" href="/settings">설정</a></nav>{% if member %}<form method="post" action="/logout" class="ml-auto">{% call button::ghost_sm("로그아웃", "") %}{% endcall %}</form>{% endif %}</div></header>
 <div id="budget-slot">{% if let Some(banner) = banner %}{% include "budget_banner.html" %}{% endif %}</div>
 {% block content %}{% endblock %}
 {% endblock %}

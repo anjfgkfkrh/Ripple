@@ -4,7 +4,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::server::auth::session::Access;
 use askama::Template;
+use axum::Extension;
 use axum::extract::{Form, State};
 use axum::http::StatusCode;
 use axum::response::Response;
@@ -23,7 +25,7 @@ use crate::server::time::format_seoul_date_time;
 use crate::server::topics::read::{list_market_items, list_user_topic_items};
 use crate::server::worker_client::WorkerResult;
 use crate::web::assets::AssetUrls;
-use crate::web::layout::{BannerView, budget_banner};
+use crate::web::layout::{BannerView, budget_banner_for};
 use crate::web::response::{html, render};
 use crate::web::state::WebState;
 use crate::web::status::unreachable_result;
@@ -710,6 +712,7 @@ fn outcome(result: WorkerResult) -> Result<(), String> {
 struct StocksPageTemplate {
     assets: AssetUrls,
     banner: Option<BannerView>,
+    member: bool,
     search: SearchView,
     stock_list: StockListView,
     market_list: MarketListView,
@@ -789,14 +792,18 @@ struct MarketFormTemplate {
 // ---- 화면 ----
 
 /// `/stocks`: 종목 화면 전체
-pub async fn page(State(state): State<Arc<WebState>>) -> Response {
+pub async fn page(
+    State(state): State<Arc<WebState>>,
+    Extension(access): Extension<Access>,
+) -> Response {
     let data = match reload(&state) {
         Ok(data) => data,
         Err(reason) => return db_error(&reason),
     };
     render(&StocksPageTemplate {
         assets: state.assets.urls.clone(),
-        banner: budget_banner(&state),
+        banner: budget_banner_for(&state, &access),
+        member: access.is_member(),
         search: SearchView::idle(),
         stock_list: stock_list_view(&data, false),
         market_list: market_list_view(&data, false),

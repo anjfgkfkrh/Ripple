@@ -312,6 +312,7 @@ fn rebuild_view(conn: &Connection, message: Option<String>) -> rusqlite::Result<
 struct SettingsPageTemplate {
     assets: AssetUrls,
     banner: Option<BannerView>,
+    member: bool,
     form: FormView,
     rebuild: RebuildView,
     jev: JevView,
@@ -352,6 +353,7 @@ pub async fn page(State(state): State<Arc<WebState>>) -> Response {
         Ok(data) => render(&SettingsPageTemplate {
             assets: state.assets.urls.clone(),
             banner: budget_banner(&state),
+            member: true,
             form: FormView {
                 values: data.values,
                 errors: HashMap::new(),

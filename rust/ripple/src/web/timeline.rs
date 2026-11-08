@@ -6,7 +6,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::server::auth::session::Access;
 use askama::Template;
+use axum::Extension;
 use axum::body::Bytes;
 use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -33,7 +35,7 @@ use crate::server::topics::read::{
 };
 use crate::server::worker_client::WorkerResult;
 use crate::web::assets::AssetUrls;
-use crate::web::layout::{BannerView, budget_banner};
+use crate::web::layout::{BannerView, budget_banner_for};
 use crate::web::response::{html, render};
 use crate::web::state::WebState;
 use crate::web::status::unreachable_result;
@@ -645,6 +647,7 @@ pub fn build_body(
 struct TimelinePageTemplate {
     assets: AssetUrls,
     banner: Option<BannerView>,
+    member: bool,
     body: TimelineBody,
 }
 
@@ -663,11 +666,12 @@ fn escape(text: &str) -> String {
 /// 타임라인(`/`). 고른 필터와 개수는 주소에 남는다(D-25).
 pub async fn page(
     State(state): State<Arc<WebState>>,
+    Extension(access): Extension<Access>,
     headers: HeaderMap,
     Query(params): Query<Vec<(String, String)>>,
 ) -> Response {
     let now = state.now();
-    let body = match state.db.with(|conn| build_body(conn, now, &params)) {
+    let mut body = match state.db.with(|conn| build_body(conn, now, &params)) {
         Ok(body) => body,
         Err(reason) => {
             return html(
@@ -676,6 +680,12 @@ pub async fn page(
             );
         }
     };
+    // 주인의 읽음 표시를 손님에게 보이지 않는다.
+    if !access.is_member() {
+        for card in body.days.iter_mut().flat_map(|day| day.cards.iter_mut()) {
+            card.read = false;
+        }
+    }
     // 뒤로 가기 복원은 화면 전체를 기대한다.
     let partial =
         headers.contains_key("hx-request") && !headers.contains_key("hx-history-restore-request");
@@ -684,7 +694,8 @@ pub async fn page(
     }
     render(&TimelinePageTemplate {
         assets: state.assets.urls.clone(),
-        banner: budget_banner(&state),
+        banner: budget_banner_for(&state, &access),
+        member: access.is_member(),
         body,
     })
 }
