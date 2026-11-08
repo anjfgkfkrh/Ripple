@@ -44,6 +44,8 @@ cp env.example .env
 | `KIS_APP_KEY`, `KIS_APP_SECRET` | 선택 | 한국투자증권 KIS Open API 앱 키·시크릿(https://apiportal.koreainvestment.com, 한국 종목 주가). 없으면 한국 종목 주가는 보이지 않음 |
 | `KIS_ENV` | 선택 | `demo`(모의투자, 기본) 또는 `real`. 키가 새어도 실제 계좌로 주문되지 않게 모의투자 키를 권장 |
 | `TUNNEL_TOKEN`, `PUBLIC_URL` | 선택 | 고정 주소용 Cloudflare 터널 토큰(비밀 값)과 그 주소. 비우면 임시 주소. 아래 "선택: 고정 도메인" |
+| `GUEST_VIEW` | 선택 | 로그인 안 한 사람(손님)에게 타임라인·종목 보기를 열어 둘지. 비우거나 `on`이면 열림, `off`면 끔. 아래 "손님 보기" |
+| `EDIT_UNLOCK_MINUTES` | 선택 | 비밀번호를 넣은 뒤 수정할 수 있는 시간(분). 1~120, 비우면 30 |
 
 ```bash
 # 4. 켜기
@@ -77,6 +79,31 @@ Cloudflare 계정에 내 도메인이 있으면 바뀌지 않는 주소를 쓸 �
 - `TUNNEL_TOKEN`은 비밀 값입니다. 설정 파일에만 넣고 남에게 보이지 마세요. 새면 대시보드에서 토큰을 새로 만들어 바꿉니다.
 - 같은 토큰을 두 컴퓨터(또는 두 Docker)에서 쓰면 접속이 둘로 나뉘어 어떤 때는 열리지 않습니다.
 - 토큰을 비우고 `docker compose up -d`하면 임시 주소로 돌아갑니다.
+
+## 손님 보기
+
+주소를 아는 사람은 누구나 비밀번호 없이 타임라인과 종목 화면을 볼 수 있습니다(손님 보기). 보는 것만 되고, 상태·설정 화면과 모든 수정은 막힙니다.
+
+- 끄려면 `.env`에 `GUEST_VIEW=off`를 넣고 `docker compose up -d`. 그러면 주소를 아는 사람도 로그인부터 해야 합니다.
+- 손님이 종목 등록·삭제처럼 수정을 하면 비밀번호 창이 뜹니다. 맞는 비밀번호를 넣으면 하려던 일이 바로 실행되고, 그 뒤 `EDIT_UNLOCK_MINUTES`(기본 30분) 동안은 다시 묻지 않습니다. 시간이 지나면 다시 묻습니다.
+- 손님의 읽음 표시는 그 브라우저에만 저장됩니다(내 읽음 기록은 바뀌지 않음).
+- 손님은 접속자(IP)별로 1분에 60번까지, 타임라인은 최대 90개까지 볼 수 있습니다.
+- 이 기능이 들어간 버전으로 업데이트한 뒤에는 한 번 다시 로그인해야 합니다.
+
+### 선택: Cloudflare 요청 제한 규칙
+
+공개 주소로 너무 많은 요청이 들어오는 것을 Cloudflare에서 먼저 막고 싶을 때 씁니다. 무료 요금제는 규칙 1개, 센 기간 10초, 막는 시간 10초, 센 기준 IP만 쓸 수 있습니다(Cloudflare 문서의 요금제별 표). 모든 경로에 IP별로 10초에 50번을 넘으면 10초 막는 규칙 하나를 만듭니다.
+
+1. Cloudflare 대시보드에서 도메인을 고르고 **Security rules**를 엽니다.
+2. **Create rule** → **Rate limiting rules**를 누릅니다.
+3. **Rule name**에 이름을 적습니다(예: `ripple-rate-limit`).
+4. 모든 경로에 걸리도록 조건을 정합니다. 모든 요청에 맞추는 Field·Operator·Value 값은 대시보드에서 확인합니다.
+5. **With the same characteristics**에서 IP를 고릅니다.
+6. **When rate exceeds**에 요청 수 `50`, 기간 `10 seconds`를 넣습니다.
+7. **Then take action**의 **Choose action**에서 `Block`을 고릅니다.
+8. **Duration**을 `10 seconds`로 하고 **Deploy**를 누릅니다.
+
+메뉴 이름은 Cloudflare 문서(https://developers.cloudflare.com/waf/rate-limiting-rules/create-zone-dashboard/)를 따랐습니다. 화면이 다르면 대시보드 안내를 따르세요.
 
 ## 켜고 끄기·상태
 
