@@ -671,7 +671,11 @@ pub async fn page(
     Query(params): Query<Vec<(String, String)>>,
 ) -> Response {
     let now = state.now();
-    let mut body = match state.db.with(|conn| build_body(conn, now, &params)) {
+    let mut body = match state
+        .db
+        .read(move |conn| build_body(conn, now, &params))
+        .await
+    {
         Ok(body) => body,
         Err(reason) => {
             return html(
@@ -694,7 +698,7 @@ pub async fn page(
     }
     render(&TimelinePageTemplate {
         assets: state.assets.urls.clone(),
-        banner: budget_banner_for(&state, &access),
+        banner: budget_banner_for(&state, &access).await,
         member: access.is_member(),
         body,
     })

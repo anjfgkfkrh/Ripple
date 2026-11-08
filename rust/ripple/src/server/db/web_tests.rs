@@ -38,3 +38,19 @@ fn missing_path_reports_message() {
         "환경변수 DATABASE_PATH이(가) 설정되지 않았습니다."
     );
 }
+
+// Rust 전용: `read`는 다른 스레드에서 같은 결과를 돌려주고, 클로저가 panic해도 오류 글자로 돌려준다
+#[tokio::test]
+async fn read_runs_in_blocking_task_and_maps_panic_to_message() {
+    let file = test_db_file();
+    let db = Arc::new(WebDb::new(Ok(file.path.clone())));
+    let value = db
+        .read(|c| c.query_row("SELECT 1", [], |r| r.get::<_, i64>(0)))
+        .await;
+    assert_eq!(value, Ok(1));
+    let broken: Result<(), String> = db.read(|_| panic!("boom")).await;
+    assert_eq!(broken.unwrap_err(), "DB 읽기 작업이 중단되었습니다.");
+    // 잠금이 깨진 뒤에도 오류 글자로 돌려준다
+    let again = db.read(|_| Ok(())).await;
+    assert_eq!(again.unwrap_err(), "DB 잠금이 깨졌습니다.");
+}

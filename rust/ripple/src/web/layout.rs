@@ -25,14 +25,17 @@ pub struct BannerView {
 
 /// 월 예산 80% 넘음(노랑)·한도 도달(빨강)을 모든 화면 위에 알린다(D-07).
 /// DB를 읽지 못하면 배너 없이 화면을 낸다(화면 본문이 오류를 보여 준다).
-pub fn budget_banner(state: &WebState) -> Option<BannerView> {
+pub async fn budget_banner(state: &WebState) -> Option<BannerView> {
     let now = state.now();
-    let numbers = state.db.with(|conn| {
-        Ok((
-            month_spend_usd(conn, now)?,
-            read_num(conn, &BUDGET_MONTHLY_USD)?,
-        ))
-    });
+    let numbers = state
+        .db
+        .read(move |conn| {
+            Ok((
+                month_spend_usd(conn, now)?,
+                read_num(conn, &BUDGET_MONTHLY_USD)?,
+            ))
+        })
+        .await;
     let (spent, limit) = match numbers {
         Ok(numbers) => numbers,
         Err(error) => {
@@ -44,8 +47,12 @@ pub fn budget_banner(state: &WebState) -> Option<BannerView> {
 }
 
 /// 손님에게는 예산 배너를 보이지 않는다(주인의 사용량이므로).
-pub fn budget_banner_for(state: &WebState, access: &Access) -> Option<BannerView> {
-    access.is_member().then(|| budget_banner(state)).flatten()
+pub async fn budget_banner_for(state: &WebState, access: &Access) -> Option<BannerView> {
+    if access.is_member() {
+        budget_banner(state).await
+    } else {
+        None
+    }
 }
 
 pub fn banner_for(spent: f64, limit: f64) -> Option<BannerView> {
@@ -89,7 +96,7 @@ pub async fn not_found(
         StatusCode::NOT_FOUND,
         &NotFoundTemplate {
             assets: state.assets.urls.clone(),
-            banner: budget_banner_for(&state, &access),
+            banner: budget_banner_for(&state, &access).await,
             member: access.is_member(),
         },
     )

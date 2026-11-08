@@ -472,8 +472,8 @@ fn load(conn: &Connection) -> rusqlite::Result<StocksData> {
     })
 }
 
-fn reload(state: &WebState) -> Result<StocksData, String> {
-    state.db.with(load)
+async fn reload(state: &WebState) -> Result<StocksData, String> {
+    state.db.read(load).await
 }
 
 fn stock_list_view(data: &StocksData, oob: bool) -> StockListView {
@@ -796,13 +796,13 @@ pub async fn page(
     State(state): State<Arc<WebState>>,
     Extension(access): Extension<Access>,
 ) -> Response {
-    let data = match reload(&state) {
+    let data = match reload(&state).await {
         Ok(data) => data,
         Err(reason) => return db_error(&reason),
     };
     render(&StocksPageTemplate {
         assets: state.assets.urls.clone(),
-        banner: budget_banner_for(&state, &access),
+        banner: budget_banner_for(&state, &access).await,
         member: access.is_member(),
         search: SearchView::idle(),
         stock_list: stock_list_view(&data, false),
@@ -814,7 +814,7 @@ pub async fn page(
 
 /// 만드는 중인 종목 목록을 3초마다 다시 읽는 조각(`AutoRefresh`의 자리)
 pub async fn list(State(state): State<Arc<WebState>>) -> Response {
-    match reload(&state) {
+    match reload(&state).await {
         Ok(data) => render(&StockListTemplate {
             stock_list: stock_list_view(&data, false),
         }),
@@ -824,7 +824,7 @@ pub async fn list(State(state): State<Arc<WebState>>) -> Response {
 
 /// 시장 목록 조각(만드는 중일 때만 3초마다 다시 읽는다)
 pub async fn markets(State(state): State<Arc<WebState>>) -> Response {
-    match reload(&state) {
+    match reload(&state).await {
         Ok(data) => render(&MarketListTemplate {
             market_list: market_list_view(&data, false),
         }),
@@ -834,7 +834,7 @@ pub async fn markets(State(state): State<Arc<WebState>>) -> Response {
 
 /// 주제 목록 조각(만드는 중일 때만 3초마다 다시 읽는다)
 pub async fn topic_list(State(state): State<Arc<WebState>>) -> Response {
-    match reload(&state) {
+    match reload(&state).await {
         Ok(data) => render(&TopicListTemplate {
             topic_list: topic_list_view(&data, false),
         }),
@@ -910,7 +910,7 @@ pub async fn register(State(state): State<Arc<WebState>>, Form(fields): Form<Fie
     };
     match result {
         WorkerResult::Ok { .. } => {
-            let data = match reload(&state) {
+            let data = match reload(&state).await {
                 Ok(data) => data,
                 Err(reason) => return db_error(&reason),
             };
@@ -993,7 +993,7 @@ async fn delete_item(state: &WebState, fields: &Fields, topic: bool) -> Response
     };
     match result {
         Ok(()) => {
-            let data = match reload(state) {
+            let data = match reload(state).await {
                 Ok(data) => data,
                 Err(reason) => return db_error(&reason),
             };
@@ -1046,7 +1046,7 @@ pub async fn regenerate(
     };
     match result {
         Ok(()) => {
-            let data = match reload(&state) {
+            let data = match reload(&state).await {
                 Ok(data) => data,
                 Err(reason) => return db_error(&reason),
             };
@@ -1062,7 +1062,7 @@ pub async fn regenerate(
         }
         Err(message) => {
             let stock_id = id.unwrap_or(0);
-            let mut keywords = match reload(&state) {
+            let mut keywords = match reload(&state).await {
                 Ok(data) => data
                     .stocks
                     .into_iter()
@@ -1093,7 +1093,7 @@ pub async fn set_market(
             outcome(result)
         }
     };
-    let data = match reload(&state) {
+    let data = match reload(&state).await {
         Ok(data) => data,
         Err(reason) => return db_error(&reason),
     };
@@ -1142,7 +1142,7 @@ pub async fn add_topic(State(state): State<Arc<WebState>>, Form(fields): Form<Fi
     };
     match outcome(result) {
         Ok(()) => {
-            let data = match reload(&state) {
+            let data = match reload(&state).await {
                 Ok(data) => data,
                 Err(reason) => return db_error(&reason),
             };

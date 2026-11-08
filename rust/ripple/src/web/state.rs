@@ -16,7 +16,7 @@ pub struct WebState {
     pub auth: AuthConfig,
     /// web 프로세스 하나에 하나(로그인 실패 제한, 메모리에만 둔다)
     pub limiter: LoginRateLimiter,
-    pub db: WebDb,
+    pub db: Arc<WebDb>,
     pub http: reqwest::Client,
     pub worker_url: Option<String>,
     pub worker_token: String,
@@ -38,7 +38,7 @@ impl WebState {
         Self {
             auth: config.auth.clone(),
             limiter: LoginRateLimiter::default(),
-            db: WebDb::new(database_path),
+            db: Arc::new(WebDb::new(database_path)),
             http: new_client(),
             worker_url: config.worker_url.clone(),
             worker_token: config.worker_token.clone(),

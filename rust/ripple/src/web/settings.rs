@@ -348,11 +348,11 @@ struct BudgetOobTemplate {
 /// `/settings`: 설정 화면 전체
 pub async fn page(State(state): State<Arc<WebState>>) -> Response {
     let now = state.now();
-    let data = state.db.with(|conn| page_data(conn, now));
+    let data = state.db.read(move |conn| page_data(conn, now)).await;
     match data {
         Ok(data) => render(&SettingsPageTemplate {
             assets: state.assets.urls.clone(),
-            banner: budget_banner(&state),
+            banner: budget_banner(&state).await,
             member: true,
             form: FormView {
                 values: data.values,
@@ -450,12 +450,15 @@ pub async fn save(State(state): State<Arc<WebState>>, Form(fields): Form<Fields>
     }
     // 저장했으면 사용량과 예산 배너를 새 값으로 다시 그린다(Next `refresh()`와 같다)
     let now = state.now();
-    let refreshed = state.db.with(|conn| month_usage_report(conn, now));
+    let refreshed = state
+        .db
+        .read(move |conn| month_usage_report(conn, now))
+        .await;
     let usage = match refreshed {
         Ok(report) => usage_view(&report, true),
         Err(reason) => return db_error(&reason),
     };
-    let banner = budget_banner(&state);
+    let banner = budget_banner(&state).await;
     respond_form(form, usage, banner)
 }
 
@@ -492,7 +495,11 @@ pub async fn rebuild(State(state): State<Arc<WebState>>) -> Response {
         }
         WorkerResult::Err { error, body, .. } => describe_stock_error(&error, &body),
     };
-    match state.db.with(|conn| rebuild_view(conn, Some(message))) {
+    match state
+        .db
+        .read(move |conn| rebuild_view(conn, Some(message)))
+        .await
+    {
         Ok(rebuild) => render(&RebuildTemplate { rebuild }),
         Err(reason) => db_error(&reason),
     }

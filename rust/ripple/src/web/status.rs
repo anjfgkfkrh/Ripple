@@ -383,16 +383,19 @@ struct TopicsTemplate {
 
 pub async fn page(State(state): State<Arc<WebState>>) -> Response {
     let now = state.now();
-    let views = state.db.with(|conn| {
-        Ok((
-            collection_view(conn, now, None, None)?,
-            topics_view(conn, now, None, None)?,
-        ))
-    });
+    let views = state
+        .db
+        .read(move |conn| {
+            Ok((
+                collection_view(conn, now, None, None)?,
+                topics_view(conn, now, None, None)?,
+            ))
+        })
+        .await;
     match views {
         Ok((collection, topics)) => render(&StatusPageTemplate {
             assets: state.assets.urls.clone(),
-            banner: budget_banner(&state),
+            banner: budget_banner(&state).await,
             member: true,
             collection,
             topics,
@@ -433,15 +436,18 @@ pub async fn system(State(state): State<Arc<WebState>>) -> Response {
             }
         },
     );
-    let settings = state.db.with(|conn| {
-        Ok((
-            read_num(conn, &BACKUP_LAST_AT)?,
-            read_str(conn, &BACKUP_LAST_FILE)?,
-            read_num(conn, &PRICES_CHECKED_AT)?,
-            read_str(conn, &PRICES_ERROR)?,
-            read_str(conn, &PRICES_NOTE)?,
-        ))
-    });
+    let settings = state
+        .db
+        .read(|conn| {
+            Ok((
+                read_num(conn, &BACKUP_LAST_AT)?,
+                read_str(conn, &BACKUP_LAST_FILE)?,
+                read_num(conn, &PRICES_CHECKED_AT)?,
+                read_str(conn, &PRICES_ERROR)?,
+                read_str(conn, &PRICES_NOTE)?,
+            ))
+        })
+        .await;
     let (backup_at, backup_file, prices_at, prices_error, prices_note) =
         settings.unwrap_or((0.0, String::new(), 0.0, String::new(), String::new()));
 
@@ -537,7 +543,7 @@ pub async fn system(State(state): State<Arc<WebState>>) -> Response {
     })
 }
 
-fn collection_panel(
+async fn collection_panel(
     state: &WebState,
     error: Option<String>,
     notice: Option<String>,
@@ -546,7 +552,8 @@ fn collection_panel(
     let now = state.now();
     match state
         .db
-        .with(|conn| collection_view(conn, now, error, notice))
+        .read(move |conn| collection_view(conn, now, error, notice))
+        .await
     {
         Ok(mut collection) => {
             collection.poll = poll;
@@ -556,14 +563,18 @@ fn collection_panel(
     }
 }
 
-fn topics_panel(
+async fn topics_panel(
     state: &WebState,
     error: Option<String>,
     notice: Option<String>,
     poll: bool,
 ) -> Response {
     let now = state.now();
-    match state.db.with(|conn| topics_view(conn, now, error, notice)) {
+    match state
+        .db
+        .read(move |conn| topics_view(conn, now, error, notice))
+        .await
+    {
         Ok(mut topics) => {
             topics.poll = poll;
             render(&TopicsTemplate { topics })
@@ -573,11 +584,11 @@ fn topics_panel(
 }
 
 pub async fn collection(State(state): State<Arc<WebState>>) -> Response {
-    collection_panel(&state, None, None, false)
+    collection_panel(&state, None, None, false).await
 }
 
 pub async fn topics(State(state): State<Arc<WebState>>) -> Response {
-    topics_panel(&state, None, None, false)
+    topics_panel(&state, None, None, false).await
 }
 
 pub(crate) fn unreachable_result() -> WorkerResult {
@@ -604,7 +615,7 @@ pub async fn collect_now(State(state): State<Arc<WebState>>) -> Response {
             }
         }
     };
-    collection_panel(&state, error, notice, true)
+    collection_panel(&state, error, notice, true).await
 }
 
 /// 11단계 "지금 갱신": worker에 자동 토픽 갱신을 맡기고 바로 돌아온다.
@@ -623,7 +634,7 @@ pub async fn refresh_topics(State(state): State<Arc<WebState>>) -> Response {
         }
         WorkerResult::Err { error, body, .. } => (Some(describe_stock_error(&error, &body)), None),
     };
-    topics_panel(&state, error, notice, true)
+    topics_panel(&state, error, notice, true).await
 }
 
 #[cfg(test)]
