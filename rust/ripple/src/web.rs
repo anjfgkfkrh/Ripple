@@ -27,6 +27,7 @@ pub fn web_router(state: Arc<WebState>) -> Router {
         .route("/favicon.ico", get(assets::favicon))
         .route("/static/{name}", get(assets::serve))
         .route("/login", get(login::page).post(login::submit))
+        .route("/unlock", post(login::unlock))
         .route("/logout", post(login::logout))
         .route("/status", get(status::page))
         .route("/status/system", get(status::system))
