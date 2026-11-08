@@ -9,6 +9,26 @@
     button.textContent = label;
   }
 
+  // 위 메뉴에서 지금 있는 곳을 굵게 표시한다. 타임라인("/")은 정확히 같을 때만, 나머지는 하위 경로까지 맞춘다.
+  function markCurrentMenu() {
+    const path = location.pathname;
+    document.querySelectorAll('nav[aria-label="메뉴"] a').forEach((link) => {
+      const href = link.getAttribute("href");
+      const current =
+        href === "/"
+          ? path === "/"
+          : path === href || path.startsWith(href + "/");
+      link.classList.toggle("font-semibold", current);
+      link.classList.toggle("text-foreground", current);
+      link.classList.toggle("text-muted-foreground", !current);
+      if (current) link.setAttribute("aria-current", "page");
+      else link.removeAttribute("aria-current");
+    });
+  }
+  markCurrentMenu();
+  document.addEventListener("htmx:pushedIntoHistory", markCurrentMenu);
+  window.addEventListener("popstate", markCurrentMenu);
+
   // 일반 폼(로그인)
   document.addEventListener("submit", (event) => {
     const form = event.target;
