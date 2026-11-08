@@ -66,6 +66,7 @@
 - 종목 삭제 폼은 이미 열린 확인창(`dialog`) 안에 있다. 비밀번호 창은 그 위에 `showModal()`로 열려야 하고, 3초 폴링 건너뛰기 규칙(`dialog[open]`)과 부딪치지 않는지 확인한다
 - htmx 2는 4xx 응답을 바꿔 끼우지 않고 `htmx:responseError`를 낸다. `htmx.trigger`로 다시 보낼 때 `htmx:beforeRequest`의 단추 잠금이 다시 걸리는지 확인한다
 - 리뷰(2026-11-08, access-token): `pnpm format:check`가 미추적 `.playwright-mcp/page-*.yml`(playwright MCP 캡처 기록) 때문에 실패한다. 이 작업 변경과 무관하면 지우지 말고 인계 "발견한 것"에 적는다
+- 리뷰(2026-11-08, role-guard): 손님이 `/unlock`에 성공하면 회원 쿠키를 받지만, 화면의 `data-access`는 새로 고칠 때까지 `guest`다(로그아웃 단추·예산 배너도 없음). 그동안 읽음 저장 위치를 어디로 할지 확인하고, 화면과 서버가 어긋나면 인계에 적는다. 손님 POST `/articles/read`는 401 JSON이다
 
 ## 상위로 올릴 조건
 기본 규칙(범위 밖·기대값 변경·두 번 고쳐도 남는 오류는 보고) + 원래 요청을 다시 보낼 수 없는 수정 동작이 있을 때, 서버 응답 모양(role-guard에서 정한 403·`/unlock`)을 바꿔야 할 때

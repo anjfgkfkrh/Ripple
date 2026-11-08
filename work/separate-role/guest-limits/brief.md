@@ -37,6 +37,9 @@
 - `rust/ripple/src/server/timeline/read.rs`의 `parse_timeline_params`·`TIMELINE_MAX`
 - `rust/ripple/src/web/stocks.rs`의 `keywords_view`(`failed_text`)
 - `docs/DECISIONS.md` 1장 "16단계 공개 보안 대책"·"16단계 보안 대책 계획 세부"
+- `rust/ripple/src/web/guard.rs`의 `check`(분류 `required` → `Need`, 통과 때 `Access`를 확장에 넣음)와 `guard`(`X-Robots-Tag`를 붙이는 바깥 함수). 제한은 `check` 안 `Need::Guest`이고 `!access.is_member()`일 때 센다
+- 손님 여부는 핸들러에서 `Extension<Access>`로 읽는다(`timeline::page`·`stocks::page`가 본보기). `stocks::list`·`markets`·`topic_list`와 `stock_list_view`·`keywords_view`는 아직 `Access`를 받지 않는다. 키워드 실패 글자는 `/stocks`와 `/stocks/list` 조각(그리고 수정 POST의 OOB 목록, 이쪽은 회원만) 모두에서 그려진다
+- 시험 도우미 `start_web_guest_off()`·`TestWeb::expired_edit_cookie()`(role-guard에서 더함)
 
 ## 미리 정한 판단
 - DB 읽기: `WebDb`(또는 `WebState`)에 async 함수 하나를 두고, `tokio::task::spawn_blocking` 안에서 기존 `with`를 부른다. 아홉 곳을 모두 이 함수로 바꾼다. 클로저에 넘기는 값은 소유값(`'static`)으로 옮긴다. 실행기(`new_current_thread`)는 바꾸지 않는다.
@@ -61,6 +64,7 @@
 - E2E 시험들은 `asClient`로 시험마다 다른 `cf-connecting-ip`를 쓴다. 로그인 전 손님 GET도 세므로, 한 시험 안에서 손님 GET이 60번을 넘지 않는지 확인한다
 - `spawn_blocking` 안에서 잠금이 깨지면(panic) 지금처럼 오류 글자로 돌려준다. `JoinError`도 같은 오류 글자로 바꾼다
 - 리뷰(2026-11-08, access-token): `pnpm format:check`가 미추적 `.playwright-mcp/page-*.yml`(playwright MCP 캡처 기록) 때문에 실패한다. 이 작업 변경과 무관하면 지우지 말고 인계 "발견한 것"에 적는다
+- 리뷰(2026-11-08, role-guard): 손님 `/stocks` 화면은 키워드·트리를 만드는 동안 목록·시장·주제 세 곳이 3초마다 폴링한다(합쳐 1분 60번). 이 폴링도 손님 GET으로 세므로 손님이 그 화면을 1분 보면 429에 닿을 수 있다. 시험이나 계산으로 닿는지 확인하고, 닿으면 상위로 올린다(세는 규칙을 혼자 바꾸지 않는다)
 
 ## 상위로 올릴 조건
 기본 규칙(범위 밖·기대값 변경·두 번 고쳐도 남는 오류는 보고) + 회원 화면의 동작이 바뀌어야 할 때
