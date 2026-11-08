@@ -22,3 +22,4 @@ rust/ripple/static/htmx.min.js
 rust/ripple/static/app.css
 rust/ripple/styles/shadcn.css
 rust/ripple/styles/tw-animate.css
+.playwright-mcp/

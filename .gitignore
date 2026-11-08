@@ -62,3 +62,6 @@ yarn-error.log*
 
 # 시험용 터널 값(real-check 고정 주소 확인)
 check-tunnel.vars
+
+# Playwright MCP 브라우저 도구가 남기는 임시 파일
+.playwright-mcp/
