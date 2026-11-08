@@ -7,3 +7,4 @@ time,id,role,stage,task,attempt,model,effort,requests,input,cache_write_5m,cache
 2026-11-08 21:49:58,a534b34b4f9a7333c,review,separate-role,work/separate-role/guest-limits,1,claude-opus-5-5,기본,41,86,123121,0,3653907,17783,217070,1.7024,15.4641,13.7617,89.0
 2026-11-08 21:55:20,a9e0fa1c9a3c3894d,work,separate-role,work/separate-role/unlock-ui,1,claude-sonnet-5-5,medium,30,60,95991,0,2496002,24365,114246,0.7333,5.4278,4.6944,86.5
 2026-11-08 21:58:30,ad1e97b25f330a8f4,review,separate-role,work/separate-role/unlock-ui,1,claude-opus-5-5,기본,22,46,106033,0,1637347,11476,106035,1.0873,7.2032,6.1159,84.9
+2026-11-08 22:34:46,6a611f00-cb4e-4cdd-b84e-a13ec62495bb,run,separate-role,,,claude-sonnet-5-5,medium,77,206,0,98549,7237761,30745,133548,1.4258,14.9805,13.5546,90.5
