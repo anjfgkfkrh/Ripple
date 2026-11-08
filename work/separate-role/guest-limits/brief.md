@@ -60,6 +60,7 @@
 ## 알려진 함정
 - E2E 시험들은 `asClient`로 시험마다 다른 `cf-connecting-ip`를 쓴다. 로그인 전 손님 GET도 세므로, 한 시험 안에서 손님 GET이 60번을 넘지 않는지 확인한다
 - `spawn_blocking` 안에서 잠금이 깨지면(panic) 지금처럼 오류 글자로 돌려준다. `JoinError`도 같은 오류 글자로 바꾼다
+- 리뷰(2026-11-08, access-token): `pnpm format:check`가 미추적 `.playwright-mcp/page-*.yml`(playwright MCP 캡처 기록) 때문에 실패한다. 이 작업 변경과 무관하면 지우지 말고 인계 "발견한 것"에 적는다
 
 ## 상위로 올릴 조건
 기본 규칙(범위 밖·기대값 변경·두 번 고쳐도 남는 오류는 보고) + 회원 화면의 동작이 바뀌어야 할 때

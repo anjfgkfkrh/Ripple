@@ -80,6 +80,9 @@ guard가 요청마다 `Access`를 만들어 요청 확장(extensions)에 넣고,
 ## 알려진 함정
 - htmx는 4xx 응답을 바꿔 끼우지 않는다. 403 본문은 화면에 나오지 않으므로 헤더(`HX-Trigger`)로 알린다
 - 시험용 web 도우미가 `GUEST_VIEW` 기본(켬)으로 뜨므로, 기존 guard 시험의 "손님 GET `/` → 로그인 이동" 기대는 `GUEST_VIEW=off` 시험으로 옮겨야 한다. 이것은 기대값 변경이므로 인계에 적는다
+- 리뷰(2026-11-08, access-token): 시험 도우미 `start_web`은 `guest_view: true`·`edit_unlock_minutes: 30`이 박혀 있다. `GUEST_VIEW=off` 시험은 도우미에 설정을 넘길 길을 더해야 한다(`start_web_with_tunnel`처럼)
+- 리뷰(2026-11-08, access-token): `cookie()`는 지금 시계로 새 토큰(수정 권한 30분)을 낸다. "수정 권한 지난 회원"은 `cookie()`를 받은 뒤 `clock`을 30분 이상 넘겨 만든다
+- 리뷰(2026-11-08, access-token): `pnpm format:check`가 미추적 `.playwright-mcp/page-*.yml`(playwright MCP 캡처 기록) 때문에 실패한다. 이 작업 변경과 무관하면 지우지 말고 인계 "발견한 것"에 적는다
 
 ## 상위로 올릴 조건
 기본 규칙(범위 밖·기대값 변경·두 번 고쳐도 남는 오류는 보고) + 위 목록 밖의 E2E 기대값을 바꿔야 할 때, 분류 규칙에 맞지 않는 경로가 나올 때

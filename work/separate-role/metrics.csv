@@ -1,0 +1,2 @@
+time,id,role,stage,task,attempt,model,effort,requests,input,cache_write_5m,cache_write_1h,cache_read,output,max_context,cost_usd,nocache_usd,saved_usd,saved_pct
+2026-11-08 21:26:45,ab0ac559da567ca24,work,separate-role,work/separate-role/access-token,1,claude-sonnet-5-5,medium,14,28,64904,0,719989,8820,64906,0.3225,1.6580,1.3355,80.5
