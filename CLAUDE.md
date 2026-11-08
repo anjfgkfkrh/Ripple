@@ -40,7 +40,7 @@
 
 ## 안전
 - 키 같은 비밀 값은 환경 변수로만 쓰고, 출력하거나 커밋하지 않는다(`.env.example`만 커밋). `.env`는 읽지 않는다(설정과 hook이 막는다). 커밋 전에는 `node scripts/check-secrets.mjs`, 푸시 전에는 `--history`로 키를 검사한다.
-- 공개 URL로 노출되므로 미로그인 시 모든 페이지·API를 막는다.
+- 공개 URL로 노출되므로 미로그인 시 손님 보기(16단계: GET 타임라인·종목, `GUEST_VIEW`)를 뺀 모든 페이지·API를 막는다. GET이 아닌 요청은 허용 목록 밖이면 모두 수정 권한을 요구한다(기본 닫힘).
 - 커밋, 푸시, 배포는 내가 요청할 때만 한다. 예외: agentflow 스킬(plan·run·work·review·diagnose·close)은 단계 브랜치 `af/<단계>`에 스스로 커밋한다. main에 합치기는 내가 요청할 때만, 합치기 전에 `node scripts/check-secrets.mjs`를 반드시 돌린다(하위는 이 검사 없이 커밋한다). 배포는 main에서 `/deploy`.
 - 본 Docker(compose 프로젝트 `ripple`)에는 내 실제 데이터가 있다. 병렬 worktree는 쓰지 않는다(compose 이름이 고정이라 worktree에서 띄우면 본 Docker가 바뀐다).
 
