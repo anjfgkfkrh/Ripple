@@ -45,7 +45,7 @@
 - **질문 → 기록 → 구현**: 단계 시작 전(`/agentflow:plan`에서 작업 목록을 승인받기 전)에 그 단계의 미결정(SPEC 13장 D-xx)과 화면·비용·구조 관련 질문을 모아 A/B·장단점·추천으로 묻는다. 답은 DECISIONS.md 1장(과 SPEC 13장 상태)에 먼저 적고 구현한다. 기능이 바뀌면 SPEC 본문도 고친다.
 - **작은 결정**: 스스로 정한 것은 DECISIONS.md 1장에 "— 구현 중 정함"으로 적고 보고에 표로 알린다. 사용자가 이의 없이 다음 응답을 하면 "— 구현 중 정함, 보고 후 이의 없음"으로 바꾼다. 이전 단계의 줄은 다음 단계 `/agentflow:plan`을 시작할 때 바꾼다(전에는 `/stage-start`가 했다).
 - **돈이 드는 실행**: 예상 비용을 말하고 승인받는다. 승인과 실제 사용은 DECISIONS.md 1장 "N단계 실제 API 호출" 줄과 아래 5장에 적는다. 개발 중 worker 밖에서 직접 부른 AI 호출도 사용량 기록(`usage_logs`)에 `*_check` 용도로 넣어 월 합계를 맞춘다.
-- **본 Docker에는 사용자 실제 데이터가 있다(2026-10-21부터)**: compose 프로젝트 `ripple`(볼륨 `ripple_ripple-data`)은 사용자가 쓰고 있다. 실제 확인은 시험용 Docker(프로젝트 `ripple-check`, `/real-check`)로 한다. 본 Docker의 비밀번호·설정·종목·예산을 바꾸지 않고, 재빌드(배포)는 사용자가 요청할 때만 한다. 읽기 전용 조회는 괜찮다.
+- **본 Docker에는 사용자 실제 데이터가 있다(2026-10-21부터)**: compose 프로젝트 `ripple`(볼륨 `ripple_ripple-data`)은 사용자가 쓰고 있다. **2026-11-09부터 원격 서버 `blockall@blockall-ss`(`~/Ripple`, Ubuntu x86_64)에서 돈다**. 원격에는 `docker-compose.yml`·`.env`·`backups/`만 있고, 이미지는 Mac에서 amd64로 빌드해 보낸다(`/deploy`). Mac의 `ripple` 컨테이너·볼륨은 2026-11-09에 지웠다. Mac에서 `-p ripple-check` 없이 `docker compose up`하지 않는다(같은 터널·worker가 겹친다). 원격 조회는 `ssh blockall@blockall-ss 'cd ~/Ripple && docker compose …'`. 실제 확인은 시험용 Docker(프로젝트 `ripple-check`, `/real-check`)로 한다. 본 Docker의 비밀번호·설정·종목·예산을 바꾸지 않고, 재빌드(배포)는 사용자가 요청할 때만 한다. 읽기 전용 조회는 괜찮다.
 - **세션**: 작업 하나에 세션 하나(결정·구현·검사·배포·질문). 단계 작업은 agentflow가 작업마다 하위 세션을 나누고, 인계는 `work/<단계>/<작업>/` 파일로 한다. 단계 밖 세션은 시작할 때 STATE.md와 작업에 관련된 SPEC 장만 읽는다. 끝날 때 `/handoff`로 STATE.md와 DECISIONS.md를 고치고, 사용자가 `/rename` 뒤 `/clear` 한다. 대화와 세션 임시 폴더(scratchpad)에만 있는 것은 다음 세션에서 사라지므로, 다시 필요한 방법·절차는 문서나 skill에 적는다.
 - 답변은 한국어로, 결론 먼저, 비교는 표로.
 
@@ -61,7 +61,7 @@
 | `docker build --target ripple .` | 이미지 하나(`ripple`)를 만든다. 본 Docker와 무관(컨테이너를 건드리지 않음) |
 | `node scripts/check-secrets.mjs` | 스테이징한 변경에 `.env`의 비밀 값·흔한 키 형식이 없는지 본다(값은 출력하지 않음). `--history`는 모든 커밋 기록(푸시 전) |
 | `/check` | 위 검사를 모두 돌리고 결과 표를 돌려준다(따로 떨어진 컨텍스트에서 실행). `/check 빠르게`는 서식·린트·타입·단위만 |
-| `/deploy` | 본 Docker 배포(백업 → 다시 빌드 → 확인). 사용자가 요청할 때만, 사용자가 직접 부른다 |
+| `/deploy` | 본 Docker(원격 blockall-ss) 배포(백업 → Mac에서 amd64 빌드·전송 → 다시 띄우기 → 확인). 사용자가 요청할 때만, 사용자가 직접 부른다 |
 
 Claude Code 설정(2026-10-29, 결정은 DECISIONS.md 1장 "개발 환경" 줄)
 - `.claude/settings.json`: 이 프로젝트에서 superpowers 끔, 검사 명령 허용, 푸시·본 Docker 명령은 확인, `.env` 읽기·고치기 막음, hook 두 개(`.claude/hooks/`: 고친 파일 Prettier 서식, Bash 명령의 `.env` 막기)

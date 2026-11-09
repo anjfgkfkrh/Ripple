@@ -24,12 +24,16 @@ TUNNEL_TOKEN= PUBLIC_URL= WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups docker 
 
 ## 2. 실제 데이터 사본 넣기(필요할 때)
 
-본 DB를 직접 쓰지 않고 백업 사본을 시험 볼륨에 넣는다. 최신 백업은 `ls -t backups/ | head -1`(매일 04:00 자동, 7개 보관).
+본 DB를 직접 쓰지 않고 백업 사본을 시험 볼륨에 넣는다. 본 Docker는 2026-11-09부터 원격 서버라 백업도 원격 `~/Ripple/backups`에 있다(매일 04:00 자동, 7개 보관). Mac의 `backups/`는 그 전까지의 옛 백업이다. 최신 백업을 시험 폴더로 받아 온다:
 
 ```bash
+F="$(ssh blockall@blockall-ss 'ls -t ~/Ripple/backups/*.db | head -1')"
+mkdir -p .check-restore && scp -q "blockall@blockall-ss:$F" .check-restore/
 TUNNEL_TOKEN= PUBLIC_URL= WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups docker compose -p ripple-check run --rm --no-deps \
-  -v "$PWD/backups":/restore:ro worker sh -c 'cp /restore/<백업 파일> /data/ripple.db'
+  -v "$PWD/.check-restore":/restore:ro worker sh -c "cp /restore/$(basename "$F") /data/ripple.db"
 ```
+
+넣은 뒤 `rm -rf .check-restore`(실제 데이터 사본이다).
 
 - 켜자마자 정기 작업(06:00 키워드 재생성 등)이 돌면 확인이 흐려진다. 막아야 하면 같은 방식으로 `run --rm --no-deps --entrypoint sqlite3 worker /data/ripple.db "update settings …"`로 시험 DB의 settings 값을 바꾼다(이미지에 sqlite3가 있다. Node는 없다). 키 이름과 값 형식은 `rust/ripple/src/server/settings.rs`에서 확인한다. 키워드 재생성은 `keywords.autoRegeneratedAt`을 지금 시각으로 두면 이번 주기에 이미 한 것으로 본다(`rust/ripple/src/server/schedule/plan.rs`).
 
