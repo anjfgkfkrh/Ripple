@@ -70,6 +70,7 @@
 - `settings.rs`의 깊이 기본값·범위와 설정 화면은 tree-screen이 고친다. 여기서는 생성 쪽 자르기만 한다.
 - 리뷰(2026-11-10, llm-request): `GenerateOk`에 `deepest`(후보 트리의 가장 깊은 단계)가 생겼고 결과 줄은 `queue.rs`의 `success_line`이 만든다(`rated`·`unrated_reason`을 쓴다). Jev 평가를 없애면 이 함수와 `queue_tests`의 `success_line_shows_actual_over_configured_depth`도 함께 고친다. 새 `StructuredRequest`에는 `reasoning: Reasoning::default()`를 넣는다.
 - 리뷰(2026-11-10, anchor-schema): `validate_aliases`는 `rusqlite::Result<Vec<String>>`이고 `listings` 다른 줄 이름과 "서로 포함"을 공백 빼고 소문자로 단순 포함 비교한다. 짧은 상장사 이름(영문 미국 종목 등)이 있으면 별칭이 많이 버려질 수 있으니 시험 Docker 확인 때 버려진 수를 본다. `set_stock_terms`는 `&Connection`을 받으므로 트랜잭션(`Transaction`은 `Connection`으로 deref) 안에서 부른다.
+- 리뷰(2026-11-10, anchor-match): 고유어 비교는 `match.rs`에서 제목과 고유어를 소문자로 바꾸고 공백을 모두 뺀 단순 포함이다(`squash`). 저장할 고유어를 다듬을 때 이 비교와 어긋나는 가공(낱말 경계 요구 등)을 하지 않는다. `gated`는 수집·지난 기사 걸기 때 정해져 저장되고, 고유어를 새로 만들어도 이미 저장된 연결은 다시 계산하지 않는다. E2E `collect.spec.ts`의 "하닉"(SK하이닉스) 키워드 연결도 고유어가 있어야 평가된다.
 
 ## 상위로 올릴 조건
 기본 규칙(범위 밖·기대값 변경·두 번 고쳐도 남는 오류는 보고) + 기존 E2E 수집 기대값을 고유어로 맞출 수 없을 때
