@@ -32,12 +32,22 @@ pub struct RawTopic {
     pub summary: String,
     pub terms: Vec<String>,
     pub related: Vec<RawRelated>,
+    /// `market` 또는 `company`(모르는 값·빠진 값은 `market`)
+    pub scope: String,
 }
 
 /// LLM 출력 형식(`topicRefreshSchema`)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RawTopicRefresh {
     pub topics: Vec<RawTopic>,
+}
+
+/// 토픽 범위: `company`만 알아보고 나머지는 모두 `market`
+pub fn parse_scope(value: Option<&Value>) -> String {
+    match value.and_then(Value::as_str) {
+        Some("company") => "company".to_string(),
+        _ => "market".to_string(),
+    }
 }
 
 /// zod `topicRefreshSchema.safeParse` 대응: 모든 칸이 글자(목록)여야 하고 모르는 키는 버린다.
@@ -68,6 +78,7 @@ pub fn parse_topic_refresh(value: &Value) -> Option<RawTopicRefresh> {
             summary: text(item, "summary")?,
             terms,
             related,
+            scope: parse_scope(item.get("scope")),
         });
     }
     Some(RawTopicRefresh { topics })
@@ -127,6 +138,8 @@ pub struct RefreshedTopic {
     pub summary: String,
     pub terms: Vec<String>,
     pub related: Vec<RawRelated>,
+    /// `market` 또는 `company`. company 토픽은 토픽 항목·카드 없이 관련 종목 가지만 둔다.
+    pub scope: String,
 }
 
 pub fn build_topic_refresh_messages(
@@ -219,6 +232,22 @@ pub fn clean_topic_refresh(
         if name.is_empty() || names.contains(&key) {
             continue;
         }
+        let mut related: Vec<RawRelated> = Vec::new();
+        for relation in &item.related {
+            let target = js_trim(&relation.item).to_string();
+            if !item_names.contains(target.as_str()) || related.iter().any(|r| r.item == target) {
+                continue;
+            }
+            related.push(RawRelated {
+                item: target,
+                reason: clean(&relation.reason, MAX_REASON_LENGTH),
+            });
+        }
+        let scope = parse_scope(Some(&Value::String(item.scope.clone())));
+        // 관련 종목이 없는 company 토픽은 붙일 곳이 없으니 버린다.
+        if scope == "company" && related.is_empty() {
+            continue;
+        }
         names.insert(key);
         let id = js_trim(&item.id).to_string();
         let keep_id = (previous_ids.contains(&id) && !used_ids.contains(&id)).then_some(id);
@@ -235,23 +264,13 @@ pub fn clean_topic_refresh(
                 break;
             }
         }
-        let mut related: Vec<RawRelated> = Vec::new();
-        for relation in &item.related {
-            let target = js_trim(&relation.item).to_string();
-            if !item_names.contains(target.as_str()) || related.iter().any(|r| r.item == target) {
-                continue;
-            }
-            related.push(RawRelated {
-                item: target,
-                reason: clean(&relation.reason, MAX_REASON_LENGTH),
-            });
-        }
         topics.push(RefreshedTopic {
             id: keep_id,
             name,
             summary: clean(&item.summary, MAX_SUMMARY_LENGTH),
             terms,
             related,
+            scope,
         });
         if topics.len() >= MAX_TOPICS {
             break;

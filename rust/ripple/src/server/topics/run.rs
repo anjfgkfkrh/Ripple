@@ -226,8 +226,8 @@ pub async fn refresh_topics<L: LlmClient, D: Decider>(
                 let topic = if let Some(id) = id {
                     conn.execute(
                         "UPDATE topics SET name = ?1, summary = ?2, terms = ?3, last_seen_at = ?4, status = 'active', \
-                         ended_at = NULL WHERE id = ?5",
-                        rusqlite::params![item.name, item.summary, terms, at, id],
+                         ended_at = NULL, scope = ?6 WHERE id = ?5",
+                        rusqlite::params![item.name, item.summary, terms, at, id, item.scope],
                     )?;
                     let topic = find_topic(&conn, id)?.expect("고친 토픽이 있다");
                     kept.insert(id);
@@ -235,22 +235,32 @@ pub async fn refresh_topics<L: LlmClient, D: Decider>(
                     if ended_ids.contains(&id) {
                         summary.revived += 1;
                     }
-                    for lens in topic_lenses(&conn, id)? {
-                        if lens.deleted_at.is_none() {
-                            set_auto_topic_terms(&conn, lens.id, &topic, at)?;
+                    if item.scope != "company" {
+                        for lens in topic_lenses(&conn, id)? {
+                            if lens.deleted_at.is_none() {
+                                set_auto_topic_terms(&conn, lens.id, &topic, at)?;
+                            }
                         }
                     }
                     topic
                 } else {
                     conn.execute(
-                        "INSERT INTO topics (source, name, summary, terms, created_at, last_seen_at) \
-                         VALUES ('auto', ?1, ?2, ?3, ?4, ?4)",
-                        rusqlite::params![item.name, item.summary, terms, at],
+                        "INSERT INTO topics (source, name, summary, terms, created_at, last_seen_at, scope) \
+                         VALUES ('auto', ?1, ?2, ?3, ?4, ?4, ?5)",
+                        rusqlite::params![item.name, item.summary, terms, at, item.scope],
                     )?;
                     summary.created += 1;
                     find_topic(&conn, conn.last_insert_rowid())?.expect("만든 토픽이 있다")
                 };
-                new_lenses.extend(sync_topic_lenses(&conn, &topic, at)?);
+                if item.scope == "company" {
+                    // 종목 한 곳 얘기인 토픽은 항목(시장 렌즈) 없이 종목 가지만 둔다. 있던 항목은 숨긴다.
+                    conn.execute(
+                        "UPDATE stocks SET deleted_at = ?1 WHERE kind = 'topic' AND topic_id = ?2 AND deleted_at IS NULL",
+                        rusqlite::params![at, topic.id],
+                    )?;
+                } else {
+                    new_lenses.extend(sync_topic_lenses(&conn, &topic, at)?);
+                }
                 current.push((topic, item.clone()));
             }
             for topic in &active {

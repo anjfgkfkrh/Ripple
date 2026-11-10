@@ -46,6 +46,14 @@
               "additionalProperties": false
             },
             "description": "영향을 받을 만한 내 종목. 없으면 빈 목록"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "market",
+              "company"
+            ],
+            "description": "market: 증시 전체나 여러 업종에 퍼지는 토픽. company: 내 종목에 직접 걸린 특정 회사·사업 건"
           }
         },
         "required": [
@@ -53,7 +61,8 @@
           "name",
           "summary",
           "terms",
-          "related"
+          "related",
+          "scope"
         ],
         "additionalProperties": false
       }

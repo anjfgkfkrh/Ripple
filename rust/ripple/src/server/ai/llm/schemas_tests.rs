@@ -91,3 +91,20 @@ fn keyword_update_schema_asks_for_removes_adds_anchors_and_aliases() {
         keyword_tree()["properties"]["keywords"]["items"]
     );
 }
+
+#[test]
+fn topic_refresh_schema_has_required_scope_enum() {
+    let schema = topic_refresh();
+    let item = &schema["properties"]["topics"]["items"];
+    assert_eq!(
+        item["properties"]["scope"]["enum"],
+        serde_json::json!(["market", "company"])
+    );
+    assert!(
+        item["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v == "scope")
+    );
+}

@@ -436,6 +436,7 @@ fn raw_topic(id: &str, name: &str) -> RawTopic {
         summary: "설명".into(),
         terms: vec![],
         related: vec![],
+        scope: "market".into(),
     }
 }
 
@@ -453,6 +454,7 @@ fn refreshed(id: Option<&str>, name: &str) -> RefreshedTopic {
         summary: String::new(),
         terms: vec![],
         related: vec![],
+        scope: "market".into(),
     }
 }
 
@@ -495,20 +497,23 @@ fn cleaning_keeps_only_previous_ids_and_drops_duplicates_empty_names_terms_and_u
                     .map(|s| s.to_string())
                     .collect(),
                 related: vec![related("현대건설", "중동 수주")],
+                scope: "market".into(),
             },
             RefreshedTopic {
                 id: None,
                 name: "기준금리".into(),
                 summary: "설명".into(),
                 terms: vec![],
-                related: vec![]
+                related: vec![],
+                scope: "market".into(),
             },
             RefreshedTopic {
                 id: None,
                 name: "환율".into(),
                 summary: "설명".into(),
                 terms: vec![],
-                related: vec![]
+                related: vec![],
+                scope: "market".into(),
             },
         ]
     );
@@ -680,6 +685,7 @@ struct Ans {
     name: String,
     terms: Vec<String>,
     related: Vec<(String, String)>,
+    scope: &'static str,
 }
 
 fn ans(name: &str, terms: &[&str]) -> Ans {
@@ -688,6 +694,7 @@ fn ans(name: &str, terms: &[&str]) -> Ans {
         name: name.into(),
         terms: terms.iter().map(|t| t.to_string()).collect(),
         related: vec![],
+        scope: "market",
     }
 }
 
@@ -708,6 +715,7 @@ fn answer(items: Vec<Ans>) -> crate::test_support::FakeLlm {
                 "summary": format!("{} 설명", item.name),
                 "terms": item.terms,
                 "related": item.related.iter().map(|(i, r)| json!({ "item": i, "reason": r })).collect::<Vec<_>>(),
+                "scope": item.scope,
             })
         })
         .collect();
@@ -1434,4 +1442,116 @@ fn reduce_titles_drops_kana_groups_same_news_and_keeps_order() {
         ]
     );
     assert!(reduce_titles(&[]).is_empty());
+}
+
+// describe("토픽 범위(scope)")
+#[test]
+fn scope_parses_company_and_everything_else_is_market() {
+    let parse = |scope: Value| {
+        let mut topic = json!({ "id": "", "name": "a", "summary": "b", "terms": [], "related": [] });
+        if !scope.is_null() {
+            topic["scope"] = scope;
+        }
+        parse_topic_refresh(&json!({ "topics": [topic] })).unwrap().topics[0]
+            .scope
+            .clone()
+    };
+    assert_eq!(parse(json!("company")), "company");
+    assert_eq!(parse(json!("market")), "market");
+    assert_eq!(parse(json!("???")), "market");
+    assert_eq!(parse(json!(3)), "market");
+    assert_eq!(parse(Value::Null), "market");
+}
+
+#[test]
+fn cleaning_drops_company_topics_without_related_items_and_keeps_scope() {
+    let company = |name: &str, with_related: bool| RawTopic {
+        scope: "company".into(),
+        related: if with_related {
+            vec![related("현대건설", "수주")]
+        } else {
+            vec![]
+        },
+        ..raw_topic("", name)
+    };
+    let raw = RawTopicRefresh {
+        topics: vec![
+            company("수주전", true),
+            company("회사 소식", false),
+            raw_topic("", "금리"),
+        ],
+    };
+    let cleaned = clean_topic_refresh(&raw, &Default::default(), &["현대건설".to_string()]);
+    let got: Vec<(&str, &str)> = cleaned
+        .iter()
+        .map(|t| (t.name.as_str(), t.scope.as_str()))
+        .collect();
+    assert_eq!(got, [("수주전", "company"), ("금리", "market")]);
+}
+
+fn lens_count(shared: &SharedTestDb, topic_id: i64, only_visible: bool) -> i64 {
+    shared
+        .db
+        .lock()
+        .unwrap()
+        .query_row(
+            &format!(
+                "SELECT count(*) FROM stocks WHERE kind = 'topic' AND topic_id = ?1 {}",
+                if only_visible { "AND deleted_at IS NULL" } else { "" }
+            ),
+            [topic_id],
+            |r| r.get(0),
+        )
+        .unwrap()
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn company_topic_has_no_lens_keeps_jev_branch_and_stores_scope_and_market_again_restores_lens() {
+    let (shared, samsung) = setup();
+    seed_titles(&shared, at(-0.1), 30, &[]);
+    let mut company = ans("삼성 수주", &["삼성 수주"]);
+    company.scope = "company";
+    company.related = vec![("삼성전자".into(), "수주 소식".into())];
+    let mut lonely = ans("외톨이 회사", &["외톨이"]);
+    lonely.scope = "company";
+    let mut market = ans("기준금리", &["기준금리"]);
+    market.related = vec![];
+    let llm = answer(vec![company, lonely, market]);
+    refresh(&shared, &llm, Some(&default_decider()), now()).await;
+
+    let topics = all_topics(&shared);
+    let names: Vec<&str> = topics.iter().map(|t| t.name.as_str()).collect();
+    assert_eq!(names, ["삼성 수주", "기준금리"]);
+    assert_eq!(topics[0].scope, "company");
+    assert_eq!(topics[1].scope, "market");
+    assert_eq!(lens_count(&shared, topics[0].id, false), 0);
+    assert!(lens_count(&shared, topics[1].id, true) > 0);
+    // 관련 종목 가지는 Jev 평가 뒤에 붙는다.
+    assert_eq!(
+        lens_keywords(&shared, samsung.id)[0],
+        "삼성 수주",
+    );
+
+    // 시장 토픽이던 것이 company로 바뀌면 항목을 숨기고, 다시 market이 되면 되살린다.
+    let rates = topics[1].id;
+    seed_titles(&shared, at(2.9), 30, &[]);
+    let mut turned = ans_with(rates, "기준금리", &["기준금리"]);
+    turned.scope = "company";
+    turned.related = vec![("삼성전자".into(), "금리 영향".into())];
+    refresh(&shared, &answer(vec![turned]), Some(&default_decider()), at(3.0)).await;
+    assert_eq!(lens_count(&shared, rates, true), 0);
+    assert!(lens_count(&shared, rates, false) > 0);
+    seed_titles(&shared, at(5.9), 30, &[]);
+    refresh(
+        &shared,
+        &answer(vec![ans_with(rates, "기준금리", &["기준금리"])]),
+        Some(&default_decider()),
+        at(6.0),
+    )
+    .await;
+    assert!(lens_count(&shared, rates, true) > 0);
+    assert_eq!(
+        all_topics(&shared).iter().find(|t| t.id == rates).unwrap().scope,
+        "market"
+    );
 }
