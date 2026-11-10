@@ -7,10 +7,10 @@ use crate::test_support::{ms, test_db};
 fn valid() -> Value {
     json!({
         "collectIntervalMinutes": "60",
-        "keywordsDepth": "3",
-        "keywordsRegenerateEvery": "weekly",
+        "keywordsDepth": "1",
+        "keywordsRegenerateEvery": "daily",
         "minRelevance": "6.5",
-        "minMagnitude": "6",
+        "minMagnitude": "5",
         "keywordMinRelevance": "7",
         "keywordMinMagnitude": "5",
         "topicIntervalHours": "4",
@@ -40,7 +40,7 @@ fn first_error(body: &Value, field: SettingsField) -> Option<String> {
 fn parses_text_numbers_and_normalizes_times() {
     let form = parse_settings_form(&valid()).unwrap();
     assert_eq!(form.collect_interval_minutes, 60.0);
-    assert_eq!(form.keywords_regenerate_every, RegenerateEvery::Weekly);
+    assert_eq!(form.keywords_regenerate_every, RegenerateEvery::Daily);
     assert_eq!(form.min_relevance, 6.5);
     // 한 자리 시각은 두 자리로, 겹치는 시각은 하나로, 시각 순으로
     assert_eq!(form.topic_times, vec!["08:30", "15:40"]);
@@ -155,15 +155,15 @@ fn field_limits() {
             SettingsField::KeywordsDepth
         )
         .unwrap(),
-        "1~4 사이 정수로 넣으세요."
+        "1~2 사이 정수로 넣으세요."
     );
     assert_eq!(
         first_error(
-            &with("keywordsDepth", json!("5")),
+            &with("keywordsDepth", json!("3")),
             SettingsField::KeywordsDepth
         )
         .unwrap(),
-        "1~4 사이로 넣으세요."
+        "1~2 사이로 넣으세요."
     );
     assert_eq!(
         first_error(&with("maxPerRun", json!("9")), SettingsField::MaxPerRun).unwrap(),
@@ -257,4 +257,49 @@ fn writes_all_and_reports_changed_fields_in_order() {
             .unwrap()
             .is_empty()
     );
+}
+
+#[test]
+fn depth_accepts_only_one_or_two() {
+    for ok in ["1", "2"] {
+        assert!(
+            first_error(
+                &with("keywordsDepth", json!(ok)),
+                SettingsField::KeywordsDepth
+            )
+            .is_none()
+        );
+    }
+    for bad in ["3", "4", "0"] {
+        assert_eq!(
+            first_error(
+                &with("keywordsDepth", json!(bad)),
+                SettingsField::KeywordsDepth
+            )
+            .unwrap(),
+            "1~2 사이로 넣으세요.",
+            "{bad}"
+        );
+    }
+}
+
+#[test]
+fn form_defaults_and_old_depth_shows_as_two() {
+    let db = test_db();
+    let form = read_settings_form(&db.conn).unwrap();
+    assert_eq!(form.keywords_depth, 2.0);
+    assert_eq!(form.keywords_regenerate_every, RegenerateEvery::Weekly);
+    assert_eq!(form.min_magnitude, 5.0);
+    assert_eq!(form.keyword_min_relevance, 6.0);
+    assert_eq!(form.keyword_min_magnitude, 5.0);
+    // 17단계 전에 저장한 깊이 3·4는 화면에 2로 보인다
+    for old in ["3", "4"] {
+        db.conn
+            .execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('keywords.depth', ?1, 0)",
+                [old],
+            )
+            .unwrap();
+        assert_eq!(read_settings_form(&db.conn).unwrap().keywords_depth, 2.0);
+    }
 }

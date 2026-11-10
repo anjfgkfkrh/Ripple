@@ -114,3 +114,17 @@ fn numbers_are_stored_like_json_stringify() {
         "줄\n바꿈 \"따옴표\""
     );
 }
+
+#[test]
+fn keyword_defaults_follow_the_17th_stage() {
+    // 17단계: 깊이 2, 정기 점검 주 1회, 영향도 표시 기준 5, 토픽을 붙일 기준 6·5
+    let db = test_db();
+    assert_eq!(read_num(&db.conn, &KEYWORDS_DEPTH).unwrap(), 2.0);
+    assert_eq!(
+        read_str(&db.conn, &KEYWORDS_REGENERATE_EVERY).unwrap(),
+        "weekly"
+    );
+    assert_eq!(read_num(&db.conn, &EVALUATION_MIN_MAGNITUDE).unwrap(), 5.0);
+    assert_eq!(read_num(&db.conn, &KEYWORDS_MIN_RELEVANCE).unwrap(), 6.0);
+    assert_eq!(read_num(&db.conn, &KEYWORDS_MIN_MAGNITUDE).unwrap(), 5.0);
+}

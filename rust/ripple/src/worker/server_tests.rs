@@ -692,10 +692,10 @@ async fn collect_without_token_is_401() {
 fn form() -> Value {
     json!({
         "collectIntervalMinutes": "60",
-        "keywordsDepth": "3",
-        "keywordsRegenerateEvery": "weekly",
+        "keywordsDepth": "1",
+        "keywordsRegenerateEvery": "daily",
         "minRelevance": "6.5",
-        "minMagnitude": "6",
+        "minMagnitude": "5",
         "keywordMinRelevance": "7",
         "keywordMinMagnitude": "5",
         "topicIntervalHours": "4",
@@ -741,10 +741,10 @@ async fn settings_save_checked_values_at_once_and_report_changes() {
     );
     let saved = read_settings_form(&server.shared.db.lock().unwrap()).unwrap();
     assert_eq!(saved.collect_interval_minutes, 60.0);
-    assert_eq!(saved.keywords_depth, 3.0);
-    assert_eq!(saved.keywords_regenerate_every.as_str(), "weekly");
+    assert_eq!(saved.keywords_depth, 1.0);
+    assert_eq!(saved.keywords_regenerate_every.as_str(), "daily");
     assert_eq!(saved.min_relevance, 6.5);
-    assert_eq!(saved.min_magnitude, 6.0);
+    assert_eq!(saved.min_magnitude, 5.0);
     assert_eq!(saved.keyword_min_relevance, 7.0);
     assert_eq!(saved.keyword_min_magnitude, 5.0);
     assert_eq!(saved.topic_interval_hours, 4.0);

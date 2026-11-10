@@ -7,6 +7,7 @@ use rusqlite::Connection;
 use serde_json::{Map, Value};
 
 use crate::server::db::client::atomically;
+use crate::server::keywords::tree::clamp_depth;
 use crate::server::schedule::plan::COLLECT_INTERVALS;
 use crate::server::settings::{
     BUDGET_MONTHLY_USD, COLLECT_INTERVAL_MINUTES, EVALUATION_MAX_PER_RUN, EVALUATION_MIN_MAGNITUDE,
@@ -324,9 +325,9 @@ pub fn parse_settings_form(raw: &Value) -> Result<SettingsForm, SettingsErrors> 
             get(F::KeywordsDepth),
             &NumberRule {
                 type_message: None,
-                int_message: Some("1~4 사이 정수로 넣으세요."),
-                min: Some((1.0, "1~4 사이로 넣으세요.")),
-                max: Some((4.0, "1~4 사이로 넣으세요.")),
+                int_message: Some("1~2 사이 정수로 넣으세요."),
+                min: Some((1.0, "1~2 사이로 넣으세요.")),
+                max: Some((2.0, "1~2 사이로 넣으세요.")),
             },
         ),
     );
@@ -459,7 +460,8 @@ pub fn settings_errors_json(errors: &SettingsErrors) -> Value {
 pub fn read_settings_form(conn: &Connection) -> rusqlite::Result<SettingsForm> {
     Ok(SettingsForm {
         collect_interval_minutes: read_num(conn, &COLLECT_INTERVAL_MINUTES)?,
-        keywords_depth: read_num(conn, &KEYWORDS_DEPTH)?,
+        // 저장된 깊이가 3·4여도(17단계 전 값) 화면에는 2로 보이고, 저장하면 2가 된다.
+        keywords_depth: clamp_depth(read_num(conn, &KEYWORDS_DEPTH)?) as f64,
         keywords_regenerate_every: if read_str(conn, &KEYWORDS_REGENERATE_EVERY)? == "weekly" {
             RegenerateEvery::Weekly
         } else {

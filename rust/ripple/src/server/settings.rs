@@ -35,7 +35,7 @@ const fn text(key: &'static str, default: &'static str) -> StrSetting {
 pub const LLM_MODEL: StrSetting = text("llm.model", "anthropic/claude-haiku-5.5");
 /// 월 예산 한도, 달러 (D-04 임시)
 pub const BUDGET_MONTHLY_USD: NumSetting = num("budget.monthlyUsd", 5.0);
-/// 키워드 확장 깊이 1~4 (SPEC FR-3, 기본 2)
+/// 키워드 확장 깊이 1~2 (기본 2)
 pub const KEYWORDS_DEPTH: NumSetting = num("keywords.depth", 2.0);
 /// 기사 평가 모델. 버전을 고정한다(D-23)
 pub const JEV_MODEL: StrSetting = text("jev.model", "jev-1.13.0");
@@ -43,8 +43,8 @@ pub const JEV_MODEL: StrSetting = text("jev.model", "jev-1.13.0");
 pub const JEV_USD_PER_MILLION_INPUT_TOKENS: NumSetting = num("jev.usdPerMillionInputTokens", 0.042);
 /// 화면에 보일 관련도 기준 0~10 (SPEC FR-5, 기본 6)
 pub const EVALUATION_MIN_RELEVANCE: NumSetting = num("evaluation.minRelevance", 6.0);
-/// 화면에 보일 영향도 기준 0~10. 관련도와 둘 다 넘어야 보인다(11단계, 기본 6)
-pub const EVALUATION_MIN_MAGNITUDE: NumSetting = num("evaluation.minMagnitude", 6.0);
+/// 화면에 보일 영향도 기준 0~10. 관련도와 둘 다 넘어야 보인다(11단계, 17단계에서 기본 5)
+pub const EVALUATION_MIN_MAGNITUDE: NumSetting = num("evaluation.minMagnitude", 5.0);
 /// 키워드 후보를 남기고 토픽을 종목에 붙이는 기준 0~10(11단계, 기본 관련도 6·영향도 5)
 pub const KEYWORDS_MIN_RELEVANCE: NumSetting = num("keywords.minRelevance", 6.0);
 pub const KEYWORDS_MIN_MAGNITUDE: NumSetting = num("keywords.minMagnitude", 5.0);
@@ -65,7 +65,7 @@ pub const EVALUATION_MAX_PER_RUN: NumSetting = num("evaluation.maxPerRun", 200.0
 /// 정기 수집 간격(분): 15·30·60·180 (SPEC FR-6, D-01 기본 30)
 pub const COLLECT_INTERVAL_MINUTES: NumSetting = num("collect.intervalMinutes", 30.0);
 /// 키워드 자동 재생성 주기 "daily" | "weekly" (SPEC FR-3, 기본 하루 1회)
-pub const KEYWORDS_REGENERATE_EVERY: StrSetting = text("keywords.regenerateEvery", "daily");
+pub const KEYWORDS_REGENERATE_EVERY: StrSetting = text("keywords.regenerateEvery", "weekly");
 /// 키워드 자동 재생성을 마지막으로 한 시각(ms). 0이면 아직 없음
 pub const KEYWORDS_AUTO_REGENERATED_AT: NumSetting = num("keywords.autoRegeneratedAt", 0.0);
 /// 마지막 자동 백업 시각(ms)과 파일 이름. 0·빈 값이면 아직 없음 (D-27)
