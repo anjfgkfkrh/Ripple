@@ -533,7 +533,7 @@ async fn keyword_line_shows_four_week_matched_and_passed_counts() {
     // 걸린 기사가 없어도 0으로 보인다
     assert!(body.contains("data-testid=\"keyword-stats\">기사 0 · 통과 0</span>"));
     assert!(!body.contains("keyword-scores"));
-    assert!(!body.contains("관련 "));
+    assert!(!body.contains("· 영향 "));
 }
 
 #[tokio::test]
