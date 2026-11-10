@@ -803,3 +803,36 @@ async fn summary_json_keeps_ts_key_order_and_integer_numbers() {
         r#"{"evaluated":3,"relevant":2,"copied":0,"failed":0,"remaining":1,"costUsd":0.000126,"ms":12,"note":"멈춤"}"#
     );
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn gated_links_are_not_pending_and_not_counted() {
+    let shared = seeded();
+    let ids = add_stocks(&shared);
+    let gated = add_link(
+        &shared,
+        ids.samsung,
+        "메모리 가격 동향",
+        ago(1),
+        "keyword",
+        "삼성전자 → HBM 메모리",
+        Some("r"),
+    );
+    let open = name_link(&shared, ids.samsung, "삼성전자 실적", ago(2));
+    shared
+        .db
+        .lock()
+        .unwrap()
+        .execute(
+            "UPDATE article_matches SET gated = 1 WHERE id = ?1",
+            [gated],
+        )
+        .unwrap();
+
+    let conn = shared.db.lock().unwrap();
+    let pending = pending_evaluations(&conn, now()).unwrap();
+    assert_eq!(
+        pending.iter().map(|p| p.match_id).collect::<Vec<_>>(),
+        [open]
+    );
+    assert_eq!(count_pending_evaluations(&conn, now()).unwrap(), 1);
+}

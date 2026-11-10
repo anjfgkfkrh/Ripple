@@ -59,7 +59,8 @@ pub fn pending_evaluations(conn: &Connection, now: EpochMs) -> rusqlite::Result<
          INNER JOIN stocks ON stocks.id = article_matches.stock_id \
          LEFT JOIN topics ON topics.id = stocks.topic_id \
          LEFT JOIN evaluations ON evaluations.match_id = article_matches.id \
-         WHERE evaluations.id IS NULL AND stocks.deleted_at IS NULL AND articles.published_at >= ?1 \
+         WHERE evaluations.id IS NULL AND article_matches.gated = 0 AND stocks.deleted_at IS NULL \
+           AND articles.published_at >= ?1 \
          ORDER BY CASE WHEN article_matches.match_kind = 'keyword' THEN 1 ELSE 0 END, \
                   articles.published_at DESC, article_matches.id DESC",
     )?;
@@ -368,7 +369,8 @@ pub fn count_pending_evaluations(conn: &Connection, now: EpochMs) -> rusqlite::R
          INNER JOIN articles ON articles.id = article_matches.article_id \
          INNER JOIN stocks ON stocks.id = article_matches.stock_id \
          LEFT JOIN evaluations ON evaluations.match_id = article_matches.id \
-         WHERE evaluations.id IS NULL AND stocks.deleted_at IS NULL AND articles.published_at >= ?1",
+         WHERE evaluations.id IS NULL AND article_matches.gated = 0 AND stocks.deleted_at IS NULL \
+           AND articles.published_at >= ?1",
         params![now - EVALUATION_WINDOW_MS],
         |row| row.get(0),
     )
