@@ -7,7 +7,7 @@
 | 작업 | 목표 | 완료 조건 | 모델/effort | 선행 | 상태 | 시도 |
 |---|---|---|---|---|---|---|
 | paid-compare | 숨은 추론 토큰 끄기와 이전 토픽 목록의 통과 건수를 유료로 비교해 수치를 모은다 | 인계에 OpenRouter 문서 근거와 비교 표·비용, 합계 $0.08 이하 | Sonnet / medium | 없음 | 통과 | 2 |
-| llm-request | OpenRouter 본문 실패 분류(B1)·한 번 재시도·추론 설정, 결과 줄의 실제 깊이(B2) | `openrouter_tests`·`queue_tests` 새 시험 통과, Rust 검사 전체 통과 | Sonnet / medium | paid-compare 통과 | 진행 | 1 |
+| llm-request | OpenRouter 본문 실패 분류(B1)·한 번 재시도·추론 설정, 결과 줄의 실제 깊이(B2) | `openrouter_tests`·`queue_tests` 새 시험 통과, Rust 검사 전체 통과 | Sonnet / medium | paid-compare 통과 | 통과 | 1 |
 | anchor-schema | 마이그레이션 0011(별칭·고유어·지운 별칭·`scope`·`gated`), 저장·읽기, 별칭 검증 | `migrate_tests`·`repository_tests`·`store` 시험 통과, Rust 검사 전체 통과 | Sonnet / medium | 없음 | 대기 | 0 |
 | anchor-match | 별칭을 이름처럼 걸고, 종목 키워드 연결은 제목 고유어가 없으면 `gated`로 저장·평가 제외 | `match_tests`·`run_tests`(collect·evaluate)·`backfill_tests` 새 시험 통과, Rust 검사 전체 통과 | Sonnet / medium | anchor-schema 통과 | 대기 | 0 |
 | tree-full | 새 전체 생성(깊이 2·상한·별칭·고유어·통계 낱말), Jev 후보 평가 제거 | `tree_tests`·`generate_tests` 새 시험 통과, `/check` 전체 통과 | Sonnet / medium | llm-request 통과, anchor-match 통과 | 대기 | 0 |
