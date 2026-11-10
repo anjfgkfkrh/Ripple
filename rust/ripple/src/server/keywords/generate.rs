@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::server::ai::decider::types::JudgeItem;
-use crate::server::ai::llm::schemas::keyword_tree;
+use crate::server::ai::llm::schemas::{keyword_tree, keyword_update};
 use crate::server::ai::llm::{LlmClient, LlmError, LlmErrorKind, StructuredRequest};
 use crate::server::budget::usage::{
     BudgetExceededError, CallOptions, GenerateError, generate_with_budget,
@@ -12,8 +12,11 @@ use crate::server::db::client::Db;
 use crate::server::db::schema::{ItemKind, KeywordStatus};
 use crate::server::keywords::stat_words::{StatWords, stat_words};
 use crate::server::keywords::tree::{
-    KeywordNode, KeywordStock, build_keyword_messages, build_keyword_tree, clamp_depth,
-    count_raw_keywords, parse_keyword_tree, refine_anchors,
+    KeywordNode, KeywordStock, build_keyword_messages, build_keyword_tree, build_update_messages,
+    clamp_depth, count_raw_keywords, parse_keyword_tree, parse_keyword_update, refine_anchors,
+};
+use crate::server::keywords::update::{
+    UpdateSummary, apply_update, load_structure, tree_for_prompt,
 };
 use crate::server::log::{log, log_error};
 use crate::server::settings::{KEYWORDS_DEPTH, LLM_MODEL, read_num, read_str};
@@ -27,6 +30,8 @@ use crate::server::time::{EpochMs, now_ms};
 const KEYWORD_TIMEOUT_MS: u64 = 120_000;
 /// 추론 토큰과 함께 쓴다(17단계 실측: 새 형식의 최대 출력은 2,142토큰)
 const KEYWORD_MAX_TOKENS: u32 = 8_000;
+/// 정기 점검(증분) 요청의 최대 출력 토큰(실측: 출력 175~1,573토큰)
+const UPDATE_MAX_TOKENS: u32 = 6_000;
 /// 규칙에 안 맞는 답을 볼 때 로그에 남기는 LLM 원문 길이
 const RAW_LOG_MAX_CHARS: usize = 6000;
 
@@ -73,6 +78,8 @@ pub struct GenerateOk {
     /// 저장한 별칭·고유어 수(종목이 아니면 0)
     pub aliases: usize,
     pub anchors: usize,
+    /// 정기 점검(증분)이면 바꾼 것. 전체 생성이면 None
+    pub update: Option<Box<UpdateSummary>>,
 }
 
 /// 실패 이유(error)는 화면에 "키워드를 만들지 못했습니다." 뒤에 붙여 보여 준다.
@@ -84,7 +91,15 @@ pub enum GenerateResult {
 
 /// 만들기 시작할 때 동기로 하는 일(종목 확인, 상태 '만드는 중', 깊이, 통계 낱말)의 결과.
 /// 대기열이 첫 종목을 넣자마자 '만드는 중'으로 보이게 하려고 나눠 두었다(TS는 async 함수가 첫 await까지 바로 실행됨).
+/// 만드는 방식(17단계): 전체 생성은 트리를 통째로 새로 만들고, 정기 점검은 지금 트리에서 뺄 것·더할 것만 받아 반영한다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GenerateMode {
+    Full,
+    Periodic,
+}
+
 pub struct PreparedGeneration {
+    mode: GenerateMode,
     stock_id: i64,
     stock: Stock,
     depth: i64,
@@ -117,11 +132,35 @@ pub async fn generate_keywords_for_stock<L: LlmClient>(
     }
 }
 
-/// 종목 확인 → 상태 '만드는 중' → 깊이·통계 낱말. 만들 수 없으면 끝난 결과(`Err`)를 돌려준다.
+/// 전체 생성용 준비(`prepare_generation_with`의 `Full`)
 pub fn prepare_generation(
     db: &Db,
     stock_id: i64,
     now: EpochMs,
+) -> Result<PreparedGeneration, GenerateResult> {
+    prepare_generation_with(db, stock_id, now, GenerateMode::Full)
+}
+
+/// 정기 점검으로 만든다. 지금 트리(구조 키워드)가 없거나 종목의 고유어가 비어 있으면 전체 생성으로 바꾼다.
+pub async fn generate_keywords_periodic<L: LlmClient>(
+    db: &Db,
+    llm: &L,
+    stock_id: i64,
+    options: &GenerateOptions<'_>,
+) -> GenerateResult {
+    match prepare_generation_with(db, stock_id, options.now(), GenerateMode::Periodic) {
+        Ok(prepared) => run_generation(db, llm, prepared, options).await,
+        Err(result) => result,
+    }
+}
+
+/// 종목 확인 → 상태 '만드는 중' → 깊이·통계 낱말. 만들 수 없으면 끝난 결과(`Err`)를 돌려준다.
+/// `Periodic`이어도 트리가 없거나 종목의 고유어가 비면 `Full`로 바꾼다.
+pub fn prepare_generation_with(
+    db: &Db,
+    stock_id: i64,
+    now: EpochMs,
+    mode: GenerateMode,
 ) -> Result<PreparedGeneration, GenerateResult> {
     let conn = db.lock().expect("DB 잠금이 깨졌습니다");
     let db_error = |e: rusqlite::Error| GenerateResult::Err(e.to_string());
@@ -150,6 +189,20 @@ pub fn prepare_generation(
         ));
     }
 
+    let mode = if mode == GenerateMode::Periodic {
+        let has_tree = !load_structure(&conn, stock_id)
+            .map_err(db_error)?
+            .is_empty();
+        let missing_anchors = stock.kind == ItemKind::Stock && stock.anchors.is_empty();
+        if has_tree && !missing_anchors {
+            GenerateMode::Periodic
+        } else {
+            GenerateMode::Full
+        }
+    } else {
+        GenerateMode::Full
+    };
+
     set_keyword_status(&conn, stock_id, KeywordStatus::Generating, None).map_err(db_error)?;
     let depth = clamp_depth(read_num(&conn, &KEYWORDS_DEPTH).map_err(db_error)?);
     let stat = if stock.kind == ItemKind::Stock {
@@ -158,6 +211,7 @@ pub fn prepare_generation(
         StatWords::default()
     };
     Ok(PreparedGeneration {
+        mode,
         stock_id,
         stock,
         depth,
@@ -196,6 +250,90 @@ pub async fn run_generation<L: LlmClient>(
 }
 
 async fn try_generate<L: LlmClient>(
+    db: &Db,
+    llm: &L,
+    prepared: &PreparedGeneration,
+    options: &GenerateOptions<'_>,
+) -> Result<GenerateOk, KeywordError> {
+    match prepared.mode {
+        GenerateMode::Full => try_generate_full(db, llm, prepared, options).await,
+        GenerateMode::Periodic => try_generate_update(db, llm, prepared, options).await,
+    }
+}
+
+fn keyword_stock(stock: &Stock) -> KeywordStock {
+    KeywordStock {
+        kind: stock.kind,
+        market: stock.market,
+        code: stock.code.clone(),
+        name: stock.name.clone(),
+        name_ko: stock.name_ko.clone(),
+        exchange: stock.exchange.clone(),
+    }
+}
+
+/// 정기 점검: 지금 트리·고유어·별칭을 주고 뺄 것·더할 것만 받아 반영한다. 실패하면 트리를 그대로 둔다.
+async fn try_generate_update<L: LlmClient>(
+    db: &Db,
+    llm: &L,
+    prepared: &PreparedGeneration,
+    options: &GenerateOptions<'_>,
+) -> Result<GenerateOk, KeywordError> {
+    let stock_id = prepared.stock_id;
+    let stock = &prepared.stock;
+    let target = keyword_stock(stock);
+    let (model, tree) = {
+        let conn = db.lock().expect("DB 잠금이 깨졌습니다");
+        (
+            read_str(&conn, &LLM_MODEL)?,
+            tree_for_prompt(&load_structure(&conn, stock_id)?),
+        )
+    };
+    let request = StructuredRequest {
+        model,
+        messages: build_update_messages(
+            &target,
+            &tree,
+            &stock.anchors,
+            &stock.aliases,
+            &prepared.stat,
+        ),
+        schema: keyword_update(),
+        schema_name: "keyword_update".to_string(),
+        max_tokens: UPDATE_MAX_TOKENS,
+        timeout_ms: Some(KEYWORD_TIMEOUT_MS),
+        reasoning: crate::server::ai::llm::Reasoning::default(),
+        parse: parse_keyword_update,
+    };
+    let call = CallOptions {
+        purpose: "keyword_generation",
+        now: options.now,
+        stock_id: Some(stock_id),
+    };
+    let value = generate_with_budget(db, llm, &request, &call).await?.value;
+    let summary = {
+        let mut conn = db.lock().expect("DB 잠금이 깨졌습니다");
+        apply_update(&mut conn, &target, stock_id, &value, options.now())?
+    };
+    if summary.dropped > 0 {
+        log(&format!(
+            "키워드 점검 규칙에 안 맞아 버림 {}개(종목 id {stock_id})",
+            summary.dropped
+        ));
+    }
+    Ok(GenerateOk {
+        count: summary.count,
+        depth: prepared.depth,
+        deepest: summary.deepest,
+        dropped: summary.dropped,
+        stat_words: prepared.stat.words.len(),
+        aliases: summary.aliases,
+        anchors: summary.anchors,
+        update: Some(Box::new(summary)),
+    })
+}
+
+async fn try_generate_full<L: LlmClient>(
     db: &Db,
     llm: &L,
     prepared: &PreparedGeneration,
@@ -282,6 +420,7 @@ async fn try_generate<L: LlmClient>(
         stat_words: prepared.stat.words.len(),
         aliases: alias_count,
         anchors: anchor_count,
+        update: None,
     })
 }
 

@@ -243,6 +243,7 @@ fn success_line_shows_actual_over_configured_depth() {
         stat_words: 12,
         aliases: 3,
         anchors: 11,
+        update: None,
     };
     let line = success_line(7, &ok, "1.2");
     assert_eq!(
@@ -257,6 +258,7 @@ fn success_line_shows_actual_over_configured_depth() {
         stat_words: 0,
         aliases: 0,
         anchors: 0,
+        update: None,
     };
     assert_eq!(
         success_line(8, &market, "0.5"),

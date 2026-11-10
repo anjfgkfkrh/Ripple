@@ -11,7 +11,7 @@ use crate::server::stocks::repository::{
 };
 use crate::test_support::{
     LinkSpec, SharedTestDb, attach_topic, fake_llm, insert_link, ms, sample_keyword_tree,
-    seed_lens, seed_listings, seed_market, seed_topic, shared_test_db,
+    seed_lens, seed_listings, seed_market, seed_topic, set_link_path, shared_test_db,
 };
 
 fn now() -> EpochMs {
@@ -203,6 +203,7 @@ async fn one_llm_call_builds_tree_saves_it_and_marks_ready() {
             stat_words: 0,
             aliases: 1,
             anchors: 5,
+            update: None,
         })
     );
     assert_eq!(llm.call_count(), 1);
@@ -896,4 +897,434 @@ async fn judge_item_marks_official_name_only_when_it_differs() {
         judge_item(&none, Some("요약")).summary.as_deref(),
         Some("요약")
     );
+}
+
+// ---- 정기 점검(증분, 17단계 tree-weekly) ----
+
+const DAY: i64 = 24 * 60 * 60 * 1000;
+
+fn empty_update() -> serde_json::Value {
+    json!({ "remove": [], "add": [], "anchorsRemove": [], "anchorsAdd": [], "aliasesAdd": [] })
+}
+
+fn update_llm(answer: serde_json::Value) -> crate::test_support::FakeLlm {
+    fake_llm(move |_| answer.clone(), USAGE)
+}
+
+/// 표본 트리(1단계 5·2단계 5)를 `now()`에 전체 생성으로 만들어 둔 종목
+async fn with_tree(shared: &SharedTestDb) -> i64 {
+    let id = register(shared, Market::Kr);
+    let at = || now();
+    ok(generate_plain(shared, &tree_llm(), id, Some(&at)).await);
+    id
+}
+
+async fn periodic(shared: &SharedTestDb, llm: &impl LlmClient, id: i64) -> GenerateResult {
+    let at = || later();
+    generate_keywords_periodic(&shared.db, llm, id, &opts(Some(&at))).await
+}
+
+/// 키워드 연결 하나(경로의 마지막 낱말이 키워드). 관련·영향 8점이면 표시 기준을 통과한다.
+fn keyword_link(shared: &SharedTestDb, id: i64, path: &str, at: EpochMs, score: f64) {
+    let conn = shared.db.lock().unwrap();
+    let mut spec = LinkSpec::new(id, "기사", at).with_relevance(score);
+    spec.kind = "keyword";
+    spec.magnitude = Some(score);
+    let (match_id, _) = insert_link(&conn, &spec);
+    set_link_path(&conn, match_id, path, false);
+}
+
+fn texts_of(rows: &[Row], level: i64) -> Vec<String> {
+    rows.iter()
+        .filter(|r| r.level == level && r.topic_id.is_none())
+        .map(|r| r.text_ko.clone())
+        .collect()
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn periodic_check_sends_the_current_tree_and_uses_the_update_format() {
+    let shared = seeded();
+    let id = with_tree(&shared).await;
+    let llm = update_llm(empty_update());
+
+    let result = ok(periodic(&shared, &llm, id).await);
+
+    let update = result.update.expect("정기 점검 결과");
+    assert_eq!((update.added, update.removed, update.evicted), (0, 0, 0));
+    let calls = llm.calls.lock().unwrap();
+    assert_eq!(calls[0].schema_name, "keyword_update");
+    assert_eq!(calls[0].max_tokens, 6_000);
+    let user = &calls[0].messages[1].content;
+    assert!(user.contains("- HBM > 엔비디아, SK하이닉스"), "{user}");
+    assert!(user.contains("지금 고유어: 반도체, 메모리, 파운드리, HBM, 스마트폰"));
+    assert!(user.contains("지금 별칭: 삼전"));
+    drop(calls);
+    assert_eq!(
+        usage_purposes(&shared),
+        [
+            (
+                "keyword_generation".into(),
+                "anthropic/claude-haiku-5.5".into(),
+                Some(id)
+            ),
+            (
+                "keyword_generation".into(),
+                "anthropic/claude-haiku-5.5".into(),
+                Some(id)
+            ),
+        ]
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn nothing_changed_keeps_rows_and_refreshes_generated_at() {
+    let shared = seeded();
+    let id = with_tree(&shared).await;
+    let before: Vec<(i64, i64)> = keyword_rows(&shared, id)
+        .iter()
+        .map(|r| (r.id, r.created_at))
+        .collect();
+
+    let result = ok(periodic(&shared, &update_llm(empty_update()), id).await);
+
+    assert_eq!(result.count, 10);
+    let after: Vec<(i64, i64)> = keyword_rows(&shared, id)
+        .iter()
+        .map(|r| (r.id, r.created_at))
+        .collect();
+    assert_eq!(before, after);
+    assert_eq!(
+        stock_state(&shared, id),
+        ("ready".into(), None, Some(later()))
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn removal_is_kept_when_the_keyword_passed_in_the_last_four_weeks() {
+    let shared = seeded();
+    let id = with_tree(&shared).await;
+    // 엔비디아: 4주 안 통과(남음). 환율: 30일 전 통과(지켜 주지 않음). 스마트폰: 실적 없음.
+    keyword_link(&shared, id, "삼성전자 → HBM → 엔비디아", later() - DAY, 8.0);
+    keyword_link(&shared, id, "삼성전자 → 환율", later() - 30 * DAY, 8.0);
+    // 기준 미만은 통과가 아니다
+    keyword_link(
+        &shared,
+        id,
+        "삼성전자 → 파운드리 → TSMC",
+        later() - DAY,
+        3.0,
+    );
+    let llm = update_llm(json!({
+        "remove": [
+            { "keyword": " 엔비디아 ", "reason": "철수" },
+            { "keyword": "환율", "reason": "일반어" },
+            { "keyword": "스마트폰", "reason": "매각" },
+            { "keyword": "tsmc", "reason": "x" },
+            { "keyword": "없는 키워드", "reason": "x" }
+        ],
+        "add": [], "anchorsRemove": [], "anchorsAdd": [], "aliasesAdd": []
+    }));
+
+    let result = ok(periodic(&shared, &llm, id).await);
+
+    let update = result.update.unwrap();
+    assert_eq!(update.protected, 1);
+    // 환율, 스마트폰(+ 아래 애플), TSMC
+    assert_eq!(update.removed, 4);
+    let rows = keyword_rows(&shared, id);
+    assert_eq!(texts_of(&rows, 1), ["메모리 반도체", "HBM", "파운드리"]);
+    assert_eq!(texts_of(&rows, 2), ["엔비디아", "SK하이닉스", "D램 가격"]);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn removing_a_level_one_removes_everything_below_even_with_passes() {
+    let shared = seeded();
+    let id = with_tree(&shared).await;
+    // HBM 아래 엔비디아가 통과했어도 1단계 HBM이 빠지면 같이 빠진다.
+    keyword_link(&shared, id, "삼성전자 → HBM → 엔비디아", later() - DAY, 8.0);
+    let llm = update_llm(json!({
+        "remove": [{ "keyword": "HBM", "reason": "x" }],
+        "add": [], "anchorsRemove": [], "anchorsAdd": [], "aliasesAdd": []
+    }));
+    ok(periodic(&shared, &llm, id).await);
+    let rows = keyword_rows(&shared, id);
+    assert!(
+        rows.iter()
+            .all(|r| r.text_ko != "HBM" && r.text_ko != "엔비디아" && r.text_ko != "SK하이닉스")
+    );
+    assert_eq!(rows.len(), 7);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn adds_at_most_three_validated_keywords_and_leaves_old_rows_alone() {
+    let shared = seeded();
+    let id = with_tree(&shared).await;
+    let before = keyword_rows(&shared, id);
+    let item = |level: i64, keyword: &str, parent: &str| json!({ "level": level, "keyword": keyword, "keywordEn": "", "parent": parent, "reason": format!("{keyword} 이유") });
+    let llm = update_llm(json!({
+        "remove": [],
+        "add": [
+            item(1, "환율", ""),            // 이미 있음
+            item(1, "삼성전자", ""),        // 대상 이름
+            item(2, "고아", "없는 부모"),   // 부모 없음
+            item(3, "깊은 것", "HBM"),      // 3단계
+            item(1, "전력 반도체", ""),
+            item(2, "패키징", "HBM"),
+            item(2, "SiC", "전력 반도체"),  // 이번에 더한 1단계 아래
+            item(1, "여섯째", ""),          // 3개를 넘음
+        ],
+        "anchorsRemove": [], "anchorsAdd": [], "aliasesAdd": []
+    }));
+
+    let result = ok(periodic(&shared, &llm, id).await);
+
+    let update = result.update.unwrap();
+    assert_eq!((update.added, update.dropped), (3, 5));
+    let rows = keyword_rows(&shared, id);
+    assert_eq!(rows.len(), 13);
+    let power = rows.iter().find(|r| r.text_ko == "전력 반도체").unwrap();
+    let sic = rows.iter().find(|r| r.text_ko == "SiC").unwrap();
+    let packaging = rows.iter().find(|r| r.text_ko == "패키징").unwrap();
+    let hbm = rows.iter().find(|r| r.text_ko == "HBM").unwrap();
+    assert_eq!((power.level, power.parent_id), (1, None));
+    assert_eq!(sic.parent_id, Some(power.id));
+    assert_eq!(packaging.parent_id, Some(hbm.id));
+    assert_eq!(sic.path, "삼성전자 → 전력 반도체 → SiC");
+    assert_eq!(
+        (power.kind.as_str(), power.relevance, power.created_at),
+        ("structure", None, later())
+    );
+    // 바뀌지 않은 줄은 id·만든 시각이 그대로다.
+    for old in &before {
+        let now_row = rows.iter().find(|r| r.id == old.id).expect("그대로 남음");
+        assert_eq!(
+            (now_row.created_at, &now_row.text_ko),
+            (old.created_at, &old.text_ko)
+        );
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn over_the_cap_the_oldest_last_pass_goes_first_with_its_children() {
+    let shared = seeded();
+    let id = with_tree(&shared).await;
+    // HBM은 만든 뒤에 통과했다(마지막 통과가 더 늦다). 나머지는 모두 만든 시각이 같다.
+    keyword_link(&shared, id, "삼성전자 → HBM", later() - 60_000, 8.0);
+    let item = |keyword: &str| json!({ "level": 1, "keyword": keyword, "keywordEn": "", "parent": "", "reason": "r" });
+    let llm = update_llm(json!({
+        "remove": [],
+        "add": [item("전력 반도체"), item("2차전지"), item("바이오")],
+        "anchorsRemove": [], "anchorsAdd": [], "aliasesAdd": []
+    }));
+
+    let result = ok(periodic(&shared, &llm, id).await);
+
+    // 1단계 8개 → 6개: 가장 오래된 메모리 반도체(와 D램 가격)·스마트폰(과 애플)이 빠진다.
+    let update = result.update.unwrap();
+    assert_eq!(update.evicted, 4);
+    let rows = keyword_rows(&shared, id);
+    assert_eq!(
+        texts_of(&rows, 1),
+        [
+            "HBM",
+            "파운드리",
+            "환율",
+            "전력 반도체",
+            "2차전지",
+            "바이오"
+        ]
+    );
+    assert_eq!(texts_of(&rows, 2), ["엔비디아", "SK하이닉스", "TSMC"]);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn level_two_cap_ignores_topic_branches_and_uses_last_pass_or_created_time() {
+    let shared = seeded();
+    let id = with_tree(&shared).await;
+    {
+        let conn = shared.db.lock().unwrap();
+        let hbm: i64 = conn
+            .query_row("SELECT id FROM keywords WHERE text_ko = 'HBM'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        // 2단계 5개 + 9개 = 14개. 추가k는 만든 지 k일.
+        for k in 1..=9 {
+            conn.execute(
+                "INSERT INTO keywords (stock_id, level, parent_id, text_ko, reason, path, kind, created_at) \
+                 VALUES (?1, 2, ?2, ?3, 'r', ?4, 'structure', ?5)",
+                rusqlite::params![id, hbm, format!("추가{k}"), format!("삼성전자 → HBM → 추가{k}"), now() - k * DAY],
+            )
+            .unwrap();
+        }
+        // 토픽 가지는 세지 않는다.
+        let topic = seed_topic(&conn, "auto", "관세", &["a"], now());
+        attach_topic(
+            &conn,
+            id,
+            "삼성전자",
+            topic,
+            "관세",
+            &["관세 협상", "관세 인상", "관세 면제"],
+            now(),
+        );
+    }
+    // 가장 오래된 추가9에 마지막 통과가 있으면 그 시각이 기준이다.
+    keyword_link(&shared, id, "삼성전자 → HBM → 추가9", later() - 60_000, 8.0);
+
+    let result = ok(periodic(&shared, &update_llm(empty_update()), id).await);
+
+    assert_eq!(result.update.unwrap().evicted, 2);
+    let rows = keyword_rows(&shared, id);
+    let level2 = texts_of(&rows, 2);
+    assert_eq!(level2.len(), 12);
+    // 추가8·추가7이 가장 오래돼 빠진다. 추가9는 최근에 통과해 남는다.
+    assert!(!level2.contains(&"추가8".to_string()));
+    assert!(!level2.contains(&"추가7".to_string()));
+    assert!(level2.contains(&"추가9".to_string()));
+    assert_eq!(rows.iter().filter(|r| r.topic_id.is_some()).count(), 4);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn old_deep_tree_keeps_only_levels_one_and_two() {
+    let shared = seeded();
+    let id = with_tree(&shared).await;
+    {
+        let conn = shared.db.lock().unwrap();
+        let parent: i64 = conn
+            .query_row(
+                "SELECT id FROM keywords WHERE text_ko = '엔비디아'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        conn.execute(
+            "INSERT INTO keywords (stock_id, level, parent_id, text_ko, reason, path, kind, created_at) \
+             VALUES (?1, 3, ?2, '3단계 옛것', 'r', '삼성전자 → HBM → 엔비디아 → 3단계 옛것', 'structure', ?3)",
+            rusqlite::params![id, parent, now()],
+        )
+        .unwrap();
+    }
+    let result = ok(periodic(&shared, &update_llm(empty_update()), id).await);
+    assert_eq!(result.update.unwrap().removed, 1);
+    let rows = keyword_rows(&shared, id);
+    assert_eq!(rows.len(), 10);
+    assert!(rows.iter().all(|r| r.level <= 2));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn anchors_and_aliases_are_trimmed_and_validated() {
+    let shared = seeded();
+    let id = with_tree(&shared).await;
+    let llm = update_llm(json!({
+        "remove": [], "add": [],
+        "anchorsRemove": [" 반도체 ", "없는 말"],
+        "anchorsAdd": ["5", "x", "엔비디아", "HBM3E", "hbm", "AI서버", "전력"],
+        "aliasesAdd": ["삼전", "SEC전자", "SK하이닉스", "삼"]
+    }));
+
+    let result = ok(periodic(&shared, &llm, id).await);
+
+    let (aliases, anchors) = stored_terms(&shared, id);
+    // 별칭: 있던 것은 그대로, 이름이 같은 다른 종목·2자 미만·중복은 버린다
+    assert_eq!(aliases, ["삼전", "SEC전자"]);
+    // 고유어: 빼고 나서 더한다. 더하기는 검증을 통과한 것 가운데 최대 3개(숫자·1자·중복 제외)
+    assert_eq!(
+        anchors,
+        [
+            "메모리",
+            "파운드리",
+            "HBM",
+            "스마트폰",
+            "엔비디아",
+            "HBM3E",
+            "AI서버"
+        ]
+    );
+    let update = result.update.unwrap();
+    assert_eq!(
+        (
+            update.anchors_removed,
+            update.anchors_added,
+            update.aliases_added
+        ),
+        (1, 3, 1)
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn anchors_are_not_removed_when_nothing_would_be_left() {
+    let shared = seeded();
+    let id = with_tree(&shared).await;
+    let llm = update_llm(json!({
+        "remove": [], "add": [],
+        "anchorsRemove": ["반도체", "메모리", "파운드리", "HBM", "스마트폰"],
+        "anchorsAdd": [], "aliasesAdd": []
+    }));
+    ok(periodic(&shared, &llm, id).await);
+    assert_eq!(stored_terms(&shared, id).1.len(), 5);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn failed_check_keeps_the_tree_and_marks_failed() {
+    let shared = seeded();
+    let id = with_tree(&shared).await;
+    let before: Vec<(i64, String)> = keyword_rows(&shared, id)
+        .iter()
+        .map(|r| (r.id, r.text_ko.clone()))
+        .collect();
+
+    let at = || later();
+    let result = generate_keywords_periodic(
+        &shared.db,
+        &FailingLlm(LlmErrorKind::Timeout),
+        id,
+        &opts(Some(&at)),
+    )
+    .await;
+    assert_eq!(
+        result,
+        GenerateResult::Err("AI 응답이 늦어 중단했습니다.".into())
+    );
+    let (status, error, generated_at) = stock_state(&shared, id);
+    assert_eq!(status, "failed");
+    assert!(error.is_some());
+    // 만든 시각은 그대로여야 다음 날 다시 고른다.
+    assert_eq!(generated_at, Some(now()));
+    let after: Vec<(i64, String)> = keyword_rows(&shared, id)
+        .iter()
+        .map(|r| (r.id, r.text_ko.clone()))
+        .collect();
+    assert_eq!(before, after);
+
+    // 형식이 맞지 않는 답도 같다.
+    let bad = update_llm(json!({ "remove": "x" }));
+    assert!(matches!(
+        periodic(&shared, &bad, id).await,
+        GenerateResult::Err(_)
+    ));
+    assert_eq!(keyword_rows(&shared, id).len(), 10);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn periodic_falls_back_to_full_generation_without_tree_or_anchors() {
+    let shared = seeded();
+    // 트리가 없다.
+    let id = register(&shared, Market::Kr);
+    let llm = tree_llm();
+    ok(periodic(&shared, &llm, id).await);
+    assert_eq!(llm.calls.lock().unwrap()[0].schema_name, "keyword_tree");
+    assert_eq!(keyword_rows(&shared, id).len(), 10);
+
+    // 트리는 있지만 고유어가 비었다.
+    shared
+        .db
+        .lock()
+        .unwrap()
+        .execute("UPDATE stocks SET anchors = '[]' WHERE id = ?1", [id])
+        .unwrap();
+    let llm = tree_llm();
+    ok(periodic(&shared, &llm, id).await);
+    assert_eq!(llm.calls.lock().unwrap()[0].schema_name, "keyword_tree");
+    assert_eq!(stored_terms(&shared, id).1.len(), 5);
 }

@@ -4,6 +4,7 @@ use super::*;
 use crate::test_support::sample_keyword_tree;
 
 const PROMPT_FIXTURE: &str = include_str!("../prompts/keywords.json");
+const UPDATE_FIXTURE: &str = include_str!("../prompts/keyword_update.json");
 
 fn samsung() -> KeywordStock {
     KeywordStock {
@@ -319,6 +320,111 @@ fn prompts_equal_fixture_prompts_character_by_character() {
             .collect();
         assert_eq!(actual, expected, "사례 #{index}");
     }
+}
+
+#[test]
+fn update_prompts_equal_fixture_prompts_character_by_character() {
+    // `llm_make.py`의 `update_messages`로 만든 파일과 같은 입력의 프롬프트를 글자 그대로 비교한다.
+    let fixture: Value = serde_json::from_str(UPDATE_FIXTURE).unwrap();
+    for (index, entry) in fixture.as_array().unwrap().iter().enumerate() {
+        let stock: KeywordStock = serde_json::from_value(entry["stock"].clone()).unwrap();
+        let strings = |value: &Value| -> Vec<String> {
+            value
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap().to_string())
+                .collect()
+        };
+        let tree: Vec<(String, Vec<String>)> = entry["tree"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|node| (node[0].as_str().unwrap().to_string(), strings(&node[1])))
+            .collect();
+        let stat_words = match entry["statWords"].as_object() {
+            Some(obj) => StatWords {
+                articles: obj["articles"].as_u64().unwrap() as usize,
+                words: obj["words"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|w| {
+                        (
+                            w[0].as_str().unwrap().to_string(),
+                            w[1].as_u64().unwrap() as usize,
+                        )
+                    })
+                    .collect(),
+            },
+            None => StatWords::default(),
+        };
+        let expected: Vec<(String, String)> = entry["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| {
+                (
+                    m["role"].as_str().unwrap().to_string(),
+                    m["content"].as_str().unwrap().to_string(),
+                )
+            })
+            .collect();
+        let actual: Vec<(String, String)> = build_update_messages(
+            &stock,
+            &tree,
+            &strings(&entry["anchors"]),
+            &strings(&entry["aliases"]),
+            &stat_words,
+        )
+        .into_iter()
+        .map(|m| (m.role.to_string(), m.content))
+        .collect();
+        assert_eq!(actual, expected, "사례 #{index}");
+    }
+}
+
+#[test]
+fn parse_keyword_update_reads_the_update_format_and_rejects_others() {
+    let value = serde_json::json!({
+        "remove": [{ "keyword": "환율", "reason": "x" }],
+        "add": [{ "level": 1, "keyword": "전력", "keywordEn": "", "parent": "", "reason": "r" }],
+        "anchorsRemove": ["a"], "anchorsAdd": ["b"], "aliasesAdd": ["c"]
+    });
+    let update = parse_keyword_update(&value).unwrap();
+    assert_eq!(update.remove, [("환율".to_string(), "x".to_string())]);
+    assert_eq!(update.add[0].keyword, "전력");
+    assert_eq!(update.aliases_add, ["c"]);
+    assert!(parse_keyword_update(&serde_json::json!({ "remove": [] })).is_none());
+    assert!(
+        parse_keyword_update(&serde_json::json!({
+            "remove": [{ "keyword": 1, "reason": "x" }],
+            "add": [], "anchorsRemove": [], "anchorsAdd": [], "aliasesAdd": []
+        }))
+        .is_none()
+    );
+}
+
+#[test]
+fn accepted_additions_follow_the_market_rules() {
+    let existing = vec![ExistingKeyword {
+        level: 1,
+        text_ko: "금리".into(),
+        path: "한국 증시 → 금리".into(),
+    }];
+    let raw = vec![
+        raw(1, "코스피 전망", ""),
+        raw(1, "지수", ""),
+        raw(1, "한국 증시", ""),
+        raw(2, "기준금리 인하", "금리"),
+        raw(1, " 환 율 ", ""),
+        raw(1, "환율", ""),
+    ];
+    let accepted = accept_added_keywords(&kr_market(), &existing, &raw, 3);
+    let names: Vec<&str> = accepted.iter().map(|k| k.text_ko.as_str()).collect();
+    assert_eq!(names, ["기준금리 인하", "환 율"]);
+    assert_eq!(accepted[0].parent, AddedParent::Existing(0));
+    assert_eq!(accepted[0].path, "한국 증시 → 금리 → 기준금리 인하");
 }
 
 // describe("buildKeywordTree")
