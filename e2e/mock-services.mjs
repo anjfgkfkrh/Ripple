@@ -202,6 +202,7 @@ function jevAnswer({ model, state }) {
       usage: { input_tokens: 400, output_tokens: 20 },
     };
   }
+  if (state.markets) return mergedAnswer({ model, state });
   const strong =
     Boolean(state.topic) ||
     (state.stock !== undefined && state.link.path === state.stock.name);
@@ -222,6 +223,63 @@ function jevAnswer({ model, state }) {
     },
     usage: { input_tokens: 900, output_tokens: 50 },
   };
+}
+
+/**
+ * 시장·주제 항목의 기사당 한 요청(17단계 eval-merge)에 대한 가짜 답. 질문 키마다 답한다.
+ * - 토픽 관련도 4단계(8점), 시장 항목 관련도 1.5단계(3점)
+ * - 증시 영향도는 토픽이 걸린 기사면 3.5단계(7점), 시장 항목만 걸렸으면 1.5단계(3점)
+ * - 제목에 '확대'·'실적'·'rise'가 있으면 증시마다 호재, 아니면 중립
+ */
+function mergedAnswer({ model, state }) {
+  const hasTopics = Boolean(state.topics);
+  const positive = /확대|실적|rise/.test(state.article.title);
+  const answers = {};
+  for (const key of Object.keys(state.topics ?? {})) {
+    answers[`relevance_${key}`] = score(4);
+  }
+  for (const market of Object.keys(state.markets)) {
+    answers[`relevance_${market}`] = score(1.5);
+    answers[`magnitude_${market}`] = score(hasTopics ? 3.5 : 1.5);
+    answers[`impact_${market}`] = {
+      type: "choice",
+      choice: positive ? "positive" : "neutral",
+      confidence: 0.8,
+      probabilities: positive
+        ? { positive: 0.85, negative: 0.05, neutral: 0.1 }
+        : { positive: 0.1, negative: 0.05, neutral: 0.85 },
+    };
+  }
+  return {
+    model,
+    answers,
+    usage: { input_tokens: 1200, output_tokens: 80 },
+  };
+}
+
+/** 합친 요청의 질문 모양이 state와 맞는지 본다(질문 키 = 토픽마다 관련도, 증시마다 영향도·호재/악재). */
+function mergedShapeOk({ state, questions }) {
+  if (!state.article?.title || !state.markets) return false;
+  const markets = Object.keys(state.markets);
+  const expected = new Map();
+  for (const key of Object.keys(state.topics ?? {})) {
+    expected.set(`relevance_${key}`, "score");
+  }
+  for (const market of markets) {
+    expected.set(`magnitude_${market}`, "score");
+    expected.set(`impact_${market}`, "choice");
+  }
+  const given = Object.keys(questions ?? {});
+  for (const [key, type] of expected) {
+    if (questions[key]?.type !== type) return false;
+  }
+  // 그 밖의 질문은 시장 항목 관련도(`relevance_kr`·`relevance_us`)만 허용한다.
+  return given.every(
+    (key) =>
+      expected.has(key) ||
+      (markets.some((market) => key === `relevance_${market}`) &&
+        questions[key].type === "score"),
+  );
 }
 
 function sendJson(response, status, body) {
@@ -296,6 +354,13 @@ createServer(async (request, response) => {
     const parsed = JSON.parse(body);
     // 기사는 관련도·영향도·호재/악재, 키워드·토픽은 관련도·영향도만 묻는다(11단계).
     const lead = Boolean(parsed.state?.subject);
+    // 시장·주제 항목은 기사당 한 요청이다(17단계): 토픽마다 관련도, 증시마다 영향도·호재/악재.
+    if (parsed.state?.markets) {
+      if (!parsed.model || !mergedShapeOk(parsed)) {
+        return sendJson(response, 422, { detail: "bad request" });
+      }
+      return sendJson(response, 200, jevAnswer(parsed));
+    }
     if (
       !parsed.model ||
       parsed.questions?.relevance?.type !== "score" ||
