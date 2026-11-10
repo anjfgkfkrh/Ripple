@@ -100,6 +100,53 @@ pub struct Decision {
     pub usage: TokenUsage,
 }
 
+/// 기사 하나에 걸린 시장·주제 항목을 한 요청으로 묻는 입력(17단계 eval-merge)
+#[derive(Debug, Clone, PartialEq)]
+pub struct MergedTopic {
+    pub name: String,
+    pub summary: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MergedInput {
+    /// 그 기사에 걸린 서로 다른 토픽(걸린 순서)
+    pub topics: Vec<MergedTopic>,
+    /// 시장 항목이 걸린 증시(관련도를 묻는다)
+    pub market_items: Vec<Market>,
+    /// 영향도·호재/악재를 물을 증시(시장·주제 항목이 걸린 증시 전부)
+    pub markets: Vec<Market>,
+    pub article: DecisionArticle,
+}
+
+/// 점수(0~10)와 확신도
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Scored {
+    pub score: f64,
+    pub confidence: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MarketVerdict {
+    pub market: Market,
+    /// 그 증시의 시장 항목이 걸렸을 때만
+    pub relevance: Option<Scored>,
+    pub magnitude: Scored,
+    pub impact: Impact,
+    pub impact_confidence: f64,
+    /// positive·negative·neutral 순서
+    pub impact_probabilities: [f64; 3],
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MergedDecision {
+    /// `MergedInput.topics`와 같은 순서의 관련도
+    pub topics: Vec<Scored>,
+    /// `MergedInput.markets`와 같은 순서
+    pub markets: Vec<MarketVerdict>,
+    pub model: String,
+    pub usage: TokenUsage,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LeadSubjectType {
@@ -187,6 +234,13 @@ pub trait Decider: Send + Sync {
         model: &str,
     ) -> impl Future<Output = Result<Decision, DeciderError>> + Send;
 
+    /// 한 기사에 걸린 시장·주제 항목을 한 요청으로 평가(17단계 eval-merge)
+    fn decide_merged(
+        &self,
+        input: &MergedInput,
+        model: &str,
+    ) -> impl Future<Output = Result<MergedDecision, DeciderError>> + Send;
+
     /// 키워드 트리 후보·토픽 평가(관련도·영향도, 11단계)
     fn rate(
         &self,
@@ -203,6 +257,14 @@ impl<T: Decider> Decider for std::sync::Arc<T> {
         model: &str,
     ) -> impl Future<Output = Result<Decision, DeciderError>> + Send {
         (**self).decide(input, model)
+    }
+
+    fn decide_merged(
+        &self,
+        input: &MergedInput,
+        model: &str,
+    ) -> impl Future<Output = Result<MergedDecision, DeciderError>> + Send {
+        (**self).decide_merged(input, model)
     }
 
     fn rate(

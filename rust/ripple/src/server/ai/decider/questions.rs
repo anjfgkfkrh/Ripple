@@ -8,7 +8,7 @@
 use serde_json::{Map, Value, json};
 
 use crate::server::ai::decider::types::{
-    DecisionInput, JudgeItem, JudgeTarget, LeadInput, LeadSubjectType,
+    DecisionInput, JudgeItem, JudgeTarget, LeadInput, LeadSubjectType, MergedInput,
 };
 use crate::server::db::schema::{Market, MatchKind};
 
@@ -124,16 +124,120 @@ pub fn build_article_questions(target: JudgeTarget) -> Value {
             format!("How much could the news in the `article` move {}?", moves_text(target)),
             &magnitude_levels(target),
         ),
-        "impact": {
-            "type": "choice",
-            "instructions": format!("What effect does the `article` have on {}?", moves_text(target)),
-            "criteria": {
-                "positive": "Good news",
-                "negative": "Bad news",
-                "neutral": "No effect, or the direction is unclear",
-            },
+        "impact": impact_choice(format!(
+            "What effect does the `article` have on {}?",
+            moves_text(target)
+        )),
+    })
+}
+
+fn impact_choice(instructions: String) -> Value {
+    json!({
+        "type": "choice",
+        "instructions": instructions,
+        "criteria": {
+            "positive": "Good news",
+            "negative": "Bad news",
+            "neutral": "No effect, or the direction is unclear",
         },
     })
+}
+
+fn market_name(market: Market) -> &'static str {
+    match market {
+        Market::Kr => "Korean stock market (KOSPI, KOSDAQ)",
+        Market::Us => "US stock market (S&P 500, Nasdaq)",
+    }
+}
+
+/// 합친 질문·응답에서 증시를 부르는 키(`kr`, `us`)
+pub fn market_key(market: Market) -> &'static str {
+    match market {
+        Market::Kr => "kr",
+        Market::Us => "us",
+    }
+}
+
+/// 기사당 한 요청 state(17단계): 걸린 토픽(`t1`부터), 걸린 증시, 기사. 토픽이 없으면 `topics`를 뺀다.
+pub fn build_merged_state(input: &MergedInput) -> Value {
+    let mut state = Map::new();
+    if !input.topics.is_empty() {
+        let mut topics = Map::new();
+        for (n, topic) in input.topics.iter().enumerate() {
+            let mut entry = Map::new();
+            entry.insert("name".into(), json!(topic.name));
+            if let Some(summary) = topic.summary.as_deref().filter(|s| !s.is_empty()) {
+                entry.insert("summary".into(), json!(summary));
+            }
+            topics.insert(format!("t{}", n + 1), Value::Object(entry));
+        }
+        state.insert("topics".into(), Value::Object(topics));
+    }
+    let mut markets = Map::new();
+    for &market in &input.markets {
+        markets.insert(
+            market_key(market).into(),
+            json!({ "name": market_name(market) }),
+        );
+    }
+    state.insert("markets".into(), Value::Object(markets));
+    let mut article = Map::new();
+    article.insert("title".into(), json!(input.article.title));
+    if let Some(summary) = input.article.summary.as_deref().filter(|s| !s.is_empty()) {
+        article.insert("summary".into(), json!(summary));
+    }
+    state.insert("article".into(), Value::Object(article));
+    Value::Object(state)
+}
+
+/// 기사당 한 요청 질문(17단계). 순서는 관련도(토픽 → 시장), 영향도, 호재/악재.
+pub fn build_merged_questions(input: &MergedInput) -> Value {
+    let mut questions = Map::new();
+    for n in 1..=input.topics.len() {
+        questions.insert(
+            format!("relevance_t{n}"),
+            score(
+                format!("How directly is the `article` about the topic in `topics.t{n}`?"),
+                &article_relevance_levels(JudgeTarget::Topic),
+            ),
+        );
+    }
+    for &market in &input.markets {
+        let key = market_key(market);
+        if input.market_items.contains(&market) {
+            questions.insert(
+                format!("relevance_{key}"),
+                score(
+                    format!(
+                        "How directly is the `article` about the overall stock market in `markets.{key}`?"
+                    ),
+                    &article_relevance_levels(JudgeTarget::Market),
+                ),
+            );
+        }
+    }
+    for &market in &input.markets {
+        let key = market_key(market);
+        questions.insert(
+            format!("magnitude_{key}"),
+            score(
+                format!(
+                    "How much could the news in the `article` move the overall stock market in `markets.{key}`?"
+                ),
+                &MARKET_MAGNITUDE_LEVELS,
+            ),
+        );
+    }
+    for &market in &input.markets {
+        let key = market_key(market);
+        questions.insert(
+            format!("impact_{key}"),
+            impact_choice(format!(
+                "What effect does the `article` have on the overall stock market in `markets.{key}`?"
+            )),
+        );
+    }
+    Value::Object(questions)
 }
 
 /// 키워드·토픽 질문: 트리에 남길지, 종목에 붙일지 판단하는 관련도·영향도(점수)
@@ -158,10 +262,7 @@ pub fn build_lead_questions(target: JudgeTarget) -> Value {
 
 /// 대상 항목을 state에 넣는 모양: 종목은 stock, 시장은 market, 주제는 topic과 기준 증시(market)
 fn target_state(item: &JudgeItem) -> Map<String, Value> {
-    let market_name = match item.market {
-        Market::Kr => "Korean stock market (KOSPI, KOSDAQ)",
-        Market::Us => "US stock market (S&P 500, Nasdaq)",
-    };
+    let market_name = market_name(item.market);
     let mut state = Map::new();
     match item.kind {
         JudgeTarget::Market => {

@@ -233,7 +233,8 @@ pub fn sample_keyword_tree(english: bool) -> Value {
 }
 
 use crate::server::ai::decider::types::{
-    DeciderError, Decision, DecisionInput, LeadInput, LeadRating, TokenUsage,
+    DeciderError, Decision, DecisionInput, LeadInput, LeadRating, MarketVerdict, MergedDecision,
+    MergedInput, Scored, TokenUsage,
 };
 
 /// 기본 키워드·토픽 평가(관련 7점·영향 6점·입력 500토큰)
@@ -252,6 +253,7 @@ pub fn fake_rating() -> LeadRating {
 }
 
 type RateAnswer = Box<dyn Fn(&LeadInput) -> Result<LeadRating, DeciderError> + Send + Sync>;
+type MergedAnswer = Box<dyn Fn(&MergedInput) -> Result<MergedDecision, DeciderError> + Send + Sync>;
 type DecideAnswer = Box<dyn Fn(&DecisionInput) -> Result<Decision, DeciderError> + Send + Sync>;
 
 /// 기본 평가 결과(관련 7점·영향 7점·호재·입력 1000토큰)
@@ -272,12 +274,43 @@ pub fn fake_decision() -> Decision {
     }
 }
 
+/// 기본 합친 평가 결과: 토픽·시장 관련 7점, 증시 영향 7점·호재, 입력 1000토큰
+pub fn fake_merged_decision(input: &MergedInput) -> MergedDecision {
+    let scored = Scored {
+        score: 7.0,
+        confidence: 0.7,
+    };
+    MergedDecision {
+        topics: input.topics.iter().map(|_| scored).collect(),
+        markets: input
+            .markets
+            .iter()
+            .map(|&market| MarketVerdict {
+                market,
+                relevance: input.market_items.contains(&market).then_some(scored),
+                magnitude: scored,
+                impact: crate::server::db::schema::Impact::Positive,
+                impact_confidence: 0.8,
+                impact_probabilities: [0.8, 0.1, 0.1],
+            })
+            .collect(),
+        model: "jev-1.13.0".to_string(),
+        usage: TokenUsage {
+            input_tokens: 1000,
+            output_tokens: 50,
+        },
+    }
+}
+
 /// 입력마다 정한 결과(또는 오류)를 돌려주는 가짜 Jev. 받은 입력과 모델을 `calls`(기사 평가)와
 /// `rate_calls`(키워드·토픽 평가)에 남긴다.
 pub struct FakeDecider {
     decide_answer: DecideAnswer,
     rate_answer: RateAnswer,
+    merged_answer: MergedAnswer,
     pub calls: Mutex<Vec<(DecisionInput, String)>>,
+    /// 합친 평가(기사당 한 요청) 호출
+    pub merged_calls: Mutex<Vec<(MergedInput, String)>>,
     pub rate_calls: Mutex<Vec<(LeadInput, String)>>,
 }
 
@@ -288,6 +321,8 @@ pub fn fake_decider(
     FakeDecider {
         decide_answer: Box::new(|_| Ok(fake_decision())),
         rate_answer: Box::new(rate_answer),
+        merged_answer: Box::new(|input| Ok(fake_merged_decision(input))),
+        merged_calls: Mutex::new(Vec::new()),
         calls: Mutex::new(Vec::new()),
         rate_calls: Mutex::new(Vec::new()),
     }
@@ -300,8 +335,21 @@ pub fn fake_article_decider(
     FakeDecider {
         decide_answer: Box::new(decide_answer),
         rate_answer: Box::new(|_| Ok(fake_rating())),
+        merged_answer: Box::new(|input| Ok(fake_merged_decision(input))),
+        merged_calls: Mutex::new(Vec::new()),
         calls: Mutex::new(Vec::new()),
         rate_calls: Mutex::new(Vec::new()),
+    }
+}
+
+impl FakeDecider {
+    /// 합친 평가의 결과(또는 오류)를 정한다.
+    pub fn with_merged(
+        mut self,
+        answer: impl Fn(&MergedInput) -> Result<MergedDecision, DeciderError> + Send + Sync + 'static,
+    ) -> Self {
+        self.merged_answer = Box::new(answer);
+        self
     }
 }
 
@@ -312,6 +360,18 @@ impl crate::server::ai::decider::types::Decider for FakeDecider {
             .unwrap()
             .push((input.clone(), model.to_string()));
         (self.decide_answer)(input)
+    }
+
+    async fn decide_merged(
+        &self,
+        input: &MergedInput,
+        model: &str,
+    ) -> Result<MergedDecision, DeciderError> {
+        self.merged_calls
+            .lock()
+            .unwrap()
+            .push((input.clone(), model.to_string()));
+        (self.merged_answer)(input)
     }
 
     async fn rate(&self, input: &LeadInput, model: &str) -> Result<LeadRating, DeciderError> {

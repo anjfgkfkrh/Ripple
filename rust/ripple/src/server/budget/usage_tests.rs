@@ -216,6 +216,14 @@ impl Decider for FakeDecider {
         unreachable!("이 테스트는 rate만 쓴다")
     }
 
+    async fn decide_merged(
+        &self,
+        _: &crate::server::ai::decider::types::MergedInput,
+        _: &str,
+    ) -> Result<crate::server::ai::decider::types::MergedDecision, DeciderError> {
+        unreachable!("이 테스트는 rate만 쓴다")
+    }
+
     async fn rate(&self, _: &LeadInput, model: &str) -> Result<LeadRating, DeciderError> {
         self.models.lock().unwrap().push(model.to_string());
         Ok(self.rating.clone())

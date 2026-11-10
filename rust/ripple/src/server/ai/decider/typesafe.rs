@@ -5,11 +5,11 @@ use serde_json::{Value, json};
 
 use crate::server::ai::decider::questions::{
     RELEVANCE_SCALE, build_article_questions, build_article_state, build_lead_questions,
-    build_lead_state,
+    build_lead_state, build_merged_questions, build_merged_state, market_key,
 };
 use crate::server::ai::decider::types::{
     Decider, DeciderError, DeciderErrorKind, Decision, DecisionInput, JudgeTarget, LeadInput,
-    LeadRating, TokenUsage,
+    LeadRating, MarketVerdict, MergedDecision, MergedInput, Scored, TokenUsage,
 };
 use crate::server::db::schema::Impact;
 use crate::server::text::js_parse_number;
@@ -308,6 +308,76 @@ impl Decider for TypeSafeDecider {
                 probability("negative"),
                 probability("neutral"),
             ],
+            model: model_name.to_string(),
+            usage: token_usage(&result),
+        })
+    }
+
+    async fn decide_merged(
+        &self,
+        input: &MergedInput,
+        model: &str,
+    ) -> Result<MergedDecision, DeciderError> {
+        let result = self
+            .system_one(
+                model,
+                build_merged_state(input),
+                build_merged_questions(input),
+            )
+            .await?;
+        let scored = |key: &str| {
+            score_answer(result.pointer(&format!("/answers/{key}"))).map(|(score, confidence)| {
+                Scored {
+                    score: to_ten(score),
+                    confidence,
+                }
+            })
+        };
+        let model_name = result.get("model").and_then(Value::as_str);
+        let mut topics = Vec::with_capacity(input.topics.len());
+        for n in 1..=input.topics.len() {
+            topics.push(scored(&format!("relevance_t{n}")).ok_or_else(bad_format)?);
+        }
+        let mut markets = Vec::with_capacity(input.markets.len());
+        for &market in &input.markets {
+            let key = market_key(market);
+            let relevance = if input.market_items.contains(&market) {
+                Some(scored(&format!("relevance_{key}")).ok_or_else(bad_format)?)
+            } else {
+                None
+            };
+            let magnitude = scored(&format!("magnitude_{key}")).ok_or_else(bad_format)?;
+            let impact = result.pointer(&format!("/answers/impact_{key}"));
+            let choice = impact
+                .and_then(|i| i.get("choice"))
+                .and_then(Value::as_str)
+                .and_then(|c| c.parse::<Impact>().ok())
+                .ok_or_else(bad_format)?;
+            let impact_confidence = impact
+                .and_then(|i| i.get("confidence"))
+                .and_then(Value::as_f64)
+                .ok_or_else(bad_format)?;
+            let probabilities = impact.and_then(|i| i.get("probabilities"));
+            let probability = |name: &str| number_or_zero(probabilities.and_then(|p| p.get(name)));
+            markets.push(MarketVerdict {
+                market,
+                relevance,
+                magnitude,
+                impact: choice,
+                impact_confidence,
+                impact_probabilities: [
+                    probability("positive"),
+                    probability("negative"),
+                    probability("neutral"),
+                ],
+            });
+        }
+        let Some(model_name) = model_name else {
+            return Err(bad_format());
+        };
+        Ok(MergedDecision {
+            topics,
+            markets,
             model: model_name.to_string(),
             usage: token_usage(&result),
         })

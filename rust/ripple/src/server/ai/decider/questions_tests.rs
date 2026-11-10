@@ -298,3 +298,150 @@ fn compare_with_fixture(fixture: &Value) {
 fn questions_and_states_equal_ts_output_character_by_character() {
     compare_with_fixture(&serde_json::from_str(FIXTURE).unwrap());
 }
+
+// 17단계 eval-merge: 기사당 한 요청
+fn merged_input(
+    topics: &[(&str, Option<&str>)],
+    market_items: &[Market],
+    markets: &[Market],
+) -> MergedInput {
+    MergedInput {
+        topics: topics
+            .iter()
+            .map(
+                |(name, summary)| crate::server::ai::decider::types::MergedTopic {
+                    name: (*name).into(),
+                    summary: summary.map(Into::into),
+                },
+            )
+            .collect(),
+        market_items: market_items.to_vec(),
+        markets: markets.to_vec(),
+        article: DecisionArticle {
+            title: "금리 동결".into(),
+            summary: Some("한은이 동결했다.".into()),
+        },
+    }
+}
+
+fn merged_topic_rel() -> Value {
+    json!([
+        "Unrelated to the topic; the keyword match is a coincidence.",
+        "Mentions the topic only in passing.",
+        "Background or commentary about the topic.",
+        "A concrete development in the topic.",
+        "An important development in the topic.",
+        "The central news of the topic."
+    ])
+}
+
+fn merged_market_rel() -> Value {
+    json!([
+        "Unrelated to the stock market.",
+        "About a single company or a narrow niche, with little to do with the market as a whole.",
+        "About one industry or sector.",
+        "About an economy-wide factor (interest rates, currency, prices, trade, policy, geopolitics) or several large sectors.",
+        "About the direction of the market itself, or a factor the whole market is watching right now.",
+        "Central to the whole market right now."
+    ])
+}
+
+fn merged_market_mag() -> Value {
+    json!([
+        "No effect on the overall market.",
+        "A negligible effect.",
+        "A small or short-lived effect on some sectors.",
+        "A noticeable effect on the market or several large sectors for a day or two.",
+        "A significant effect that changes market expectations, such as an interest-rate decision or a major policy or geopolitical event.",
+        "A major effect likely to move the whole market substantially."
+    ])
+}
+
+fn merged_impact(key: &str) -> Value {
+    json!({
+        "type": "choice",
+        "instructions": format!("What effect does the `article` have on the overall stock market in `markets.{key}`?"),
+        "criteria": {
+            "positive": "Good news",
+            "negative": "Bad news",
+            "neutral": "No effect, or the direction is unclear"
+        }
+    })
+}
+
+fn merged_score(instructions: String, criteria: Value) -> Value {
+    json!({ "type": "score", "instructions": instructions, "criteria": criteria })
+}
+
+#[test]
+fn merged_article_with_two_topics_and_a_kr_market_item_has_the_measured_shape() {
+    let input = merged_input(
+        &[("AI 투자", Some("빅테크 투자 확대")), ("금리", None)],
+        &[Market::Kr],
+        &[Market::Kr, Market::Us],
+    );
+    assert_eq!(
+        build_merged_state(&input),
+        json!({
+            "topics": {
+                "t1": { "name": "AI 투자", "summary": "빅테크 투자 확대" },
+                "t2": { "name": "금리" }
+            },
+            "markets": {
+                "kr": { "name": "Korean stock market (KOSPI, KOSDAQ)" },
+                "us": { "name": "US stock market (S&P 500, Nasdaq)" }
+            },
+            "article": { "title": "금리 동결", "summary": "한은이 동결했다." }
+        })
+    );
+    let mag = |key: &str| {
+        merged_score(
+            format!(
+                "How much could the news in the `article` move the overall stock market in `markets.{key}`?"
+            ),
+            merged_market_mag(),
+        )
+    };
+    let order: Vec<String> = build_merged_questions(&input)
+        .as_object()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect();
+    assert_eq!(
+        order,
+        [
+            "relevance_t1",
+            "relevance_t2",
+            "relevance_kr",
+            "magnitude_kr",
+            "magnitude_us",
+            "impact_kr",
+            "impact_us"
+        ]
+    );
+    assert_eq!(
+        build_merged_questions(&input),
+        json!({
+            "relevance_t1": merged_score("How directly is the `article` about the topic in `topics.t1`?".into(), merged_topic_rel()),
+            "relevance_t2": merged_score("How directly is the `article` about the topic in `topics.t2`?".into(), merged_topic_rel()),
+            "relevance_kr": merged_score("How directly is the `article` about the overall stock market in `markets.kr`?".into(), merged_market_rel()),
+            "magnitude_kr": mag("kr"),
+            "magnitude_us": mag("us"),
+            "impact_kr": merged_impact("kr"),
+            "impact_us": merged_impact("us"),
+        })
+    );
+}
+
+#[test]
+fn merged_article_with_one_market_asks_only_that_market_and_omits_empty_topics() {
+    let input = merged_input(&[], &[Market::Us], &[Market::Us]);
+    let state = build_merged_state(&input);
+    assert!(state.get("topics").is_none());
+    assert_eq!(state["markets"].as_object().unwrap().len(), 1);
+    assert!(state["markets"]["us"].is_object());
+    let questions = build_merged_questions(&input);
+    let keys: Vec<&String> = questions.as_object().unwrap().keys().collect();
+    assert_eq!(keys, ["relevance_us", "magnitude_us", "impact_us"]);
+}

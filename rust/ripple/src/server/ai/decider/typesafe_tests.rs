@@ -425,3 +425,103 @@ async fn non_json_success_body_is_upstream_error() {
         .unwrap_err();
     assert_eq!(error.message, "Jev 응답 형식이 다릅니다.");
 }
+
+// 17단계 eval-merge: 합친 응답 해석
+fn merged_input() -> crate::server::ai::decider::types::MergedInput {
+    crate::server::ai::decider::types::MergedInput {
+        topics: vec![crate::server::ai::decider::types::MergedTopic {
+            name: "금리".into(),
+            summary: None,
+        }],
+        market_items: vec![Market::Kr],
+        markets: vec![Market::Kr, Market::Us],
+        article: DecisionArticle {
+            title: "금리 동결".into(),
+            summary: None,
+        },
+    }
+}
+
+fn choice_answer(choice: &str) -> Value {
+    json!({
+        "type": "choice", "choice": choice, "confidence": 0.8,
+        "probabilities": { "positive": 0.1, "negative": 0.7, "neutral": 0.2 },
+    })
+}
+
+fn merged_answer() -> Value {
+    json!({
+        "model": "jev-1.13.0",
+        "answers": {
+            "relevance_t1": score_answer(3.6, 0.7),
+            "relevance_kr": score_answer(2.0, 0.5),
+            "magnitude_kr": score_answer(2.5, 0.6),
+            "magnitude_us": score_answer(1.0, 0.9),
+            "impact_kr": choice_answer("positive"),
+            "impact_us": choice_answer("negative"),
+        },
+        "usage": { "input_tokens": 1200, "output_tokens": 80 },
+    })
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn merged_decision_reads_every_key_with_scores_times_two() {
+    let server = server_with(vec![json_response(200, merged_answer())]).await;
+    let result = decider(&server)
+        .decide_merged(&merged_input(), "jev-1.13.0")
+        .await
+        .unwrap();
+    assert_eq!(
+        result.topics,
+        [Scored {
+            score: 7.2,
+            confidence: 0.7
+        }]
+    );
+    assert_eq!(result.markets.len(), 2);
+    let (kr, us) = (&result.markets[0], &result.markets[1]);
+    assert_eq!(kr.market, Market::Kr);
+    assert_eq!(
+        kr.relevance,
+        Some(Scored {
+            score: 4.0,
+            confidence: 0.5
+        })
+    );
+    assert_eq!(kr.magnitude.score, 5.0);
+    assert_eq!(kr.impact, Impact::Positive);
+    assert_eq!(kr.impact_confidence, 0.8);
+    assert_eq!(kr.impact_probabilities, [0.1, 0.7, 0.2]);
+    assert_eq!(us.relevance, None);
+    assert_eq!(us.magnitude.score, 2.0);
+    assert_eq!(us.impact, Impact::Negative);
+    assert_eq!(
+        (result.model.as_str(), result.usage),
+        (
+            "jev-1.13.0",
+            TokenUsage {
+                input_tokens: 1200,
+                output_tokens: 80
+            }
+        )
+    );
+    let requests = server.received_requests().await.unwrap();
+    let body: Value = serde_json::from_slice(&requests[0].body).unwrap();
+    assert_eq!(body["state"], build_merged_state(&merged_input()));
+    assert_eq!(body["questions"], build_merged_questions(&merged_input()));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn merged_decision_with_a_missing_key_is_a_format_error() {
+    for key in ["relevance_t1", "relevance_kr", "magnitude_us", "impact_kr"] {
+        let mut body = merged_answer();
+        body["answers"].as_object_mut().unwrap().remove(key);
+        let server = server_with(vec![json_response(200, body)]).await;
+        let error = decider(&server)
+            .decide_merged(&merged_input(), "jev-1.13.0")
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind, DeciderErrorKind::Upstream, "{key}");
+        assert_eq!(error.message, "Jev 응답 형식이 다릅니다.");
+    }
+}
