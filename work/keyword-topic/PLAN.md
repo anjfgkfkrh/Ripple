@@ -12,7 +12,7 @@
 | anchor-match | 별칭을 이름처럼 걸고, 종목 키워드 연결은 제목 고유어가 없으면 `gated`로 저장·평가 제외 | `match_tests`·`run_tests`(collect·evaluate)·`backfill_tests` 새 시험 통과, Rust 검사 전체 통과 | Sonnet / medium | anchor-schema 통과 | 통과 | 1 |
 | tree-full | 새 전체 생성(깊이 2·상한·별칭·고유어·통계 낱말), Jev 후보 평가 제거 | `tree_tests`·`generate_tests` 새 시험 통과, `/check` 전체 통과 | Sonnet / medium | llm-request 통과, anchor-match 통과 | 통과 | 1 |
 | tree-weekly | 키워드 실적, 정기 증분 점검(뺄 것·더할 것), 상한·밀어내기, 매일 06:00 확인 | `generate_tests`·`plan_tests`·`queue_tests` 새 시험 통과, `/check` 전체 통과 | Sonnet / medium | tree-full 통과 | 통과 | 1 |
-| tree-screen | 트리 화면 실적 표시, 별칭 보기·지우기, 설정 이름·범위·기본값 | `stocks_tests`·`settings_form_tests` 새 시험, 고친 E2E 통과, `/check` 전체 통과, 화면 캡처 | Sonnet / medium | tree-weekly 통과 | 대기 | 0 |
+| tree-screen | 트리 화면 실적 표시, 별칭 보기·지우기, 설정 이름·범위·기본값 | `stocks_tests`·`settings_form_tests` 새 시험, 고친 E2E 통과, `/check` 전체 통과, 화면 캡처 | Sonnet / medium | tree-weekly 통과 | 진행 | 1 |
 | eval-merge | 시장·토픽 기사를 기사당 Jev 한 요청으로 평가하고 연결마다 저장, 사용량 나눠 기록 | `questions_tests`·`typesafe_tests`·`evaluate/run_tests` 새 시험 통과, `/check` 전체 통과 | Sonnet / medium | anchor-match 통과 | 대기 | 0 |
 | topic-input | 토픽 갱신 입력 줄이기(일본어·같은 소식 묶기)·새 규칙·`scope`·company 처리·통과 기준 바로잡기 | `topics_tests` 새 시험 통과, `/check` 전체 통과 | Sonnet / medium | paid-compare 통과, anchor-schema 통과 | 대기 | 0 |
 | stage-check | 시험 Docker에서 실제 AI로 전체 흐름을 확인하고 수치를 모은다 | 인계에 항목별 수치·비용($0.15 이하)·화면 캡처, 시험 Docker 내림 | Sonnet / medium | 앞 작업 모두 통과 | 대기 | 0 |
