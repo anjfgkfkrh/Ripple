@@ -68,6 +68,7 @@
 - 실측에서 LLM이 별칭에 다른 회사 이름을 냈고, 깨진 값('삼전닉스제외')도 있었다. 검증을 반드시 거친다.
 - 파이썬 `\w`는 유니코드 글자·숫자·밑줄이다. Rust 정규식 `\w`도 같다.
 - `settings.rs`의 깊이 기본값·범위와 설정 화면은 tree-screen이 고친다. 여기서는 생성 쪽 자르기만 한다.
+- 리뷰(2026-11-10, llm-request): `GenerateOk`에 `deepest`(후보 트리의 가장 깊은 단계)가 생겼고 결과 줄은 `queue.rs`의 `success_line`이 만든다(`rated`·`unrated_reason`을 쓴다). Jev 평가를 없애면 이 함수와 `queue_tests`의 `success_line_shows_actual_over_configured_depth`도 함께 고친다. 새 `StructuredRequest`에는 `reasoning: Reasoning::default()`를 넣는다.
 
 ## 상위로 올릴 조건
 기본 규칙(범위 밖·기대값 변경·두 번 고쳐도 남는 오류는 보고) + 기존 E2E 수집 기대값을 고유어로 맞출 수 없을 때
