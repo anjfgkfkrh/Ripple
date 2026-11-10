@@ -3,14 +3,14 @@
 > 읽는 때: 세션을 시작할 때 맨 먼저. 지금 하는 일, 답 대기, 다음 할 일만 둔다(화면 한 장 안).
 > 이 문서는 덧붙이지 않고 통째로 다시 쓴다(agentflow review가 작업 통과 때, `/handoff`가 단계 밖 작업 뒤). 끝난 일의 자세한 기록은 [DECISIONS.md](DECISIONS.md) 3장, 단계 표·작업 방법은 [DEVELOPMENT.md](DEVELOPMENT.md)에 둔다. 실제와 다르면 `git log`와 `git status`를 먼저 본다.
 
-마지막 갱신: 2026-11-10 (한국 시간), 17단계 `keyword-topic` 계획 승인·커밋
+마지막 갱신: 2026-11-10 (한국 시간), 17단계 `keyword-topic` 작업 `paid-compare` 리뷰 통과
 
 ## 다음 할 일
 
-- **17단계 키워드 트리·토픽 고도화(`keyword-topic`): 계획 끝, run 전.** 브랜치 `af/keyword-topic`, 작업 10개는 `work/keyword-topic/PLAN.md`. 사용자가 새 세션에서 `/agentflow:run keyword-topic`으로 시작한다.
-  - 사전 조건: run 전에 원격 최신 백업을 `.check-restore/ripple.db`로 받아 둔다(첫 작업 `paid-compare`와 마지막 `stage-check`가 씀). `! F=$(ssh blockall@blockall-ss 'ls -t ~/Ripple/backups/*.db | head -1'); mkdir -p .check-restore && scp -q "blockall@blockall-ss:$F" .check-restore/ripple.db`
-  - 결정: DECISIONS.md 1장 "키워드 트리·토픽 고도화" 세 줄, "17단계 `keyword-topic` 계획 답", "17단계 계획 때 정한 세부". SPEC 10장 17단계 줄과 FR-3·4·5·6·8·7장 고침.
-  - `paid-compare` 리뷰 때 "17단계 추론 토큰"·"17단계 토픽 통과 건수" 줄을 DECISIONS 1장에 적어야 `llm-request`·`topic-input`이 진행된다.
+- **17단계 키워드 트리·토픽 고도화(`keyword-topic`): run 진행 중.** 브랜치 `af/keyword-topic`, 작업 10개는 `work/keyword-topic/PLAN.md`(상태는 PLAN 표). 첫 작업 `paid-compare` 통과(OpenRouter 28회 $0.0624).
+  - 리뷰가 정한 것(계획 세부 ⑪, 사용자 확인 필요하면 단계 결과 보고 때): DECISIONS 1장 "17단계 추론 토큰"(OpenRouter 요청에 `reasoning: {"enabled": false}` 기본) · "17단계 토픽 통과 건수"(이전 토픽 줄에 `· 통과 M건` 보임). 수치는 2장 "17단계 추론·통과 건수 비교".
+  - 다음: `llm-request`(선행 충족), `anchor-schema`. `stage-check`가 다시 `.check-restore/ripple.db`를 쓴다(그 전에 최신 백업으로 바꿔 받을지는 그때 확인).
+  - 결정: DECISIONS.md 1장 "키워드 트리·토픽 고도화" 세 줄, "17단계 `keyword-topic` 계획 답", "17단계 계획 때 정한 세부", 위 두 줄. SPEC 10장 17단계 줄과 FR-3·4·5·6·8·7장 고침.
   - 배포 뒤 사용자 몫: 설정 화면에서 영향도 표시 기준 5, 키워드 재생성 주기 주 1회로 바꾸기(저장된 값은 코드가 덮지 않음, 답 3B·4A).
 
 ## 답 대기

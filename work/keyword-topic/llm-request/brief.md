@@ -46,6 +46,7 @@ OpenRouter 응답 본문을 읽지 못한 실패를 형식 오류가 아닌 연�
 ## 알려진 함정
 - reqwest의 `bytes()` 오류에서 시간 초과는 `is_timeout()`으로 가린다.
 - 다시 보낼 때 같은 요청 본문을 다시 만들어야 한다(본문은 한 번 쓰면 사라짐).
+- 리뷰(2026-11-10, paid-compare): 값은 `"reasoning": {"enabled": false}`(요청 본문 최상위, `provider`와 나란히). `reasoning.max_tokens`는 추론을 켜는 값이니 쓰지 않는다. `provider.require_parameters: true`와 함께 200이 실제로 확인됨.
 
 ## 상위로 올릴 조건
 기본 규칙(범위 밖·기대값 변경·두 번 고쳐도 남는 오류는 보고) + "17단계 추론 토큰" 줄이 없거나 값이 애매할 때
