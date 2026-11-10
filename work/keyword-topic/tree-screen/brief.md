@@ -32,6 +32,7 @@
 - `rust/ripple/src/server/settings_form_tests.rs`
 - `e2e/keywords.spec.ts`
 - `e2e/settings.spec.ts`
+- `e2e/collect.spec.ts`(상태 화면 문구 기대값만)
 - `e2e/mock-services.mjs`
 - `README.md`(설정·키워드 설명이 있는 곳만)
 - 기본값 변경으로 깨지는 기존 시험(기대값·시험 입력만, 제품 코드는 안 됨): `rust/ripple/src/server/evaluate/run_tests.rs`, `rust/ripple/src/server/keywords/performance_tests.rs`, `rust/ripple/src/server/schedule/plan_tests.rs`, `rust/ripple/src/server/schedule/scheduler_tests.rs`, `rust/ripple/src/server/timeline/read_tests.rs`, `rust/ripple/src/web/timeline_tests.rs`
@@ -70,6 +71,8 @@
 - 리뷰(2026-11-10, tree-full): `tree.rs`의 `MAX_DEPTH`는 이미 2라 `clamp_depth`(생성·`read.rs` 공용)는 1~2로 자른다. 남은 것은 `settings.rs` 범위·설정 화면이다. 새로 만든 키워드는 관련도·영향도가 NULL이라 지금 점수 자리(`keyword-scores`)는 비어 보이고, E2E 가짜 AI 트리는 7개(별칭 `가짜별칭`, 고유어 `반도체·데이터센터·HBM·메모리·GPU`)다.
 
 - 리뷰(2026-11-10, tree-weekly): 실적 함수는 `server/keywords/performance.rs` `keyword_performance(conn, stock_id, since)`이고 표의 키는 `tree.rs` `normalize_key`(공백 빼고 소문자)한 키워드 글자다. 키워드 줄 글자도 `normalize_key`로 찾아야 맞는다. 정기 점검은 이제 주기와 상관없이 매일 06:00에 확인하고 대상만 주기로 고르므로, 설정 화면 주기 칸 설명이 "다시 만들기"를 말하면 "정기 점검"에 맞게 고친다.
+
+- 사람 결정(2026-11-10, 시도 2 진단 뒤 답 "A"): 상태 화면 문구 `web/status.rs` `keywords_schedule_text`를 "매일 06:00 확인(주 1회 점검)"처럼 실제 동작(주기와 상관없이 매일 확인, 주기가 지난 종목만 점검)에 맞게 고치고 `e2e/collect.spec.ts:30` 기대값을 그 문구로 맞춘다. DECISIONS.md 1장 "17단계 tree-screen 상태 화면 문구". 남은 일: 이 수정, `/check` 전체, 캡처 직접 보기
 
 ## 상위로 올릴 조건
 기본 규칙(범위 밖·기대값 변경·두 번 고쳐도 남는 오류는 보고) + 손님 화면의 동작을 바꿔야 할 때
