@@ -86,7 +86,9 @@ pub fn parse_topic_refresh(value: &Value) -> Option<RawTopicRefresh> {
 
 /// 가나(U+3040~U+30FF)가 든 제목은 일본어판이라 뺀다.
 fn has_kana(title: &str) -> bool {
-    title.chars().any(|c| ('\u{3040}'..='\u{30FF}').contains(&c))
+    title
+        .chars()
+        .any(|c| ('\u{3040}'..='\u{30FF}').contains(&c))
 }
 
 /// AI에 넣을 제목을 줄인다(최근순 입력): 가나가 든 제목을 빼고, 같은 소식(`is_same_news`)은 처음 나온(가장 최근) 제목
@@ -181,7 +183,8 @@ pub fn build_topic_refresh_messages(
     if previous.is_empty() {
         user.push("이전 토픽: (없음)".to_string());
     } else {
-        let mut lines = vec!["이전 토픽(id: 이름 — 설명 [검색어] · 24시간 기사 N건 · 통과 M건):".to_string()];
+        let mut lines =
+            vec!["이전 토픽(id: 이름 — 설명 [검색어] · 24시간 기사 N건 · 통과 M건):".to_string()];
         lines.extend(previous.iter().map(|topic| {
             format!(
                 "- {}: {} — {} [{}] · 기사 {}건 · 통과 {}건{}",

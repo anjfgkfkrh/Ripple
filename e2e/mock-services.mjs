@@ -407,6 +407,7 @@ createServer(async (request, response) => {
               related: items.includes("멜콘")
                 ? [{ item: "멜콘", reason: "중동 수주" }]
                 : [],
+              scope: "market",
             },
           ]
         : [];
@@ -425,6 +426,7 @@ createServer(async (request, response) => {
                     related: items.includes("SK하이닉스")
                       ? [{ item: "SK하이닉스", reason: "HBM 수요가 늘어남" }]
                       : [],
+                    scope: "market",
                   },
                   {
                     id: "",
@@ -432,6 +434,7 @@ createServer(async (request, response) => {
                     summary: "연준 인하 가능성 언급",
                     terms: ["금리 인하"],
                     related: [],
+                    scope: "market",
                   },
                   ...continued,
                 ],

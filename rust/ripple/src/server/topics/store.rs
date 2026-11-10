@@ -573,7 +573,8 @@ pub fn topic_article_counts(
         }
         Ok(())
     };
-    let thresholds = || -> Vec<rusqlite::types::Value> { vec![min_relevance.into(), min_magnitude.into()] };
+    let thresholds =
+        || -> Vec<rusqlite::types::Value> { vec![min_relevance.into(), min_magnitude.into()] };
     // market(범위를 모르는 값 포함): 토픽 항목에 걸린 기사
     let mut bindings = thresholds();
     bindings.extend(ids());

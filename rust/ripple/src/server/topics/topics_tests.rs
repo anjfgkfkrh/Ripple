@@ -1450,11 +1450,14 @@ fn reduce_titles_drops_kana_groups_same_news_and_keeps_order() {
 #[test]
 fn scope_parses_company_and_everything_else_is_market() {
     let parse = |scope: Value| {
-        let mut topic = json!({ "id": "", "name": "a", "summary": "b", "terms": [], "related": [] });
+        let mut topic =
+            json!({ "id": "", "name": "a", "summary": "b", "terms": [], "related": [] });
         if !scope.is_null() {
             topic["scope"] = scope;
         }
-        parse_topic_refresh(&json!({ "topics": [topic] })).unwrap().topics[0]
+        parse_topic_refresh(&json!({ "topics": [topic] }))
+            .unwrap()
+            .topics[0]
             .scope
             .clone()
     };
@@ -1499,7 +1502,11 @@ fn lens_count(shared: &SharedTestDb, topic_id: i64, only_visible: bool) -> i64 {
         .query_row(
             &format!(
                 "SELECT count(*) FROM stocks WHERE kind = 'topic' AND topic_id = ?1 {}",
-                if only_visible { "AND deleted_at IS NULL" } else { "" }
+                if only_visible {
+                    "AND deleted_at IS NULL"
+                } else {
+                    ""
+                }
             ),
             [topic_id],
             |r| r.get(0),
@@ -1508,7 +1515,8 @@ fn lens_count(shared: &SharedTestDb, topic_id: i64, only_visible: bool) -> i64 {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn company_topic_has_no_lens_keeps_jev_branch_and_stores_scope_and_market_again_restores_lens() {
+async fn company_topic_has_no_lens_keeps_jev_branch_and_stores_scope_and_market_again_restores_lens()
+ {
     let (shared, samsung) = setup();
     seed_titles(&shared, at(-0.1), 30, &[]);
     let mut company = ans("삼성 수주", &["삼성 수주"]);
@@ -1529,10 +1537,7 @@ async fn company_topic_has_no_lens_keeps_jev_branch_and_stores_scope_and_market_
     assert_eq!(lens_count(&shared, topics[0].id, false), 0);
     assert!(lens_count(&shared, topics[1].id, true) > 0);
     // 관련 종목 가지는 Jev 평가 뒤에 붙는다.
-    assert_eq!(
-        lens_keywords(&shared, samsung.id)[0],
-        "삼성 수주",
-    );
+    assert_eq!(lens_keywords(&shared, samsung.id)[0], "삼성 수주",);
 
     // 시장 토픽이던 것이 company로 바뀌면 항목을 숨기고, 다시 market이 되면 되살린다.
     let rates = topics[1].id;
@@ -1540,7 +1545,13 @@ async fn company_topic_has_no_lens_keeps_jev_branch_and_stores_scope_and_market_
     let mut turned = ans_with(rates, "기준금리", &["기준금리"]);
     turned.scope = "company";
     turned.related = vec![("삼성전자".into(), "금리 영향".into())];
-    refresh(&shared, &answer(vec![turned]), Some(&default_decider()), at(3.0)).await;
+    refresh(
+        &shared,
+        &answer(vec![turned]),
+        Some(&default_decider()),
+        at(3.0),
+    )
+    .await;
     assert_eq!(lens_count(&shared, rates, true), 0);
     assert!(lens_count(&shared, rates, false) > 0);
     seed_titles(&shared, at(5.9), 30, &[]);
@@ -1553,7 +1564,11 @@ async fn company_topic_has_no_lens_keeps_jev_branch_and_stores_scope_and_market_
     .await;
     assert!(lens_count(&shared, rates, true) > 0);
     assert_eq!(
-        all_topics(&shared).iter().find(|t| t.id == rates).unwrap().scope,
+        all_topics(&shared)
+            .iter()
+            .find(|t| t.id == rates)
+            .unwrap()
+            .scope,
         "market"
     );
 }
@@ -1593,7 +1608,13 @@ fn topic_article_counts_use_screen_thresholds_not_keyword_thresholds() {
     link_to(&shared, lens, 7.0, 5.0); // 영향도 미달(키워드 기준이면 통과)
     let counts =
         topic_article_counts(&shared.db.lock().unwrap(), &[topic.id], at(-24.0), 6.0, 6.0).unwrap();
-    assert_eq!(counts[&topic.id], TopicArticleCounts { matched: 2, shown: 1 });
+    assert_eq!(
+        counts[&topic.id],
+        TopicArticleCounts {
+            matched: 2,
+            shown: 1
+        }
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -1604,16 +1625,47 @@ async fn refresh_counts_passing_articles_with_evaluation_settings() {
     link_articles(&shared, topics[0].id, 1, at(0.5), Some((7.0, 5.0)));
     {
         let conn = shared.db.lock().unwrap();
-        write_num(&conn, &crate::server::settings::EVALUATION_MIN_RELEVANCE, 6.0, now()).unwrap();
-        write_num(&conn, &crate::server::settings::EVALUATION_MIN_MAGNITUDE, 6.0, now()).unwrap();
-        write_num(&conn, &crate::server::settings::KEYWORDS_MIN_RELEVANCE, 3.0, now()).unwrap();
-        write_num(&conn, &crate::server::settings::KEYWORDS_MIN_MAGNITUDE, 3.0, now()).unwrap();
+        write_num(
+            &conn,
+            &crate::server::settings::EVALUATION_MIN_RELEVANCE,
+            6.0,
+            now(),
+        )
+        .unwrap();
+        write_num(
+            &conn,
+            &crate::server::settings::EVALUATION_MIN_MAGNITUDE,
+            6.0,
+            now(),
+        )
+        .unwrap();
+        write_num(
+            &conn,
+            &crate::server::settings::KEYWORDS_MIN_RELEVANCE,
+            3.0,
+            now(),
+        )
+        .unwrap();
+        write_num(
+            &conn,
+            &crate::server::settings::KEYWORDS_MIN_MAGNITUDE,
+            3.0,
+            now(),
+        )
+        .unwrap();
     }
     seed_titles(&shared, at(1.9), 30, &[]);
     let llm = answer(vec![ans_with(topics[0].id, "중동 긴장", &["중동 긴장"])]);
     refresh(&shared, &llm, Some(&default_decider()), at(2.0)).await;
-    let line = format!("- {}: 중동 긴장 — 중동 긴장 설명 [중동 긴장] · 기사 3건 · 통과 2건", topics[0].id);
-    assert!(llm.calls.lock().unwrap()[0].messages[1].content.contains(&line));
+    let line = format!(
+        "- {}: 중동 긴장 — 중동 긴장 설명 [중동 긴장] · 기사 3건 · 통과 2건",
+        topics[0].id
+    );
+    assert!(
+        llm.calls.lock().unwrap()[0].messages[1]
+            .content
+            .contains(&line)
+    );
 }
 
 #[test]
@@ -1626,18 +1678,27 @@ fn company_topic_counts_come_from_the_branch_path_of_attached_stocks() {
             [now()],
         )
         .unwrap();
-        let topic = find_topic(&conn, conn.last_insert_rowid()).unwrap().unwrap();
+        let topic = find_topic(&conn, conn.last_insert_rowid())
+            .unwrap()
+            .unwrap();
         attach_topic_to_stock(
             &conn,
             &StockRef::from(&samsung),
             &topic,
-            &TopicLink { reason: "수주", relevance: 7.0, magnitude: 6.0 },
+            &TopicLink {
+                reason: "수주",
+                relevance: 7.0,
+                magnitude: 6.0,
+            },
             now(),
         )
         .unwrap();
         topic
     };
-    let display = samsung.name_ko.clone().unwrap_or_else(|| samsung.name.clone());
+    let display = samsung
+        .name_ko
+        .clone()
+        .unwrap_or_else(|| samsung.name.clone());
     let exact = link_to(&shared, samsung.id, 8.0, 8.0);
     set_path(&shared, exact, &format!("{display} → 삼성 수주"));
     let deeper = link_to(&shared, samsung.id, 3.0, 3.0);
@@ -1647,7 +1708,13 @@ fn company_topic_counts_come_from_the_branch_path_of_attached_stocks() {
     link_to(&shared, samsung.id, 8.0, 8.0); // 경로 '종목'
     let counts =
         topic_article_counts(&shared.db.lock().unwrap(), &[topic.id], at(-24.0), 6.0, 6.0).unwrap();
-    assert_eq!(counts[&topic.id], TopicArticleCounts { matched: 2, shown: 1 });
+    assert_eq!(
+        counts[&topic.id],
+        TopicArticleCounts {
+            matched: 2,
+            shown: 1
+        }
+    );
 }
 
 #[test]
@@ -1665,5 +1732,8 @@ fn previous_topic_line_shows_screen_pass_count() {
         &[],
         &[],
     );
-    assert!(m[1].content.contains("- 1: a — b [c] · 기사 7건 · 통과 2건\n"));
+    assert!(
+        m[1].content
+            .contains("- 1: a — b [c] · 기사 7건 · 통과 2건\n")
+    );
 }

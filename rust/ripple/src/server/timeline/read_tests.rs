@@ -947,8 +947,11 @@ fn read_topic_cards_leaves_out_company_topics() {
     ensure_default_market(c, ago(80.0)).unwrap();
     let (_, market_lens) = auto_topic(c, "시장 토픽");
     let (company, company_lens) = auto_topic(c, "회사 토픽");
-    c.execute("UPDATE topics SET scope = 'company' WHERE id = ?1", params![company.id])
-        .unwrap();
+    c.execute(
+        "UPDATE topics SET scope = 'company' WHERE id = ?1",
+        params![company.id],
+    )
+    .unwrap();
     for (n, lens) in [(1u32, market_lens[0]), (2u32, company_lens[0])] {
         Link::new(lens, ago(1.0))
             .titled(&distinct(n))

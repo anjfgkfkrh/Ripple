@@ -18,8 +18,8 @@ use crate::server::keywords::generate::judge_item;
 use crate::server::log::{log, log_error};
 use crate::server::settings::{
     EVALUATION_MIN_MAGNITUDE, EVALUATION_MIN_RELEVANCE, KEYWORDS_MIN_MAGNITUDE,
-    KEYWORDS_MIN_RELEVANCE, LLM_MODEL, TOPICS_ERROR, TOPICS_FAILED_AT,
-    TOPICS_REFRESHED_AT, TOPICS_STARTED_AT, read_num, read_str, write_num, write_str,
+    KEYWORDS_MIN_RELEVANCE, LLM_MODEL, TOPICS_ERROR, TOPICS_FAILED_AT, TOPICS_REFRESHED_AT,
+    TOPICS_STARTED_AT, read_num, read_str, write_num, write_str,
 };
 use crate::server::text::js_to_fixed;
 use crate::server::time::{EpochMs, now_ms};
