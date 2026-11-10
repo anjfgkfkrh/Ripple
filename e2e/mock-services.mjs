@@ -378,6 +378,27 @@ createServer(async (request, response) => {
       });
     }
 
+    // 정기 점검(17단계): 바뀐 것 없음
+    if (response_format?.json_schema?.name === "keyword_update") {
+      return sendJson(response, 200, {
+        model,
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                remove: [],
+                add: [],
+                anchorsRemove: [],
+                anchorsAdd: [],
+                aliasesAdd: [],
+              }),
+            },
+          },
+        ],
+        usage: { prompt_tokens: 700, completion_tokens: 40, cost: 0.0002 },
+      });
+    }
+
     if (response_format?.json_schema?.name === "keyword_tree") {
       await new Promise((resolve) => setTimeout(resolve, KEYWORD_DELAY_MS));
       if (user.startsWith(FAIL_FIRST_KEYWORDS) && !failedOnce) {
