@@ -3,3 +3,5 @@ time,id,role,stage,task,attempt,model,effort,requests,input,cache_write_5m,cache
 2026-11-10 21:20:46,abc2dd1f808ec8805,diagnose,keyword-topic,work/keyword-topic/paid-compare,1,claude-opus-5-5,기본,5,10,46300,0,169588,1186,46302,0.2892,0.8873,0.5981,67.4
 2026-11-10 21:31:24,a1fa2ae2e8e62b303,work,keyword-topic,work/keyword-topic/paid-compare,2,claude-sonnet-5-5,medium,23,46,75343,0,1560836,18327,93621,0.5278,3.4557,2.9279,84.7
 2026-11-10 21:33:45,a11e5fbab1691219e,review,keyword-topic,work/keyword-topic/paid-compare,2,claude-opus-5-5,기본,15,30,91161,0,968561,9634,91163,0.8423,4.4317,3.5894,81.0
+2026-11-10 21:37:03,a4b7464a49fbea070,work,keyword-topic,work/keyword-topic/llm-request,1,claude-sonnet-5-5,medium,20,40,67962,0,1303666,15552,86240,0.4559,2.8989,2.4430,84.3
+2026-11-10 21:39:09,a06401385e15a92a2,review,keyword-topic,work/keyword-topic/llm-request,1,claude-opus-5-5,기본,14,28,66504,0,865517,7918,84788,0.6641,3.8866,3.2225,82.9
