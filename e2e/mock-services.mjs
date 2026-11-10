@@ -141,11 +141,16 @@ function finnhubNews(id, headline, base) {
 }
 
 // 키워드 트리(깊이 2). 구조 키워드만 [단계, 키워드, 영어 표기, 부모, 이유](시사는 토픽이 맡음, 2026-10-23)
+/**
+ * 종목이 받는 별칭·고유어(17단계). 고유어는 가짜 언론사 기사 제목에 실제로 있는 낱말로 골라,
+ * 키워드로 걸린 기사 연결이 고유어 문턱을 넘게 한다. 별칭은 어느 제목에도 없는 낱말이다.
+ */
+const ALIASES = ["가짜별칭"];
+const ANCHORS = ["반도체", "데이터센터", "HBM", "메모리", "GPU"];
 const KEYWORD_TREE = [
   [1, "AI 반도체", "AI chips", "", "AI 서버 수요와 직결"],
   [1, "데이터센터", "Data centers", "", "주요 수요처"],
   [1, "환율", "Exchange rates", "", "해외 매출 비중이 큼"],
-  [1, "공급망", "Supply chain", "", "부품 조달 위험"],
   [2, "HBM", "HBM", "AI 반도체", "AI 반도체 핵심 부품"],
   [2, "GPU", "GPUs", "AI 반도체", "AI 연산 장치"],
   [2, "클라우드", "Cloud computing", "데이터센터", "데이터센터 최대 고객"],
@@ -161,6 +166,8 @@ function keywordAnswer(user) {
   // 미국 종목과 미국 증시 기준 항목(시장·주제)
   const us = user.includes("(미국,") || user.includes("미국 증시");
   return {
+    aliases: ALIASES,
+    anchors: ANCHORS,
     keywords: KEYWORD_TREE.map(
       ([level, keyword, keywordEn, parent, reason]) => ({
         level,
@@ -185,14 +192,13 @@ const score = (value) => ({
  * 가짜 Jev 답(공식 API 응답 모양).
  * - 기사: 종목 이름으로 걸린 기사와 주제·토픽 기사는 관련 4단계(8점)·영향 3.5단계(7점), 그 밖은 1.5단계(3점).
  *   제목에 '확대'·'실적'·'rise'가 있으면 호재, 아니면 중립.
- * - 키워드·토픽(11단계): 관련 3.5단계(7점)·영향 3단계(6점). '공급망'만 관련 2단계(4점)라 트리에서 잘린다.
+ * - 토픽(11단계): 관련 3.5단계(7점)·영향 3단계(6점). 키워드는 더 이상 Jev로 고르지 않는다(17단계).
  */
 function jevAnswer({ model, state }) {
   if (state.subject) {
-    const weak = state.subject.text === "공급망";
     return {
       model,
-      answers: { relevance: score(weak ? 2 : 3.5), magnitude: score(3) },
+      answers: { relevance: score(3.5), magnitude: score(3) },
       usage: { input_tokens: 400, output_tokens: 20 },
     };
   }

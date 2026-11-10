@@ -37,7 +37,7 @@ test.describe("키워드 생성·트리 보기 (SPEC FR-3, D-13~D-16, D-37)", ()
       animations: "disabled",
     });
 
-    // 화면이 스스로 다시 읽어 완료를 보여 준다. 후보 8개 가운데 Jev 관련도가 기준 미만인 '공급망'은 잘린다(11단계).
+    // 화면이 스스로 다시 읽어 완료를 보여 준다. 가짜 AI가 준 키워드 7개를 Jev 평가 없이 그대로 남긴다(17단계).
     const summary = item.getByText("키워드 7개");
     await expect(summary).toBeVisible({ timeout: KEYWORDS_TIMEOUT });
     await expect(item).toContainText("깊이 2");
@@ -56,10 +56,6 @@ test.describe("키워드 생성·트리 보기 (SPEC FR-3, D-13~D-16, D-37)", ()
     await expect(
       item.getByTitle(`${target.name} → 공급망`, { exact: true }),
     ).toHaveCount(0);
-    // 키워드마다 Jev가 매긴 관련도·영향도를 보인다(11단계).
-    await expect(branch.getByTestId("keyword-scores").first()).toHaveText(
-      "관련 7.0 · 영향 6.0",
-    );
     // 트리는 구조 키워드만 만든다(시사는 토픽 가지가 맡음, 2026-10-23).
     await expect(item.getByTestId("current-badge")).toHaveCount(0);
     // 영어 표기는 미국 종목에만 있다(D-14).
