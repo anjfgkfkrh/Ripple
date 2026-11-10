@@ -40,6 +40,12 @@ async fn sends_token_and_bodies_for_stock_calls() {
         .respond_with(ResponseTemplate::new(202).set_body_json(json!({"status": "queued"})))
         .mount(&server)
         .await;
+    Mock::given(method("POST"))
+        .and(path("/stocks/7/aliases/remove"))
+        .and(body_json(json!({"alias": "삼전"})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok": true})))
+        .mount(&server)
+        .await;
     Mock::given(method("DELETE"))
         .and(path("/stocks/7"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok": true})))
@@ -74,6 +80,7 @@ async fn sends_token_and_bodies_for_stock_calls() {
             data: json!({"status": "queued"})
         }
     );
+    assert!(api.remove_alias(7, "삼전").await.is_ok());
     assert!(api.delete_stock(7).await.is_ok());
 }
 

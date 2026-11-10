@@ -41,6 +41,7 @@ pub fn web_router(state: Arc<WebState>) -> Router {
         .route("/stocks/list", get(stocks::list))
         .route("/stocks/delete", post(stocks::delete))
         .route("/stocks/keywords", post(stocks::regenerate))
+        .route("/stocks/{id}/aliases/remove", post(stocks::remove_alias))
         .route("/stocks/markets", get(stocks::markets))
         .route("/stocks/market", post(stocks::set_market))
         .route("/stocks/topics", post(stocks::add_topic))

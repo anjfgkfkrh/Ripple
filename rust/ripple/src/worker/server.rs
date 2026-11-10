@@ -32,6 +32,7 @@ use crate::server::settings_form::{
 use crate::server::stocks::r#match::{MAX_QUERY_LENGTH, MatchError, StockCandidate, match_stocks};
 use crate::server::stocks::repository::{
     RegisterInput, RegisterResult, Stock, delete_stock, is_active_stock_id, register_stock,
+    remove_alias,
 };
 use crate::server::text::{js_len, js_trim, json_number};
 use crate::server::time::{EpochMs, now_ms};
@@ -203,6 +204,27 @@ async fn route<L: LlmClient + 'static>(
         }
         deps.keyword_queue.enqueue(id);
         return Ok(send_json(202, json!({ "status": "queued" })));
+    }
+
+    // 17단계: 종목 화면에서 별칭 하나를 지운다(지운 별칭은 다시 붙지 않는다)
+    if method == "POST"
+        && let Some(id) = numeric_segment(&path, "/stocks/", "/aliases/remove")
+    {
+        let alias = match read_body(body, parse_alias).await? {
+            Body_::Parsed(alias) => alias,
+            Body_::Response(response) => return Ok(response),
+        };
+        let removed = {
+            let conn = deps.db.lock().expect("DB 잠금이 깨졌습니다");
+            if !is_active_stock_id(&conn, id)? {
+                return Ok(send_json(404, json!({ "error": "not_found" })));
+            }
+            remove_alias(&conn, id, &alias)?
+        };
+        if !removed {
+            return Ok(send_json(404, json!({ "error": "alias_not_found" })));
+        }
+        return Ok(send_json(200, json!({ "ok": true })));
     }
 
     if method == "POST" && path == "/collect" {
@@ -461,6 +483,12 @@ fn parse_register(value: &Value) -> Option<RegisterBody> {
         user_input: trimmed_string(object.get("userInput"), MAX_QUERY_LENGTH)?,
         name_ko,
     })
+}
+
+/// 지울 별칭: 저장된 글자와 정확히 맞춰야 하므로 다듬지 않는다(비어 있거나 100자를 넘으면 거부)
+fn parse_alias(value: &Value) -> Option<String> {
+    let text = object_of(value)?.get("alias")?.as_str()?;
+    (1..=100).contains(&js_len(text)).then(|| text.to_string())
 }
 
 fn parse_enabled(value: &Value) -> Option<bool> {

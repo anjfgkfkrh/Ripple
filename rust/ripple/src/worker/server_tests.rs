@@ -595,6 +595,71 @@ async fn keywords_rebuild_404_for_missing_or_deleted_and_401_without_token() {
     assert_eq!(server.queue.list(), Vec::<i64>::new());
 }
 
+#[tokio::test]
+async fn alias_remove_drops_the_alias_and_remembers_it() {
+    let (server, id) = registered().await;
+    {
+        let conn = server.shared.db.lock().unwrap();
+        conn.execute(
+            "UPDATE stocks SET aliases = '[\"삼전\",\"Samsung\"]' WHERE id = ?1",
+            [id],
+        )
+        .unwrap();
+    }
+    let (status, body) = server
+        .post(
+            &format!("/stocks/{id}/aliases/remove"),
+            json!({"alias": "삼전"}),
+        )
+        .await;
+    assert_eq!((status, body), (200, json!({"ok": true})));
+    let stock = list_active_stocks(&server.shared.db.lock().unwrap())
+        .unwrap()
+        .remove(0);
+    assert_eq!(stock.aliases, vec!["Samsung".to_string()]);
+    assert_eq!(stock.aliases_removed, vec!["삼전".to_string()]);
+    // 이미 지운 별칭은 404 alias_not_found
+    let (status, body) = server
+        .post(
+            &format!("/stocks/{id}/aliases/remove"),
+            json!({"alias": "삼전"}),
+        )
+        .await;
+    assert_eq!((status, body), (404, json!({"error": "alias_not_found"})));
+}
+
+#[tokio::test]
+async fn alias_remove_answers_404_for_missing_stock_400_for_bad_body_401_without_token() {
+    let (server, id) = registered().await;
+    let (status, body) = server
+        .post(
+            &format!("/stocks/{}/aliases/remove", id + 1),
+            json!({"alias": "삼전"}),
+        )
+        .await;
+    assert_eq!((status, body), (404, json!({"error": "not_found"})));
+    let (status, _) = server
+        .post(&format!("/stocks/{id}/aliases/remove"), json!({"alias": 3}))
+        .await;
+    assert_eq!(status, 400);
+    let (status, _) = server
+        .post(
+            &format!("/stocks/{id}/aliases/remove"),
+            json!({"alias": ""}),
+        )
+        .await;
+    assert_eq!(status, 400);
+    let (status, _) = server
+        .call(
+            "POST",
+            &format!("/stocks/{id}/aliases/remove"),
+            Some(Body_::Json(json!({"alias": "삼전"}))),
+            None,
+        )
+        .await;
+    assert_eq!(status, 401);
+}
+
 // ---- describe("worker 내부 API: 기사 수집") ----
 
 #[tokio::test]

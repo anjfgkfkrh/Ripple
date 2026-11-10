@@ -7,7 +7,7 @@ use std::sync::Arc;
 use crate::server::auth::session::Access;
 use askama::Template;
 use axum::Extension;
-use axum::extract::{Form, State};
+use axum::extract::{Form, Path, State};
 use axum::http::StatusCode;
 use axum::response::Response;
 use rusqlite::Connection;
@@ -15,13 +15,15 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::server::db::schema::{KeywordKind, KeywordStatus, Market};
+use crate::server::keywords::performance::{KeywordPerformance, keyword_performance};
 use crate::server::keywords::read::{Keyword, list_keywords_by_stock};
+use crate::server::keywords::tree::normalize_key;
 use crate::server::log::log_error;
 use crate::server::stocks::r#match::MAX_QUERY_LENGTH;
 use crate::server::stocks::messages::describe_stock_error;
 use crate::server::stocks::repository::{Stock, list_active_stocks};
-use crate::server::text::{js_slice, js_to_fixed, js_trim};
-use crate::server::time::format_seoul_date_time;
+use crate::server::text::{js_slice, js_trim};
+use crate::server::time::{DAY_MS, EpochMs, format_seoul_date_time};
 use crate::server::topics::read::{list_market_items, list_user_topic_items};
 use crate::server::worker_client::WorkerResult;
 use crate::web::assets::AssetUrls;
@@ -64,13 +66,16 @@ pub struct TreeNodeView {
     pub topic: bool,
     /// 맨 위 키워드가 시사 가지(시사 배지, 토픽 가지가 아닌 것만)
     pub current: bool,
-    pub scores: Option<ScoreView>,
+    /// 최근 4주 이 키워드에 걸린 기사 수(0도 보인다)
+    pub matched: usize,
+    /// 그중 화면 표시 기준을 넘은 수
+    pub passed: usize,
 }
 
-pub struct ScoreView {
-    pub relevance: String,
-    pub magnitude: String,
-}
+/// 키워드 실적을 세는 기간(17단계 결정: 최근 4주)
+const PERFORMANCE_DAYS: i64 = 28;
+
+type PerformanceTable = HashMap<String, KeywordPerformance>;
 
 /// 종목 한 줄 아래의 키워드 영역(`StockKeywords`)
 pub struct KeywordsView {
@@ -114,6 +119,19 @@ pub struct StockView {
     pub english_name: String,
     pub keywords: KeywordsView,
     pub dialog: DialogView,
+    /// 종목 화면에 보이는 별칭(고유어는 보이지 않는다)
+    pub aliases: Vec<AliasView>,
+    /// 별칭 지우기 버튼을 보일지(주인에게만)
+    pub alias_editable: bool,
+}
+
+pub struct AliasView {
+    pub stock_id: i64,
+    pub text: String,
+    /// 지우기 버튼의 이름(접근성): "{별칭} 별칭 지우기"
+    pub remove_aria: String,
+    /// 지우기가 실패했을 때 칩 옆에 보일 글
+    pub error: Option<String>,
 }
 
 pub struct LensView {
@@ -235,7 +253,7 @@ fn display_name(stock: &Stock) -> String {
 }
 
 /// 키워드 트리: 부모가 없으면 맨 위, 있으면 부모 아래(목록 순서 그대로, TS `toTree`와 같다)
-fn keyword_tree(keywords: &[Keyword]) -> Vec<TreeEvent> {
+fn keyword_tree(keywords: &[Keyword], performance: &PerformanceTable) -> Vec<TreeEvent> {
     let position: HashMap<i64, usize> = keywords
         .iter()
         .enumerate()
@@ -254,7 +272,7 @@ fn keyword_tree(keywords: &[Keyword]) -> Vec<TreeEvent> {
     }
     let mut events = Vec::new();
     for root in roots {
-        push_keyword(keywords, &children, root, &mut events);
+        push_keyword(keywords, &children, root, performance, &mut events);
     }
     events
 }
@@ -263,20 +281,25 @@ fn push_keyword(
     keywords: &[Keyword],
     children: &[Vec<usize>],
     index: usize,
+    performance: &PerformanceTable,
     events: &mut Vec<TreeEvent>,
 ) {
-    events.push(TreeEvent::Node(tree_node(&keywords[index])));
+    events.push(TreeEvent::Node(tree_node(&keywords[index], performance)));
     if !children[index].is_empty() {
         events.push(TreeEvent::BranchStart);
         for &child in &children[index] {
-            push_keyword(keywords, children, child, events);
+            push_keyword(keywords, children, child, performance, events);
         }
         events.push(TreeEvent::BranchEnd);
     }
     events.push(TreeEvent::NodeEnd);
 }
 
-fn tree_node(keyword: &Keyword) -> TreeNodeView {
+fn tree_node(keyword: &Keyword, performance: &PerformanceTable) -> TreeNodeView {
+    let found = performance
+        .get(&normalize_key(&keyword.text_ko))
+        .copied()
+        .unwrap_or_default();
     let top = keyword.parent_id.is_none();
     TreeNodeView {
         text_ko: keyword.text_ko.clone(),
@@ -285,17 +308,16 @@ fn tree_node(keyword: &Keyword) -> TreeNodeView {
         path: keyword.path.clone(),
         topic: top && keyword.topic_id.is_some(),
         current: top && keyword.topic_id.is_none() && keyword.kind == KeywordKind::Current,
-        scores: match (keyword.relevance, keyword.magnitude) {
-            (Some(relevance), Some(magnitude)) => Some(ScoreView {
-                relevance: js_to_fixed(relevance, 1),
-                magnitude: js_to_fixed(magnitude, 1),
-            }),
-            _ => None,
-        },
+        matched: found.matched,
+        passed: found.passed,
     }
 }
 
-fn keywords_view(stock: &Stock, keywords: &[Keyword]) -> KeywordsView {
+fn keywords_view(
+    stock: &Stock,
+    keywords: &[Keyword],
+    performance: &PerformanceTable,
+) -> KeywordsView {
     let count = keywords.len();
     let depth = keywords.iter().map(|k| k.level).max().unwrap_or(0).max(0);
     let lead = if count > 0 {
@@ -317,7 +339,7 @@ fn keywords_view(stock: &Stock, keywords: &[Keyword]) -> KeywordsView {
             .map(|at| format_seoul_date_time(at)[..16].to_string()),
         ready: stock.keywords_status == KeywordStatus::Ready,
         events: if count > 0 {
-            keyword_tree(keywords)
+            keyword_tree(keywords, performance)
         } else {
             Vec::new()
         },
@@ -389,6 +411,13 @@ pub struct StocksData {
 }
 
 impl StocksData {
+    /// 손님에게는 별칭 지우기 버튼을 보이지 않는다(수정은 주인만).
+    fn hide_edit_controls(&mut self) {
+        for stock in &mut self.stocks {
+            stock.alias_editable = false;
+        }
+    }
+
     /// 손님에게는 키워드 실패의 자세한 이유(외부 오류 글자)를 숨기고 앞 문장만 보인다.
     fn hide_failure_reasons(&mut self) {
         let market_keywords = self.markets.iter_mut().filter_map(|m| m.keywords.as_mut());
@@ -420,12 +449,13 @@ async fn reload_for(state: &WebState, access: &Access) -> Result<StocksData, Str
     let mut data = reload(state).await?;
     if !access.is_member() {
         data.hide_failure_reasons();
+        data.hide_edit_controls();
     }
     Ok(data)
 }
 
 /// DB에서 화면 자료를 한꺼번에 읽는다(Next 페이지의 `StockList`·`MarketTopicSection`과 같은 자료)
-fn load(conn: &Connection) -> rusqlite::Result<StocksData> {
+fn load(conn: &Connection, now: EpochMs) -> rusqlite::Result<StocksData> {
     let stocks = list_active_stocks(conn)?;
     let markets = list_market_items(conn)?;
     let topics = list_user_topic_items(conn)?;
@@ -440,6 +470,13 @@ fn load(conn: &Connection) -> rusqlite::Result<StocksData> {
     }
     let grouped = list_keywords_by_stock(conn, &ids)?;
     let keywords_of = |id: i64| grouped.get(&id).map_or(&[][..], Vec::as_slice);
+    let since = now - PERFORMANCE_DAYS * DAY_MS;
+    let mut performance: HashMap<i64, PerformanceTable> = HashMap::new();
+    for id in &ids {
+        performance.insert(*id, keyword_performance(conn, *id, since)?);
+    }
+    let empty = PerformanceTable::new();
+    let performance_of = |id: i64| performance.get(&id).unwrap_or(&empty);
     let enabled = markets
         .iter()
         .filter(|market| market.stock.is_some())
@@ -455,8 +492,19 @@ fn load(conn: &Connection) -> rusqlite::Result<StocksData> {
             exchange: stock.exchange.clone(),
             code: stock.code.clone(),
             english_name: stock.name.clone(),
-            keywords: keywords_view(stock, keywords_of(stock.id)),
+            keywords: keywords_view(stock, keywords_of(stock.id), performance_of(stock.id)),
             dialog: stock_dialog(stock.id, &display_name(stock)),
+            aliases: stock
+                .aliases
+                .iter()
+                .map(|alias| AliasView {
+                    stock_id: stock.id,
+                    text: alias.clone(),
+                    remove_aria: format!("{alias} 별칭 지우기"),
+                    error: None,
+                })
+                .collect(),
+            alias_editable: true,
         })
         .collect();
 
@@ -482,10 +530,9 @@ fn load(conn: &Connection) -> rusqlite::Result<StocksData> {
                     ),
                     None => "꺼짐".to_string(),
                 },
-                keywords: item
-                    .stock
-                    .as_ref()
-                    .map(|stock| keywords_view(stock, keywords_of(stock.id))),
+                keywords: item.stock.as_ref().map(|stock| {
+                    keywords_view(stock, keywords_of(stock.id), performance_of(stock.id))
+                }),
                 error: None,
             }
         })
@@ -502,7 +549,7 @@ fn load(conn: &Connection) -> rusqlite::Result<StocksData> {
                 .map(|lens| LensView {
                     exchange: lens.exchange.clone(),
                     multi: enabled > 1,
-                    keywords: keywords_view(lens, keywords_of(lens.id)),
+                    keywords: keywords_view(lens, keywords_of(lens.id), performance_of(lens.id)),
                 })
                 .collect(),
         })
@@ -516,7 +563,8 @@ fn load(conn: &Connection) -> rusqlite::Result<StocksData> {
 }
 
 async fn reload(state: &WebState) -> Result<StocksData, String> {
-    state.db.read(load).await
+    let now = state.now();
+    state.db.read(move |conn| load(conn, now)).await
 }
 
 fn stock_list_view(data: &StocksData, oob: bool, poll_secs: u32) -> StockListView {
@@ -581,10 +629,8 @@ fn clone_event(event: &TreeEvent) -> TreeEvent {
             path: node.path.clone(),
             topic: node.topic,
             current: node.current,
-            scores: node.scores.as_ref().map(|score| ScoreView {
-                relevance: score.relevance.clone(),
-                magnitude: score.magnitude.clone(),
-            }),
+            matched: node.matched,
+            passed: node.passed,
         }),
         TreeEvent::BranchStart => TreeEvent::BranchStart,
         TreeEvent::BranchEnd => TreeEvent::BranchEnd,
@@ -615,6 +661,17 @@ fn clone_stock(stock: &StockView) -> StockView {
         english_name: stock.english_name.clone(),
         keywords: clone_keywords(&stock.keywords),
         dialog: clone_dialog(&stock.dialog),
+        aliases: stock
+            .aliases
+            .iter()
+            .map(|alias| AliasView {
+                stock_id: alias.stock_id,
+                text: alias.text.clone(),
+                remove_aria: alias.remove_aria.clone(),
+                error: alias.error.clone(),
+            })
+            .collect(),
+        alias_editable: stock.alias_editable,
     }
 }
 
@@ -828,6 +885,12 @@ struct DialogErrorTemplate {
 #[template(path = "stocks/regen_form.html")]
 struct RegenFormTemplate {
     keywords: KeywordsView,
+}
+
+#[derive(Template)]
+#[template(path = "stocks/alias_chip.html")]
+struct AliasChipTemplate {
+    alias: AliasView,
 }
 
 #[derive(Template)]
@@ -1129,6 +1192,63 @@ pub async fn regenerate(
             keywords.regen_error = Some(message);
             respond(RegenFormTemplate { keywords }.render(), vec![])
         }
+    }
+}
+
+/// 별칭 지우기(17단계). worker가 지우면 종목 목록을 다시 그린다. 이미 없는 종목·별칭도 끝난 것으로 본다.
+pub async fn remove_alias(
+    State(state): State<Arc<WebState>>,
+    Path(id_text): Path<String>,
+    Form(fields): Form<Fields>,
+) -> Response {
+    let alias = field(&fields, "alias");
+    let id = parse_id(&id_text);
+    let result = match id {
+        None => WorkerResult::Err {
+            status: 400,
+            error: "invalid_request".to_string(),
+            body: Value::Null,
+        },
+        Some(id) => match state.worker_api() {
+            Some(api) => api.remove_alias(id, &alias).await,
+            None => unreachable_result(),
+        },
+    };
+    let failure = match &result {
+        WorkerResult::Ok { .. } => None,
+        WorkerResult::Err { error, .. } if error == "not_found" || error == "alias_not_found" => {
+            None
+        }
+        WorkerResult::Err { error, body, .. } => Some(describe_stock_error(error, body)),
+    };
+    match failure {
+        None => {
+            let data = match reload(&state).await {
+                Ok(data) => data,
+                Err(reason) => return db_error(&reason),
+            };
+            respond(
+                Ok(String::new()),
+                vec![
+                    StockListTemplate {
+                        stock_list: stock_list_view(&data, true, MEMBER_POLL_SECS),
+                    }
+                    .render(),
+                ],
+            )
+        }
+        Some(message) => respond(
+            AliasChipTemplate {
+                alias: AliasView {
+                    stock_id: id.unwrap_or(0),
+                    remove_aria: format!("{alias} 별칭 지우기"),
+                    text: alias,
+                    error: Some(message),
+                },
+            }
+            .render(),
+            vec![],
+        ),
     }
 }
 

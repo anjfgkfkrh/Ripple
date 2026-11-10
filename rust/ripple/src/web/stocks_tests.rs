@@ -1,6 +1,6 @@
 use rusqlite::{Connection, params};
 use serde_json::json;
-use wiremock::matchers::{method, path};
+use wiremock::matchers::{body_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use super::*;
@@ -53,19 +53,22 @@ fn tree_nests_children_under_their_parent_in_list_order() {
         keyword(3, Some(2), "c", None, KeywordKind::Structure),
         keyword(4, None, "d", None, KeywordKind::Structure),
     ];
-    assert_eq!(shape(&keyword_tree(&keywords)), "a(b(c;););d;");
+    assert_eq!(
+        shape(&keyword_tree(&keywords, &HashMap::new())),
+        "a(b(c;););d;"
+    );
 }
 
 #[test]
 fn orphan_keyword_goes_to_the_top_like_the_ts_tree() {
     // 부모가 목록에 없으면 맨 위에 둔다(TS `toTree`의 `parent ?? roots`)
     let keywords = vec![keyword(5, Some(99), "e", None, KeywordKind::Structure)];
-    assert_eq!(shape(&keyword_tree(&keywords)), "e;");
+    assert_eq!(shape(&keyword_tree(&keywords, &HashMap::new())), "e;");
 }
 
 #[test]
 fn top_badges_follow_topic_then_current() {
-    let node = |keyword: &Keyword| tree_node(keyword);
+    let node = |keyword: &Keyword| tree_node(keyword, &HashMap::new());
     let topic = node(&keyword(1, None, "t", Some(7), KeywordKind::Structure));
     assert!(topic.topic && !topic.current);
     let current = node(&keyword(2, None, "c", None, KeywordKind::Current));
@@ -490,4 +493,136 @@ async fn guest_polls_slower_than_member() {
         assert!(member.contains("hx-trigger=\"every 3s\""), "{path}");
         assert!(!member.contains("hx-trigger=\"every 10s\""), "{path}");
     }
+}
+
+fn insert_keyword(conn: &Connection, stock_id: i64, text: &str) {
+    conn.execute(
+        "INSERT INTO keywords (stock_id, level, text_ko, reason, path, kind, created_at) \
+         VALUES (?1, 1, ?2, '이유', ?2, 'structure', ?3)",
+        params![stock_id, text, T0],
+    )
+    .unwrap();
+}
+
+#[tokio::test]
+async fn keyword_line_shows_four_week_matched_and_passed_counts() {
+    use crate::test_support::{LinkSpec, insert_link, set_link_path};
+    let web = start_web(None).await;
+    {
+        let conn = web.writer();
+        let stock = insert_stock(&conn, "005930", "삼성전자", "ready");
+        insert_keyword(&conn, stock, "HBM");
+        insert_keyword(&conn, stock, "환율");
+        let day = crate::server::time::DAY_MS;
+        for (path, scores, at) in [
+            ("삼성전자 → HBM", (9.0, 9.0), T0 - day),
+            ("삼성전자 → HBM", (1.0, 1.0), T0 - 2 * day),
+            // 4주(28일) 밖은 세지 않는다
+            ("삼성전자 → HBM", (9.0, 9.0), T0 - 40 * day),
+        ] {
+            let mut spec = LinkSpec::new(stock, "기사", at);
+            spec.kind = "keyword";
+            spec.relevance = Some(scores.0);
+            spec.magnitude = Some(scores.1);
+            let (match_id, _) = insert_link(&conn, &spec);
+            set_link_path(&conn, match_id, path, false);
+        }
+    }
+    let body = text(&web, "/stocks").await;
+    assert!(body.contains("data-testid=\"keyword-stats\">기사 2 · 통과 1</span>"));
+    // 걸린 기사가 없어도 0으로 보인다
+    assert!(body.contains("data-testid=\"keyword-stats\">기사 0 · 통과 0</span>"));
+    assert!(!body.contains("keyword-scores"));
+    assert!(!body.contains("관련 "));
+}
+
+#[tokio::test]
+async fn aliases_show_as_chips_and_only_the_owner_gets_remove_buttons() {
+    let web = start_web(None).await;
+    {
+        let conn = web.writer();
+        let stock = insert_stock(&conn, "005930", "삼성전자", "ready");
+        conn.execute(
+            "UPDATE stocks SET aliases = '[\"삼전\",\"Samsung\"]', anchors = '[\"반도체\"]' WHERE id = ?1",
+            [stock],
+        )
+        .unwrap();
+        insert_stock(&conn, "000660", "SK하이닉스", "ready");
+    }
+    let member = text(&web, "/stocks").await;
+    assert_eq!(member.matches("data-testid=\"stock-alias\"").count(), 2);
+    assert!(member.contains(">삼전<"));
+    assert!(member.contains("aria-label=\"삼전 별칭 지우기\""));
+    assert!(member.contains("hx-post=\"/stocks/1/aliases/remove\""));
+    // 고유어는 보이지 않고, 별칭이 없는 종목에는 줄이 없다
+    assert!(!member.contains("반도체"));
+    assert_eq!(member.matches("data-testid=\"stock-aliases\"").count(), 1);
+    let guest = web
+        .client
+        .get(web.url("/stocks"))
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    assert_eq!(guest.matches("data-testid=\"stock-alias\"").count(), 2);
+    assert!(!guest.contains("alias-remove"));
+    assert!(!guest.contains("/aliases/remove"));
+}
+
+#[tokio::test]
+async fn alias_remove_goes_through_the_worker_and_redraws_the_stock_list() {
+    let worker = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/stocks/1/aliases/remove"))
+        .and(body_json(json!({"alias": "삼전"})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
+        .expect(1)
+        .mount(&worker)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/stocks/1/aliases/remove"))
+        .and(body_json(json!({"alias": "없는별칭"})))
+        .respond_with(
+            ResponseTemplate::new(404).set_body_json(json!({ "error": "alias_not_found" })),
+        )
+        .mount(&worker)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/stocks/2/aliases/remove"))
+        .respond_with(ResponseTemplate::new(503).set_body_json(json!({ "error": "boom" })))
+        .mount(&worker)
+        .await;
+    let web = start_web(Some(worker.uri())).await;
+    {
+        let conn = web.writer();
+        insert_stock(&conn, "005930", "삼성전자", "ready");
+        insert_stock(&conn, "000660", "SK하이닉스", "ready");
+    }
+    let (status, body) = post_form(&web, "/stocks/1/aliases/remove", &[("alias", "삼전")]).await;
+    assert_eq!(status, 200);
+    assert!(body.contains("id=\"stock-list\" hx-swap-oob=\"true\""));
+    // 이미 없는 별칭도 끝난 것으로 보고 목록을 다시 그린다
+    let (_, body) = post_form(&web, "/stocks/1/aliases/remove", &[("alias", "없는별칭")]).await;
+    assert!(body.contains("id=\"stock-list\" hx-swap-oob=\"true\""));
+    // 그 밖의 실패는 칩 옆에 이유를 보인다
+    let (_, body) = post_form(&web, "/stocks/2/aliases/remove", &[("alias", "하닉")]).await;
+    assert!(body.contains("role=\"alert\""));
+    assert!(body.contains("처리하지 못했습니다. 다시 시도하세요."));
+    assert!(!body.contains("id=\"stock-list\""));
+}
+
+#[tokio::test]
+async fn alias_remove_needs_edit_permission() {
+    let web = start_web(None).await;
+    let response = web
+        .client
+        .post(web.url("/stocks/1/aliases/remove"))
+        .body("alias=x")
+        .header("content-type", "application/x-www-form-urlencoded")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status().as_u16(), 403);
 }

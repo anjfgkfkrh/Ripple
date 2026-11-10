@@ -177,6 +177,17 @@ impl WorkerApi {
         .await
     }
 
+    /// 17단계: 종목의 별칭 하나를 지운다(없는 종목·별칭이면 404 `not_found`·`alias_not_found`).
+    pub async fn remove_alias(&self, id: i64, alias: &str) -> WorkerResult {
+        self.call(
+            &format!("/stocks/{id}/aliases/remove"),
+            Method::POST,
+            Some(json!({ "alias": alias })),
+            SHORT_MS,
+        )
+        .await
+    }
+
     /// 기사 수집을 시작한다. 결과는 기다리지 않는다(이미 도는 중이면 already_running).
     pub async fn start_collection(&self) -> WorkerResult {
         self.call("/collect", Method::POST, None, SHORT_MS).await
