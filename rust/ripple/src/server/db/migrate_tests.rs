@@ -59,7 +59,7 @@ fn creates_db_file_and_parent_folder_with_settings_table() {
 
     let db = open_db(&db_path, DbAccess::ReadOnly).unwrap();
     assert_eq!(columns_of(&db, "settings"), ["key", "value", "updated_at"]);
-    assert_eq!(user_version(&db), 11);
+    assert_eq!(user_version(&db), MIGRATION_SQL.len() as i64);
 }
 
 #[test]
@@ -158,10 +158,14 @@ fn migration_sql_files_are_identical_to_drizzle_folder() {
         .filter(|n| n.ends_with(".sql") && n != "applied.sql")
         .collect();
     names.sort();
-    assert_eq!(names.len(), MIGRATION_SQL.len());
-    for (name, sql) in names.iter().zip(MIGRATION_SQL) {
+    // 0000~0010만 drizzle 복사본이다. 0011부터는 Rust 전용이라 따로 시험한다.
+    assert_eq!(names.len() as i64, DRIZZLE_APPLIED_COUNT);
+    for (name, sql) in names
+        .iter()
+        .zip(&MIGRATION_SQL[..DRIZZLE_APPLIED_COUNT as usize])
+    {
         let original = std::fs::read_to_string(drizzle_fixtures().join(name)).unwrap();
-        assert_eq!(original, sql, "{name}");
+        assert_eq!(original, *sql, "{name}");
     }
 }
 
@@ -183,7 +187,7 @@ fn schema_applied_by_rust_equals_schema_applied_by_drizzle() {
     let dir = TempDir::new().unwrap();
     let rust_db = dir.path().join("rust.db");
     let ts_db = dir.path().join("ts.db");
-    apply_migrations(&rust_db).unwrap();
+    apply_migration_set(&rust_db, &MIGRATION_SQL[..11]).unwrap();
     apply_with_drizzle(&ts_db);
     assert_eq!(schema_dump(&rust_db), schema_dump(&ts_db));
 }
@@ -197,8 +201,8 @@ fn drizzle_db_gets_baseline_once_and_schema_is_unchanged() {
     let before = schema_dump(&db_path);
     assert_eq!(user_version(&Connection::open(&db_path).unwrap()), 0);
 
-    apply_migrations(&db_path).unwrap();
-    apply_migrations(&db_path).unwrap();
+    apply_migration_set(&db_path, &MIGRATION_SQL[..11]).unwrap();
+    apply_migration_set(&db_path, &MIGRATION_SQL[..11]).unwrap();
 
     assert_eq!(schema_dump(&db_path), before);
     let conn = Connection::open(&db_path).unwrap();
@@ -237,4 +241,66 @@ fn drizzle_db_with_unexpected_history_fails_without_changes() {
     assert!(err.to_string().contains("줄 수 10"));
     assert_eq!(schema_dump(&db_path), before);
     assert_eq!(user_version(&Connection::open(&db_path).unwrap()), 0);
+}
+
+#[test]
+fn drizzle_db_gets_rust_only_migrations_after_baseline() {
+    // drizzle로 적용한 DB에 전체를 적용하면 user_version이 전체 길이가 되고, 스키마는 새 파일 DB와 같다.
+    let dir = TempDir::new().unwrap();
+    let ts_db = dir.path().join("ts.db");
+    let fresh = dir.path().join("fresh.db");
+    apply_with_drizzle(&ts_db);
+    apply_migrations(&ts_db).unwrap();
+    apply_migrations(&fresh).unwrap();
+
+    assert_eq!(schema_dump(&ts_db), schema_dump(&fresh));
+    let conn = Connection::open(&ts_db).unwrap();
+    assert_eq!(user_version(&conn), 12);
+    let rows: i64 = conn
+        .query_row("SELECT count(*) FROM __drizzle_migrations", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(rows, 11);
+}
+
+#[test]
+fn migration_0011_adds_anchor_columns_and_resets_stock_keywords() {
+    let dir = TempDir::new().unwrap();
+    let db_path = dir.path().join("ripple.db");
+    apply_migration_set(&db_path, &MIGRATION_SQL[..11]).unwrap();
+    let conn = Connection::open(&db_path).unwrap();
+    conn.execute_batch(
+        "INSERT INTO stocks (id, market, code, name, exchange, user_input, kind, keywords_status, keywords_error, created_at, deleted_at) VALUES
+           (1,'KR','005930','삼성전자','KOSPI','삼성전자','stock','done','x',1,NULL),
+           (2,'KR','000660','SK하이닉스','KOSPI','x','stock','done',NULL,1,1),
+           (3,'KR','KOSPI','코스피','KOSPI','x','index','done',NULL,1,NULL);",
+    )
+    .unwrap();
+    drop(conn);
+    apply_migrations(&db_path).unwrap();
+
+    let conn = Connection::open(&db_path).unwrap();
+    assert_eq!(user_version(&conn), 12);
+    let status = |id: i64| -> (String, Option<String>) {
+        conn.query_row(
+            "SELECT keywords_status, keywords_error FROM stocks WHERE id = ?1",
+            [id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap()
+    };
+    assert_eq!(status(1), ("pending".to_string(), None));
+    assert_eq!(status(2).0, "done");
+    assert_eq!(status(3).0, "done");
+    let (al, an, rm): (String, String, String) = conn
+        .query_row(
+            "SELECT aliases, anchors, aliases_removed FROM stocks WHERE id = 1",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!((al.as_str(), an.as_str(), rm.as_str()), ("[]", "[]", "[]"));
+    assert!(columns_of(&conn, "topics").contains(&"scope".to_string()));
+    assert!(columns_of(&conn, "article_matches").contains(&"gated".to_string()));
 }

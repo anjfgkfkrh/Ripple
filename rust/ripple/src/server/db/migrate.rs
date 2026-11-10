@@ -4,9 +4,9 @@ use std::time::Duration;
 use rusqlite::{Connection, OpenFlags};
 use rusqlite_migration::{M, Migrations};
 
-/// `migrations/`의 SQL(drizzle 마이그레이션 `drizzle/0000~0010`을 내용 그대로 복사한 것). 순서 = 파일 이름 순서.
+/// `migrations/`의 SQL(0000~0010은 drizzle 마이그레이션 `drizzle/0000~0010`을 내용 그대로 복사한 것, 0011부터 Rust 전용). 순서 = 파일 이름 순서.
 /// `--> statement-breakpoint`는 SQL 주석이라 그대로 실행된다.
-pub const MIGRATION_SQL: [&str; 11] = [
+pub const MIGRATION_SQL: [&str; 12] = [
     include_str!("../../../migrations/0000_init.sql"),
     include_str!("../../../migrations/0001_stocks_listings_usage.sql"),
     include_str!("../../../migrations/0002_keywords.sql"),
@@ -18,6 +18,7 @@ pub const MIGRATION_SQL: [&str; 11] = [
     include_str!("../../../migrations/0008_fix_future_published.sql"),
     include_str!("../../../migrations/0009_read_articles.sql"),
     include_str!("../../../migrations/0010_stock_prices.sql"),
+    include_str!("../../../migrations/0011_keyword_anchors.sql"),
 ];
 
 /// drizzle이 적용해 둔 DB의 기준선: `__drizzle_migrations`의 줄 수와 마지막 `created_at`
