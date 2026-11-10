@@ -66,7 +66,12 @@ where
 
 /// 키워드 생성 대기열에 넣는 쪽(`KeywordQueue`, 테스트의 가짜)
 pub trait KeywordEnqueuer: Send + Sync {
+    /// 전체 생성으로 넣는다(등록·"다시 만들기")
     fn enqueue(&self, stock_id: i64);
+    /// 정기 점검으로 넣는다. 구현이 따로 두지 않으면 전체 생성과 같다.
+    fn enqueue_periodic(&self, stock_id: i64) {
+        self.enqueue(stock_id);
+    }
 }
 
 impl<L> KeywordEnqueuer for KeywordQueue<L>
@@ -75,6 +80,10 @@ where
 {
     fn enqueue(&self, stock_id: i64) {
         KeywordQueue::enqueue(self, stock_id)
+    }
+
+    fn enqueue_periodic(&self, stock_id: i64) {
+        KeywordQueue::enqueue_periodic(self, stock_id)
     }
 }
 
@@ -251,14 +260,14 @@ where
             Ok(plan) => {
                 if plan.due {
                     for stock_id in &plan.stock_ids {
-                        deps.keyword_queue.enqueue(*stock_id);
+                        deps.keyword_queue.enqueue_periodic(*stock_id);
                     }
                     let written = with_conn(&deps.db, |conn| {
                         write_num(conn, &KEYWORDS_AUTO_REGENERATED_AT, at as f64, at)
                     });
                     match written {
                         Ok(()) => log(&format!(
-                            "키워드 자동 재생성({} 06:00): {}개 종목",
+                            "키워드 정기 점검(매일 06:00 확인, 주기 {}): {}개 종목",
                             if plan.every == RegenerateEvery::Weekly {
                                 "매주 월요일"
                             } else {

@@ -1,4 +1,4 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -8,9 +8,10 @@ use crate::server::ai::llm::LlmClient;
 use crate::server::db::client::Db;
 use crate::server::db::schema::KeywordStatus;
 use crate::server::keywords::generate::{
-    GenerateOptions, GenerateResult, PreparedGeneration, prepare_generation, run_generation,
-    set_keyword_status,
+    GenerateMode, GenerateOptions, GenerateResult, PreparedGeneration, prepare_generation_with,
+    run_generation, set_keyword_status,
 };
+use crate::server::keywords::update::UpdateSummary;
 use crate::server::log::{log, log_error};
 use crate::server::text::js_to_fixed;
 use crate::server::time::EpochMs;
@@ -21,6 +22,8 @@ type NowFn = Arc<dyn Fn() -> EpochMs + Send + Sync>;
 struct State {
     waiting: VecDeque<i64>,
     queued: HashSet<i64>,
+    /// 기다리는 항목마다 만드는 방식(전체 생성·정기 점검)
+    modes: HashMap<i64, GenerateMode>,
     current: Option<i64>,
     running: bool,
 }
@@ -63,12 +66,29 @@ where
         }
     }
 
-    /// 생성 대기열에 넣는다. 이미 기다리거나 만드는 중인 종목이면 무시한다. 오류를 밖으로 내지 않는다.
+    /// 전체 생성 대기열에 넣는다(등록·"다시 만들기"·대기 중 이어 만들기). 이미 기다리거나 만드는 중인 종목이면 무시한다.
+    /// 기다리는 종목이 정기 점검이었으면 전체 생성으로 바꾼다. 오류를 밖으로 내지 않는다.
     pub fn enqueue(&self, stock_id: i64) {
+        self.enqueue_with(stock_id, GenerateMode::Full);
+    }
+
+    /// 정기 점검으로 대기열에 넣는다. 실행할 때 트리가 없거나 종목의 고유어가 비면 전체 생성으로 바뀐다.
+    pub fn enqueue_periodic(&self, stock_id: i64) {
+        self.enqueue_with(stock_id, GenerateMode::Periodic);
+    }
+
+    fn enqueue_with(&self, stock_id: i64, mode: GenerateMode) {
         let inner = &self.inner;
         {
-            let state = inner.state.lock().expect("대기열 잠금이 깨졌습니다");
-            if state.queued.contains(&stock_id) || state.current == Some(stock_id) {
+            let mut state = inner.state.lock().expect("대기열 잠금이 깨졌습니다");
+            if state.queued.contains(&stock_id) {
+                // 전체 생성이 정기 점검을 덮는다(반대는 아니다).
+                if mode == GenerateMode::Full {
+                    state.modes.insert(stock_id, GenerateMode::Full);
+                }
+                return;
+            }
+            if state.current == Some(stock_id) {
                 return;
             }
         }
@@ -85,6 +105,7 @@ where
         let start_now = {
             let mut state = inner.state.lock().expect("대기열 잠금이 깨졌습니다");
             state.queued.insert(stock_id);
+            state.modes.insert(stock_id, mode);
             state.waiting.push_back(stock_id);
             if state.running {
                 false
@@ -97,7 +118,7 @@ where
             // TS는 async 함수가 첫 await까지 바로 실행되므로, 첫 종목은 넣자마자 '만드는 중'이 된다.
             let first = self
                 .take_next()
-                .map(|id| (id, prepare_generation(&inner.db, id, self.now())));
+                .map(|(id, mode)| (id, prepare_generation_with(&inner.db, id, self.now(), mode)));
             let queue = self.clone();
             tokio::spawn(async move { queue.drain(first).await });
         }
@@ -131,13 +152,14 @@ where
     }
 
     /// 다음 종목을 꺼내 '만드는 중'으로 둔다. 없으면 대기열을 끝내고 None
-    fn take_next(&self) -> Option<i64> {
+    fn take_next(&self) -> Option<(i64, GenerateMode)> {
         let mut state = self.inner.state.lock().expect("대기열 잠금이 깨졌습니다");
         match state.waiting.pop_front() {
             Some(id) => {
                 state.queued.remove(&id);
+                let mode = state.modes.remove(&id).unwrap_or(GenerateMode::Full);
                 state.current = Some(id);
-                Some(id)
+                Some((id, mode))
             }
             None => {
                 state.running = false;
@@ -154,7 +176,10 @@ where
             let (stock_id, prepared) = match first.take() {
                 Some(item) => item,
                 None => match self.take_next() {
-                    Some(id) => (id, prepare_generation(&self.inner.db, id, self.now())),
+                    Some((id, mode)) => (
+                        id,
+                        prepare_generation_with(&self.inner.db, id, self.now(), mode),
+                    ),
                     None => return,
                 },
             };
@@ -198,6 +223,9 @@ fn success_line(
     ok: &crate::server::keywords::generate::GenerateOk,
     seconds: &str,
 ) -> String {
+    if let Some(update) = &ok.update {
+        return update_line(stock_id, update, seconds);
+    }
     let dropped = if ok.dropped > 0 {
         format!(", 규칙에 안 맞아 버림 {}개", ok.dropped)
     } else {
@@ -216,6 +244,31 @@ fn success_line(
     format!(
         "키워드 생성: 종목 id {stock_id}, {}개(깊이 {}/{}{dropped}{terms}{stat}), {seconds}초",
         ok.count, ok.deepest, ok.depth
+    )
+}
+
+/// 정기 점검 결과 한 줄
+fn update_line(stock_id: i64, update: &UpdateSummary, seconds: &str) -> String {
+    let mut parts = vec![
+        format!("뺌 {}", update.removed),
+        format!("더함 {}", update.added),
+        format!("상한으로 밀어냄 {}", update.evicted),
+        format!("실적으로 지킴 {}", update.protected),
+    ];
+    if update.anchors > 0 {
+        parts.push(format!(
+            "고유어 -{}+{}",
+            update.anchors_removed, update.anchors_added
+        ));
+        parts.push(format!("별칭 +{}", update.aliases_added));
+    }
+    if update.dropped > 0 {
+        parts.push(format!("규칙에 안 맞아 버림 {}", update.dropped));
+    }
+    format!(
+        "키워드 점검: 종목 id {stock_id}, 지금 {}개({}), {seconds}초",
+        update.count,
+        parts.join(", ")
     )
 }
 

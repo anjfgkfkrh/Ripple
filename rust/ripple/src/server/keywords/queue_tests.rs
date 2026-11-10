@@ -265,3 +265,146 @@ fn success_line_shows_actual_over_configured_depth() {
         "키워드 생성: 종목 id 8, 4개(깊이 2/2), 0.5초"
     );
 }
+
+/// 전체 생성 요청에는 표본 트리를, 정기 점검 요청에는 빈 답을 주는 가짜 LLM
+fn dual_llm() -> Arc<SlowLlm> {
+    Arc::new(SlowLlm {
+        inner: fake_llm(
+            |messages| {
+                if messages[0].content.contains("주 1회 점검") {
+                    serde_json::json!({
+                        "remove": [], "add": [],
+                        "anchorsRemove": [], "anchorsAdd": [], "aliasesAdd": []
+                    })
+                } else {
+                    sample_keyword_tree(false)
+                }
+            },
+            USAGE,
+        ),
+        active: AtomicUsize::new(0),
+        max_active: AtomicUsize::new(0),
+    })
+}
+
+fn schemas(llm: &SlowLlm) -> Vec<String> {
+    llm.inner
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|c| c.schema_name.clone())
+        .collect()
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn periodic_is_incremental_with_a_tree_and_full_without_one() {
+    let shared = seeded();
+    let ids = register_three(&shared);
+    let llm = dual_llm();
+    let queue = queue_of(&shared, llm.clone());
+
+    // 등록·"다시 만들기"는 전체 생성
+    queue.enqueue(ids[0]);
+    queue.idle().await;
+    queue.enqueue(ids[0]);
+    queue.idle().await;
+    // 정기 점검: 트리가 있으면 증분, 없으면 전체 생성
+    queue.enqueue_periodic(ids[0]);
+    queue.enqueue_periodic(ids[1]);
+    queue.idle().await;
+
+    assert_eq!(
+        schemas(&llm),
+        [
+            "keyword_tree",
+            "keyword_tree",
+            "keyword_update",
+            "keyword_tree"
+        ]
+    );
+    for id in &ids[..2] {
+        assert_eq!(status(&shared, *id), "ready");
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn periodic_falls_back_to_full_when_the_stock_has_no_anchors() {
+    let shared = seeded();
+    let ids = register_three(&shared);
+    let llm = dual_llm();
+    let queue = queue_of(&shared, llm.clone());
+    queue.enqueue(ids[0]);
+    queue.idle().await;
+    shared
+        .db
+        .lock()
+        .unwrap()
+        .execute("UPDATE stocks SET anchors = '[]' WHERE id = ?1", [ids[0]])
+        .unwrap();
+
+    queue.enqueue_periodic(ids[0]);
+    queue.idle().await;
+
+    assert_eq!(schemas(&llm), ["keyword_tree", "keyword_tree"]);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_full_request_overrides_a_waiting_periodic_one_but_not_the_reverse() {
+    let shared = seeded();
+    let ids = register_three(&shared);
+    let llm = dual_llm();
+    let queue = queue_of(&shared, llm.clone());
+    // 트리를 둘에게 만들어 둔다.
+    queue.enqueue(ids[0]);
+    queue.enqueue(ids[1]);
+    queue.idle().await;
+
+    // 기다리는 정기 점검 위에 전체 생성이 덮는다.
+    queue.enqueue_periodic(ids[0]); // 만드는 중
+    queue.enqueue_periodic(ids[1]); // 기다림(정기)
+    queue.enqueue(ids[1]); // 전체 생성으로 바뀐다
+    queue.idle().await;
+    assert_eq!(schemas(&llm)[2..], ["keyword_update", "keyword_tree"]);
+
+    // 기다리는 전체 생성은 정기 점검이 덮지 못한다.
+    queue.enqueue(ids[0]); // 만드는 중
+    queue.enqueue(ids[1]); // 기다림(전체)
+    queue.enqueue_periodic(ids[1]); // 무시
+    queue.idle().await;
+    assert_eq!(schemas(&llm)[4..], ["keyword_tree", "keyword_tree"]);
+}
+
+#[test]
+fn update_line_shows_what_changed() {
+    use crate::server::keywords::generate::GenerateOk;
+    use crate::server::keywords::update::UpdateSummary;
+    let update = UpdateSummary {
+        removed: 1,
+        protected: 2,
+        added: 3,
+        evicted: 4,
+        anchors_removed: 1,
+        anchors_added: 2,
+        aliases_added: 1,
+        count: 14,
+        deepest: 2,
+        anchors: 9,
+        aliases: 2,
+        dropped: 1,
+    };
+    let ok = GenerateOk {
+        count: 14,
+        depth: 2,
+        deepest: 2,
+        dropped: 1,
+        stat_words: 5,
+        aliases: 2,
+        anchors: 9,
+        update: Some(Box::new(update)),
+    };
+    assert_eq!(
+        success_line(7, &ok, "1.2"),
+        "키워드 점검: 종목 id 7, 지금 14개(뺌 1, 더함 3, 상한으로 밀어냄 4, 실적으로 지킴 2, 고유어 -1+2, 별칭 +1, 규칙에 안 맞아 버림 1), 1.2초"
+    );
+}

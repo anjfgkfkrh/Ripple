@@ -122,23 +122,28 @@ pub fn collection_plan(conn: &Connection, now: EpochMs) -> rusqlite::Result<Coll
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeywordPlan {
+    /// 설정 주기. 점검 대상을 고르는 기준이다(확인은 주기와 상관없이 매일 06:00).
     pub every: RegenerateEvery,
     /// 등록한 종목이 없다.
     pub idle: bool,
-    /// 이번 주기(06:00)에 아직 다시 만들지 않았으면 지금, 했으면 다음 06:00
+    /// 오늘 06:00 확인을 아직 안 했으면 지금, 했으면 다음 날 06:00
     pub next_at: EpochMs,
     pub due: bool,
-    /// 지금 다시 만들 종목: 이번 주기 시작 전에 만든 키워드를 가진 종목(만드는 중·대기 중은 뺀다)
+    /// 지금 점검할 종목: 주기 시작(하루: 오늘 06:00, 일주일: 이번 주 월요일 06:00) 전에 만든 키워드를 가진 종목.
+    /// 실패한 종목도 포함한다(실패하면 만든 시각이 그대로라 다음 날 06:00 확인 때 다시 고른다). 만드는 중·대기 중은 뺀다.
     pub stock_ids: Vec<i64>,
 }
 
-/// 키워드 자동 재생성 계획(SPEC FR-3, 2026-10-21 결정): 매일 한국 시간 06:00(일주일 1회면 월요일 06:00).
-/// 그 시각에 꺼져 있었으면 켜진 뒤 처음 확인할 때 한 번. 주기마다 한 번만 한다(실패해도 다음 주기에 다시).
+/// 키워드 정기 점검 계획(SPEC FR-3, 17단계 결정): 설정 주기와 상관없이 매일 한국 시간 06:00에 확인한다.
+/// 대상은 `keywords_generated_at`이 주기 시작보다 이른 종목이다(하루 1회면 오늘 06:00, 일주일 1회면 이번 주 월요일 06:00).
+/// 그 시각에 꺼져 있었으면 켜진 뒤 처음 확인할 때 한 번 한다. 실패한 종목은 다음 날 06:00에 다시 고른다.
 pub fn keyword_plan(conn: &Connection, now: EpochMs) -> rusqlite::Result<KeywordPlan> {
     let every = read_regenerate_every(conn)?;
     let weekly = every == RegenerateEvery::Weekly;
-    let boundary = last_seoul_boundary(now, KEYWORD_REGENERATE_HOUR, weekly);
-    let due = read_num(conn, &KEYWORDS_AUTO_REGENERATED_AT)? < boundary as f64;
+    // 확인은 매일 06:00, 대상은 주기 시작 전에 만든 것
+    let check_at = last_seoul_boundary(now, KEYWORD_REGENERATE_HOUR, false);
+    let cycle_start = last_seoul_boundary(now, KEYWORD_REGENERATE_HOUR, weekly);
+    let due = read_num(conn, &KEYWORDS_AUTO_REGENERATED_AT)? < check_at as f64;
 
     struct Active {
         id: i64,
@@ -167,7 +172,7 @@ pub fn keyword_plan(conn: &Connection, now: EpochMs) -> rusqlite::Result<Keyword
         next_at: if due {
             now
         } else {
-            next_seoul_boundary(now, KEYWORD_REGENERATE_HOUR, weekly)
+            next_seoul_boundary(now, KEYWORD_REGENERATE_HOUR, false)
         },
         due,
         stock_ids: if due {
@@ -176,7 +181,7 @@ pub fn keyword_plan(conn: &Connection, now: EpochMs) -> rusqlite::Result<Keyword
                 .filter(|s| {
                     s.status != "pending"
                         && s.status != "generating"
-                        && s.generated_at.is_none_or(|at| at < boundary)
+                        && s.generated_at.is_none_or(|at| at < cycle_start)
                 })
                 .map(|s| s.id)
                 .collect()

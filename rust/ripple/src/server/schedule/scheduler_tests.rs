@@ -38,11 +38,18 @@ impl CollectStarter for FakeCollector {
 #[derive(Default)]
 struct FakeKeywordQueue {
     enqueued: Mutex<Vec<i64>>,
+    /// 정기 점검으로 넣은 것(`enqueued`에도 함께 남는다)
+    periodic: Mutex<Vec<i64>>,
 }
 
 impl KeywordEnqueuer for FakeKeywordQueue {
     fn enqueue(&self, stock_id: i64) {
         self.enqueued.lock().unwrap().push(stock_id);
+    }
+
+    fn enqueue_periodic(&self, stock_id: i64) {
+        self.periodic.lock().unwrap().push(stock_id);
+        self.enqueue(stock_id);
     }
 }
 
@@ -205,6 +212,8 @@ async fn keyword_regeneration_runs_once_per_cycle() {
     t.advance(1);
     scheduler.tick();
     assert_eq!(enqueued(&t.keyword_queue), [t.stock_id]);
+    // 정기 확인은 전체 생성이 아니라 정기 점검으로 넣는다.
+    assert_eq!(*t.keyword_queue.periodic.lock().unwrap(), [t.stock_id]);
 }
 
 #[tokio::test(flavor = "current_thread")]
