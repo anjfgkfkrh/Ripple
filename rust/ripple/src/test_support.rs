@@ -493,3 +493,12 @@ pub fn attach_topic(
         .unwrap();
     }
 }
+
+/// `insert_link`가 만든 연결의 키워드 경로와 걸러짐(`gated`)을 바꾼다(키워드 실적·증분 점검 시험용).
+pub fn set_link_path(conn: &Connection, match_id: i64, keyword_path: &str, gated: bool) {
+    conn.execute(
+        "UPDATE article_matches SET keyword_path = ?1, gated = ?2 WHERE id = ?3",
+        rusqlite::params![keyword_path, gated, match_id],
+    )
+    .unwrap();
+}

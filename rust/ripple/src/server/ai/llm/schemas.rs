@@ -12,6 +12,8 @@ static STOCK_CANDIDATES: LazyLock<Value> =
     LazyLock::new(|| load(include_str!("schemas/stock_candidates.json")));
 static KEYWORD_TREE: LazyLock<Value> =
     LazyLock::new(|| load(include_str!("schemas/keyword_tree.json")));
+static KEYWORD_UPDATE: LazyLock<Value> =
+    LazyLock::new(|| load(include_str!("schemas/keyword_update.json")));
 static TOPIC_REFRESH: LazyLock<Value> =
     LazyLock::new(|| load(include_str!("schemas/topic_refresh.json")));
 
@@ -23,6 +25,11 @@ pub fn stock_candidates() -> Value {
 /// 키워드 트리(`keywords/tree.ts`의 `keywordTreeSchema`)
 pub fn keyword_tree() -> Value {
     KEYWORD_TREE.clone()
+}
+
+/// 키워드 정기 점검: 뺄 것·더할 것(17단계, 실측한 `llm_make.py`의 `UPDATE_SCHEMA`)
+pub fn keyword_update() -> Value {
+    KEYWORD_UPDATE.clone()
 }
 
 /// 토픽 갱신(`topics/refresh.ts`의 `topicRefreshSchema`)

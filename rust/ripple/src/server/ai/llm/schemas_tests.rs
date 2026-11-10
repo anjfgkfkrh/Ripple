@@ -33,6 +33,7 @@ fn schemas_are_strict_and_have_no_meta_field() {
     for (name, schema) in [
         ("stock_candidates", stock_candidates()),
         ("keyword_tree", keyword_tree()),
+        ("keyword_update", keyword_update()),
         ("topic_refresh", topic_refresh()),
     ] {
         assert!(schema.get("$schema").is_none(), "{name}");
@@ -61,5 +62,32 @@ fn keyword_tree_schema_asks_for_aliases_anchors_and_keywords() {
     assert_eq!(
         item_keys,
         ["level", "keyword", "keywordEn", "parent", "reason"]
+    );
+}
+
+#[test]
+fn keyword_update_schema_asks_for_removes_adds_anchors_and_aliases() {
+    let schema = keyword_update();
+    let keys: Vec<&str> = schema["properties"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        keys,
+        ["remove", "add", "anchorsRemove", "anchorsAdd", "aliasesAdd"]
+    );
+    let remove_keys: Vec<&str> = schema["properties"]["remove"]["items"]["properties"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(remove_keys, ["keyword", "reason"]);
+    // 더할 키워드는 전체 생성과 같은 항목 모양
+    assert_eq!(
+        schema["properties"]["add"]["items"],
+        keyword_tree()["properties"]["keywords"]["items"]
     );
 }
