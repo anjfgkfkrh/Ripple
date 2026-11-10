@@ -65,7 +65,10 @@ impl From<GenerateError> for KeywordError {
 pub struct GenerateOk {
     /// 남긴 키워드 수
     pub count: usize,
+    /// 설정 깊이
     pub depth: i64,
+    /// 실제로 만든 트리의 가장 깊은 단계(후보 기준)
+    pub deepest: i64,
     /// LLM이 줬지만 규칙(부모·중복 등)에 맞지 않아 버린 후보 수
     pub dropped: usize,
     /// 검증을 통과한 후보 수와, 그중 Jev가 평가한 수(11단계)
@@ -306,6 +309,7 @@ async fn try_generate<L: LlmClient, D: Decider>(
     Ok(GenerateOk {
         count: kept.len(),
         depth,
+        deepest,
         dropped,
         candidates: candidates.len(),
         rated: rating.rated,

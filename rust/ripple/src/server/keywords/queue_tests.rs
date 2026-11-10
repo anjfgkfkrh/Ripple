@@ -235,3 +235,20 @@ async fn queue_is_cloneable_and_shares_state() {
     other.idle().await;
     assert_eq!(slow.inner.call_count(), 1);
 }
+
+#[test]
+fn success_line_shows_actual_over_configured_depth() {
+    use crate::server::keywords::generate::GenerateOk;
+    let ok = GenerateOk {
+        count: 6,
+        depth: 3,
+        deepest: 1,
+        dropped: 0,
+        candidates: 8,
+        rated: 8,
+        unrated_reason: None,
+        headlines: 0,
+    };
+    let line = success_line(7, &ok, "1.2");
+    assert!(line.contains("(깊이 1/3, Jev 평가 8개)"), "{line}");
+}

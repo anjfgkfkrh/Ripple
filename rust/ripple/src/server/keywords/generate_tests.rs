@@ -185,6 +185,7 @@ async fn one_llm_call_builds_tree_saves_it_and_marks_ready() {
         GenerateResult::Ok(GenerateOk {
             count: 10,
             depth: 2,
+            deepest: 2,
             dropped: 0,
             candidates: 10,
             rated: 0,
@@ -609,6 +610,7 @@ async fn jev_scores_decide_what_stays_and_children_of_cut_parents_go() {
         GenerateResult::Ok(GenerateOk {
             count: 6,
             depth: 2,
+            deepest: 2,
             dropped: 0,
             candidates: 10,
             rated: 10,

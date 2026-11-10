@@ -181,24 +181,7 @@ where
             let seconds = js_to_fixed(started.elapsed().as_secs_f64(), 1);
             match result {
                 GenerateResult::Ok(ok) => {
-                    let dropped = if ok.dropped > 0 {
-                        format!(", 규칙에 안 맞아 버림 {}개", ok.dropped)
-                    } else {
-                        String::new()
-                    };
-                    let headlines = if ok.headlines > 0 {
-                        format!(", 기사 제목 {}개 참고", ok.headlines)
-                    } else {
-                        String::new()
-                    };
-                    let rated = match &ok.unrated_reason {
-                        Some(reason) => format!(", 평가 못 해 자르지 않음: {reason}"),
-                        None => format!(", Jev 평가 {}개", ok.rated),
-                    };
-                    log(&format!(
-                        "키워드 생성: 종목 id {stock_id}, 후보 {}개 → {}개(깊이 {}{dropped}{rated}{headlines}), {seconds}초",
-                        ok.candidates, ok.count, ok.depth
-                    ));
+                    log(&success_line(stock_id, &ok, &seconds));
                 }
                 GenerateResult::Err(error) => {
                     log(&format!(
@@ -213,6 +196,32 @@ where
                 .current = None;
         }
     }
+}
+
+/// 성공 결과 한 줄. 깊이는 `실제/설정`으로 보인다(실제는 만든 트리의 가장 깊은 단계).
+fn success_line(
+    stock_id: i64,
+    ok: &crate::server::keywords::generate::GenerateOk,
+    seconds: &str,
+) -> String {
+    let dropped = if ok.dropped > 0 {
+        format!(", 규칙에 안 맞아 버림 {}개", ok.dropped)
+    } else {
+        String::new()
+    };
+    let headlines = if ok.headlines > 0 {
+        format!(", 기사 제목 {}개 참고", ok.headlines)
+    } else {
+        String::new()
+    };
+    let rated = match &ok.unrated_reason {
+        Some(reason) => format!(", 평가 못 해 자르지 않음: {reason}"),
+        None => format!(", Jev 평가 {}개", ok.rated),
+    };
+    format!(
+        "키워드 생성: 종목 id {stock_id}, 후보 {}개 → {}개(깊이 {}/{}{dropped}{rated}{headlines}), {seconds}초",
+        ok.candidates, ok.count, ok.deepest, ok.depth
+    )
 }
 
 #[cfg(test)]
