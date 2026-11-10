@@ -5,3 +5,7 @@ time,id,role,stage,task,attempt,model,effort,requests,input,cache_write_5m,cache
 2026-11-10 21:33:45,a11e5fbab1691219e,review,keyword-topic,work/keyword-topic/paid-compare,2,claude-opus-5-5,기본,15,30,91161,0,968561,9634,91163,0.8423,4.4317,3.5894,81.0
 2026-11-10 21:37:03,a4b7464a49fbea070,work,keyword-topic,work/keyword-topic/llm-request,1,claude-sonnet-5-5,medium,20,40,67962,0,1303666,15552,86240,0.4559,2.8989,2.4430,84.3
 2026-11-10 21:39:09,a06401385e15a92a2,review,keyword-topic,work/keyword-topic/llm-request,1,claude-opus-5-5,기본,14,28,66504,0,865517,7918,84788,0.6641,3.8866,3.2225,82.9
+2026-11-10 21:40:20,a607a6bc6fad73faf,work,keyword-topic,work/keyword-topic/anchor-schema,1,claude-sonnet-5-5,medium,10,20,44807,0,482051,3606,63085,0.1963,1.0898,0.8935,82.0
+2026-11-10 21:41:32,ad4b2558d793bfc63,diagnose,keyword-topic,work/keyword-topic/anchor-schema,1,claude-opus-5-5,기본,8,16,38089,0,358366,3962,56373,0.3414,1.6651,1.3237,79.5
+2026-11-10 21:45:03,a06ad47408a45e214,work,keyword-topic,work/keyword-topic/anchor-schema,2,claude-sonnet-5-5,medium,24,48,60178,0,1455324,14140,78456,0.4375,3.1725,2.7350,86.2
+2026-11-10 21:47:09,a660fd7672203fd89,review,keyword-topic,work/keyword-topic/anchor-schema,2,claude-opus-5-5,기본,16,32,68566,0,1037655,7552,86850,0.7015,4.5761,3.8745,84.7
