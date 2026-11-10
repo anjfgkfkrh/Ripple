@@ -250,6 +250,7 @@ async fn try_generate<L: LlmClient, D: Decider>(
         schema_name: "keyword_tree".to_string(),
         max_tokens: KEYWORD_MAX_TOKENS,
         timeout_ms: Some(KEYWORD_TIMEOUT_MS),
+        reasoning: crate::server::ai::llm::Reasoning::default(),
         parse: parse_keyword_tree,
     };
     let call = CallOptions {

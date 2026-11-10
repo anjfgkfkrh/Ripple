@@ -184,6 +184,7 @@ pub async fn refresh_topics<L: LlmClient, D: Decider>(
         schema_name: "topic_refresh".to_string(),
         max_tokens: MAX_REFRESH_OUTPUT_TOKENS,
         timeout_ms: Some(REFRESH_TIMEOUT_MS),
+        reasoning: crate::server::ai::llm::Reasoning::default(),
         parse: parse_topic_refresh,
     };
     let call = CallOptions {

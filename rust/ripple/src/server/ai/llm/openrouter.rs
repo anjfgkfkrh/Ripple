@@ -12,6 +12,7 @@ use crate::server::db::schema::UsageProvider;
 pub const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
 
 const DEFAULT_TIMEOUT_MS: u64 = 30_000;
+const DEFAULT_RETRY_DELAY_MS: u64 = 5_000;
 
 /// OpenRouter Chat Completions를 라이브러리 없이 직접 부른다.
 /// - 구조화 출력(response_format: json_schema, strict)으로 JSON을 받고 호출한 쪽이 한 번 더 검증한다.
@@ -21,6 +22,8 @@ pub struct OpenRouterClient {
     api_key: Option<String>,
     base_url: String,
     timeout_ms: u64,
+    /// 연결·시간 초과·본문 읽기 실패 뒤 다시 보내기 전에 기다리는 시간
+    retry_delay_ms: u64,
     http: reqwest::Client,
 }
 
@@ -30,6 +33,7 @@ impl OpenRouterClient {
             api_key,
             base_url: base_url.unwrap_or_else(|| OPENROUTER_BASE_URL.to_string()),
             timeout_ms: DEFAULT_TIMEOUT_MS,
+            retry_delay_ms: DEFAULT_RETRY_DELAY_MS,
             http,
         }
     }
@@ -37,6 +41,51 @@ impl OpenRouterClient {
     pub fn with_timeout_ms(mut self, timeout_ms: u64) -> Self {
         self.timeout_ms = timeout_ms;
         self
+    }
+
+    pub fn with_retry_delay_ms(mut self, retry_delay_ms: u64) -> Self {
+        self.retry_delay_ms = retry_delay_ms;
+        self
+    }
+
+    /// 연결 오류·시간 초과·본문 읽기 실패만 한 번 다시 보낸다. 형식 오류·HTTP 오류(429·402 포함)는 그대로 돌려준다.
+    async fn send_with_retry<T: Send>(
+        &self,
+        api_key: &str,
+        request: &StructuredRequest<T>,
+        body: &Value,
+    ) -> Result<JsonResult, LlmError> {
+        match self.send_once(api_key, request, body).await {
+            Err(failure) if failure.retryable => {
+                tokio::time::sleep(Duration::from_millis(self.retry_delay_ms)).await;
+                self.send_once(api_key, request, body)
+                    .await
+                    .map_err(|failure| failure.error)
+            }
+            other => other.map_err(|failure| failure.error),
+        }
+    }
+}
+
+/// 한 번 보낸 실패. `retryable`이면 전송 단계(연결·시간 초과·본문 읽기)에서 난 것이다.
+struct SendFailure {
+    error: LlmError,
+    retryable: bool,
+}
+
+impl SendFailure {
+    fn transport(error: LlmError) -> Self {
+        Self {
+            error,
+            retryable: true,
+        }
+    }
+
+    fn final_error(error: LlmError) -> Self {
+        Self {
+            error,
+            retryable: false,
+        }
     }
 }
 
@@ -66,7 +115,7 @@ impl LlmClient for OpenRouterClient {
             .iter()
             .map(|m| json!({ "role": m.role, "content": m.content }))
             .collect();
-        let body = json!({
+        let mut body = json!({
             "model": request.model,
             "messages": messages,
             "max_tokens": request.max_tokens,
@@ -76,7 +125,20 @@ impl LlmClient for OpenRouterClient {
             },
             "provider": { "require_parameters": true },
         });
+        if let Some(reasoning) = request.reasoning.body() {
+            body["reasoning"] = reasoning;
+        }
+        self.send_with_retry(api_key, request, &body).await
+    }
+}
 
+impl OpenRouterClient {
+    async fn send_once<T: Send>(
+        &self,
+        api_key: &str,
+        request: &StructuredRequest<T>,
+        body: &Value,
+    ) -> Result<JsonResult, SendFailure> {
         let timeout = Duration::from_millis(request.timeout_ms.unwrap_or(self.timeout_ms));
         let response = self
             .http
@@ -88,27 +150,37 @@ impl LlmClient for OpenRouterClient {
             .send()
             .await
             .map_err(|error| {
-                if error.is_timeout() {
-                    LlmError::new(
-                        "OpenRouter 응답이 늦어 중단했습니다.",
-                        LlmErrorKind::Timeout,
-                    )
+                SendFailure::transport(if error.is_timeout() {
+                    timeout_error()
                 } else {
                     LlmError::new(
                         format!("OpenRouter에 연결하지 못했습니다: {}", describe(&error)),
                         LlmErrorKind::Upstream,
                     )
-                }
+                })
             })?;
 
         let status = response.status();
-        // response.json().catch(() => null): 읽지 못하거나 JSON이 아니면 None
-        let payload: Option<Value> = match response.bytes().await {
-            Ok(bytes) => serde_json::from_slice(&bytes).ok(),
-            Err(_) => None,
-        };
+        // 본문을 읽지 못하면(끊김·시간 초과) 형식 오류가 아니라 연결 오류다. JSON이 아닌 본문은 None.
+        let bytes = response.bytes().await.map_err(|error| {
+            SendFailure::transport(if error.is_timeout() {
+                timeout_error()
+            } else {
+                LlmError::new(
+                    format!(
+                        "OpenRouter 응답 본문을 읽지 못했습니다: {}",
+                        describe(&error)
+                    ),
+                    LlmErrorKind::Upstream,
+                )
+            })
+        })?;
+        let payload: Option<Value> = serde_json::from_slice(&bytes).ok();
         if !status.is_success() || is_truthy(payload.as_ref().and_then(|p| p.get("error"))) {
-            return Err(to_http_error(status.as_u16(), payload.as_ref()));
+            return Err(SendFailure::final_error(to_http_error(
+                status.as_u16(),
+                payload.as_ref(),
+            )));
         }
 
         let usage = read_usage(payload.as_ref());
@@ -127,6 +199,13 @@ impl LlmClient for OpenRouterClient {
             model,
         })
     }
+}
+
+fn timeout_error() -> LlmError {
+    LlmError::new(
+        "OpenRouter 응답이 늦어 중단했습니다.",
+        LlmErrorKind::Timeout,
+    )
 }
 
 /// JS 진리값: null·false·0·""·없음은 거짓

@@ -160,6 +160,7 @@ pub async fn match_stocks(
         // 추론(생각) 토큰도 이 한도를 함께 쓴다(Claude 5.5 계열). 최대 비용은 1회 $0.001 수준.
         max_tokens: 2000,
         timeout_ms: None,
+        reasoning: crate::server::ai::llm::Reasoning::default(),
         parse: parse_output,
     };
     let options = CallOptions {

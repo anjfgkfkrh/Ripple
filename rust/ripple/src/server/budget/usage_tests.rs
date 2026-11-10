@@ -23,6 +23,7 @@ fn request() -> StructuredRequest<bool> {
         schema_name: "ok".into(),
         max_tokens: 100,
         timeout_ms: None,
+        reasoning: crate::server::ai::llm::Reasoning::default(),
         parse: parse_ok,
     }
 }

@@ -37,6 +37,7 @@ fn request() -> StructuredRequest<Answer> {
         schema_name: "answer".to_string(),
         max_tokens: 300,
         timeout_ms: None,
+        reasoning: crate::server::ai::llm::Reasoning::default(),
         parse: parse_answer,
     }
 }
@@ -65,6 +66,7 @@ fn client(server: &MockServer, api_key: Option<&str>) -> OpenRouterClient {
         Some(server.uri()),
         reqwest::Client::new(),
     )
+    .with_retry_delay_ms(0)
 }
 
 async fn expect_llm_error(server: &MockServer, kind: LlmErrorKind) -> LlmError {
@@ -304,7 +306,8 @@ async fn connection_failure_is_upstream() {
         Some("k".into()),
         Some("http://127.0.0.1:1".into()),
         reqwest::Client::new(),
-    );
+    )
+    .with_retry_delay_ms(0);
     let error = generate_object(&llm, &request()).await.unwrap_err();
     assert_eq!(error.kind, LlmErrorKind::Upstream);
     assert!(
@@ -312,4 +315,163 @@ async fn connection_failure_is_upstream() {
             .message
             .starts_with("OpenRouter에 연결하지 못했습니다: ")
     );
+}
+
+/// 본문을 `Content-Length`보다 적게 보내고 끊는 서버. 처음 `truncate_first`번 연결만 끊고 그 뒤는 정상 응답.
+async fn truncating_server(
+    truncate_first: usize,
+) -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let count = Arc::new(AtomicUsize::new(0));
+    let seen = count.clone();
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            let n = seen.fetch_add(1, Ordering::SeqCst);
+            let mut buf = vec![0u8; 65536];
+            let mut total = 0;
+            // 요청 머리와 본문을 모두 읽는다(머리 끝 + Content-Length).
+            loop {
+                let read = socket.read(&mut buf[total..]).await.unwrap_or(0);
+                if read == 0 {
+                    break;
+                }
+                total += read;
+                let text = String::from_utf8_lossy(&buf[..total]).to_string();
+                if let Some(end) = text.find("\r\n\r\n") {
+                    let length = text[..end]
+                        .to_lowercase()
+                        .lines()
+                        .find_map(|l| {
+                            l.strip_prefix("content-length:")
+                                .map(|v| v.trim().parse::<usize>().unwrap())
+                        })
+                        .unwrap_or(0);
+                    if total >= end + 4 + length {
+                        break;
+                    }
+                }
+            }
+            let good = ok_body(r#"{"answer":"네"}"#).to_string();
+            let sent = if n < truncate_first {
+                &good[..10]
+            } else {
+                &good[..]
+            };
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{sent}",
+                good.len()
+            );
+            let _ = socket.write_all(response.as_bytes()).await;
+            let _ = socket.shutdown().await;
+        }
+    });
+    (format!("http://{addr}"), count)
+}
+
+fn client_at(uri: &str) -> OpenRouterClient {
+    OpenRouterClient::new(
+        Some("sk-test".into()),
+        Some(uri.to_string()),
+        reqwest::Client::new(),
+    )
+    .with_retry_delay_ms(0)
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn body_read_failure_is_upstream_not_invalid_output() {
+    // B1: 본문을 읽다 끊기면 형식 오류가 아니라 연결 오류. 한 번 다시 보내고 둘 다 실패하면 Upstream.
+    let (uri, count) = truncating_server(usize::MAX).await;
+    let error = generate_object(&client_at(&uri), &request())
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, LlmErrorKind::Upstream);
+    assert!(
+        error
+            .message
+            .starts_with("OpenRouter 응답 본문을 읽지 못했습니다: "),
+        "{}",
+        error.message
+    );
+    assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 2);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn connection_error_then_success_resends_once() {
+    let (uri, count) = truncating_server(1).await;
+    let result = generate_object(&client_at(&uri), &request()).await.unwrap();
+    assert_eq!(
+        result.value,
+        Answer {
+            answer: "네".into()
+        }
+    );
+    assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 2);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn timeout_twice_is_timeout_with_two_requests() {
+    let server = server_with(
+        ResponseTemplate::new(200)
+            .set_body_json(ok_body("{}"))
+            .set_delay(Duration::from_millis(300)),
+    )
+    .await;
+    let slow = client(&server, Some("sk-test")).with_timeout_ms(30);
+    let error = generate_object(&slow, &request()).await.unwrap_err();
+    assert_eq!(error.kind, LlmErrorKind::Timeout);
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn non_json_content_is_not_resent() {
+    let server = server_with(ResponseTemplate::new(200).set_body_json(ok_body("JSON 아님"))).await;
+    expect_llm_error(&server, LlmErrorKind::InvalidOutput).await;
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn rate_limit_and_payment_are_not_resent() {
+    for (status, kind) in [
+        (429, LlmErrorKind::RateLimited),
+        (402, LlmErrorKind::PaymentRequired),
+    ] {
+        let server = server_with(
+            ResponseTemplate::new(status)
+                .set_body_json(json!({ "error": { "message": "x", "code": status } })),
+        )
+        .await;
+        expect_llm_error(&server, kind).await;
+        assert_eq!(server.received_requests().await.unwrap().len(), 1);
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn reasoning_setting_goes_into_request_body() {
+    use crate::server::ai::llm::Reasoning;
+    let server =
+        server_with(ResponseTemplate::new(200).set_body_json(ok_body(r#"{"answer":"네"}"#))).await;
+    let llm = client(&server, Some("sk-test"));
+    generate_object(&llm, &request()).await.unwrap();
+    generate_object(
+        &llm,
+        &StructuredRequest {
+            reasoning: Reasoning::ModelDefault,
+            ..request()
+        },
+    )
+    .await
+    .unwrap();
+    let requests = server.received_requests().await.unwrap();
+    let first: Value = serde_json::from_slice(&requests[0].body).unwrap();
+    let second: Value = serde_json::from_slice(&requests[1].body).unwrap();
+    assert_eq!(first["reasoning"], json!({ "enabled": false }));
+    assert_eq!(first["provider"], json!({ "require_parameters": true }));
+    assert!(second.get("reasoning").is_none());
 }

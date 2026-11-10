@@ -31,6 +31,26 @@ impl LlmMessage {
     }
 }
 
+/// 숨은 추론 토큰 설정. 기본은 끔(DECISIONS 1장 "17단계 추론 토큰").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Reasoning {
+    /// 요청 본문에 `"reasoning": {"enabled": false}`를 넣는다
+    #[default]
+    Off,
+    /// `reasoning`을 보내지 않고 모델 기본값을 따른다
+    ModelDefault,
+}
+
+impl Reasoning {
+    /// 요청 본문 최상위 `reasoning` 값. 없으면 보내지 않는다.
+    pub fn body(self) -> Option<Value> {
+        match self {
+            Self::Off => Some(serde_json::json!({ "enabled": false })),
+            Self::ModelDefault => None,
+        }
+    }
+}
+
 /// 구조화 출력 요청. TS의 zod 스키마 대신 JSON Schema(`schema`)를 보내고, 응답은 `parse`로 검증한다.
 pub struct StructuredRequest<T> {
     pub model: String,
@@ -42,6 +62,8 @@ pub struct StructuredRequest<T> {
     pub max_tokens: u32,
     /// 이 요청만 응답을 더 오래 기다릴 때(밀리초). 없으면 클라이언트 기본값
     pub timeout_ms: Option<u64>,
+    /// 숨은 추론 토큰 설정. 기본 `Reasoning::Off`
+    pub reasoning: Reasoning,
     /// 응답 JSON이 정해진 형식이면 값으로 바꾼다(zod `safeParse` 대응). 틀리면 None
     pub parse: fn(&Value) -> Option<T>,
 }
