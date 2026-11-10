@@ -3,15 +3,14 @@
 > 읽는 때: 세션을 시작할 때 맨 먼저. 지금 하는 일, 답 대기, 다음 할 일만 둔다(화면 한 장 안).
 > 이 문서는 덧붙이지 않고 통째로 다시 쓴다(agentflow review가 작업 통과 때, `/handoff`가 단계 밖 작업 뒤). 끝난 일의 자세한 기록은 [DECISIONS.md](DECISIONS.md) 3장, 단계 표·작업 방법은 [DEVELOPMENT.md](DEVELOPMENT.md)에 둔다. 실제와 다르면 `git log`와 `git status`를 먼저 본다.
 
-마지막 갱신: 2026-11-10 (한국 시간), 17단계 `keyword-topic` 작업 `topic-input` 리뷰 통과
+마지막 갱신: 2026-11-11 (한국 시간), 17단계 `keyword-topic` 마지막 작업 `stage-check` 리뷰 통과
 
 ## 다음 할 일
 
-- **17단계 키워드 트리·토픽 고도화(`keyword-topic`): run 진행 중.** 브랜치 `af/keyword-topic`, 작업 10개는 `work/keyword-topic/PLAN.md`(상태는 PLAN 표). 통과: `paid-compare`(OpenRouter 28회 $0.0624), `llm-request`(B1·B2, 추론 끄기 기본), `anchor-schema`(마이그레이션 0011, 별칭 검증), `anchor-match`(별칭은 이름 연결, 고유어 없는 종목 키워드 연결은 `gated`), `tree-full`(LLM 한 번으로 깊이 2·1단계 6·2단계 12 상한 트리와 별칭·고유어를 받아 한 트랜잭션에 저장, 통계 낱말 참고, Jev 후보 평가 없앰, 고유어 0개면 실패, 1장 "17단계 tree-full 구현 세부"), `tree-weekly`(정기 점검은 매일 06:00 확인·주기 시작 전 항목만, 지금 트리에서 뺄 것·더할 것 최대 3개만 받아 반영, 28일 통과 실적으로 지키고 상한 넘으면 마지막 통과가 오래된 것부터 밀어냄, 트리·고유어가 없으면 전체 생성, 1장 "17단계 tree-weekly 구현 세부"), `tree-screen`(키워드 줄에 최근 4주 `기사 N · 통과 M`, 종목 별칭 칩과 주인만 지우기, 설정 깊이 1~2·기본 주 1회·영향도 기준 5·"토픽을 종목에 붙일" 이름, 상태 화면 "매일 06:00 확인(주 1회 점검)", 1장 "17단계 tree-screen 구현 세부"), `eval-merge`(시장·주제 항목은 기사당 Jev 한 요청 `decide_merged`로 토픽마다 관련도·시장 항목 관련도·증시마다 영향도·호재/악재, 연결마다 평가 한 줄·사용량 한 줄(토큰 나눔), 종목은 하나씩, 1장 "17단계 eval-merge 구현 세부"), `topic-input`(토픽 갱신 입력에서 가나 제목을 빼고 같은 소식을 `×N` 한 줄로, 새 시스템 프롬프트, 응답 `scope` market/company, company 토픽은 항목·카드 없이 종목 가지만·관련 종목 없으면 버림, 기사 수와 통과 건수는 화면 기준, 이전 토픽 줄에 `통과 M건`, Rust 시험 727개·E2E 49 통과, 1장 "17단계 topic-input 구현 세부"). 각 작업 세부는 1장 "17단계 … 구현 세부".
-  - 리뷰가 정한 것(계획 세부 ⑪, 사용자 확인 필요하면 단계 결과 보고 때): DECISIONS 1장 "17단계 추론 토큰"(OpenRouter 요청에 `reasoning: {"enabled": false}` 기본) · "17단계 토픽 통과 건수"(이전 토픽 줄에 `· 통과 M건` 보임). 수치는 2장 "17단계 추론·통과 건수 비교".
-  - 다음: `stage-check`(토픽 갱신 결과 줄의 제목 수는 줄이기 전 수, 시장 항목 관련도 질문은 실측에 없던 것이라 시장 항목 통과 수로 비교, `usage_logs` 줄 수는 Jev 호출 수보다 많음). 0011은 배포 때 기존 종목을 모두 `pending`으로 돌려 worker 시작 때 전체 생성을 한 번 한다(답 8A). `stage-check`가 다시 `.check-restore/ripple.db`를 쓴다(그 전에 최신 백업으로 바꿔 받을지는 그때 확인). 시험 Docker 확인 때 `validate_aliases`가 버린 별칭 수와 통계 낱말 계산 시간(`feed_headlines` 전체를 읽음, 정기 점검도 항목마다 읽음), 정기 점검 한 번의 시간·비용과 옛 트리가 상한으로 줄어드는 모습을 본다.
-  - 결정: DECISIONS.md 1장 "키워드 트리·토픽 고도화" 세 줄, "17단계 `keyword-topic` 계획 답", "17단계 계획 때 정한 세부", 위 두 줄, "17단계 tree-screen 상태 화면 문구"(사람 답 A). SPEC 10장 17단계 줄과 FR-3·4·5·6·8·7장 고침.
-  - 배포 뒤 사용자 몫: 설정 화면에서 영향도 표시 기준 5, 키워드 재생성 주기 주 1회로 바꾸기(저장된 값은 코드가 덮지 않음, 답 3B·4A).
+- **17단계 키워드 트리·토픽 고도화(`keyword-topic`): 작업 10개 모두 리뷰 통과, 사람의 단계 결과 확인 대기.** 브랜치 `af/keyword-topic`(main에 합치기 전, 합칠 때 `node scripts/check-secrets.mjs`). 작업 표는 `work/keyword-topic/PLAN.md`, 각 작업 세부는 DECISIONS 1장 "17단계 … 구현 세부", 결정은 1장 "키워드 트리·토픽 고도화" 세 줄·"17단계 `keyword-topic` 계획 답"·"17단계 계획 때 정한 세부"·"17단계 추론 토큰"·"17단계 토픽 통과 건수"·"17단계 tree-screen 상태 화면 문구". 승인되면 `/agentflow:close keyword-topic`, 그 뒤 main 합치기·`/deploy`는 사람 요청 때.
+  - 단계 끝 실제 확인(`stage-check`, 2장 "17단계 단계 끝 실제 확인"): $0.0212, 앱 오류 0. 전체 생성 별칭·고유어 정상(버린 별칭 0), 정기 점검이 옛 시장 트리를 상한으로 줄임, company 토픽 1개 생김.
+  - **단계 결과 보고 때 사람이 볼 것**: ① 회차 887에서 종목 키워드 연결 278건이 **전부** `gated`(통과 0). 결정 ⑦대로 저장만 하고 평가하지 않은 것이지만, 고유어 15개가 제목에 하나도 없었는지·고유어가 너무 좁은지는 시험 DB를 지워 확인하지 못했다. 배포 뒤 본 DB에서 `article_matches.gated` 비율과 종목 키워드 경로를 다시 보거나, 시험 Docker로 다시 잴지 정한다. ② 시장 항목 통과 수가 직전 기간보다 적다(한국 9 vs 40, 미국 14 vs 31, 영향도 ≥5). 질문이 바뀌었고(관련도 한·미 합침) 직전 쪽이 4.3시간 비어 같은 조건이 아니다. ③ Jev 호출 수와 토픽 갱신 추론 토큰은 기록이 없어 재지 못함.
+  - 배포 뒤 사용자 몫: 설정 화면에서 영향도 표시 기준 5, 키워드 재생성 주기 주 1회로 바꾸기(저장된 값은 코드가 덮지 않음, 답 3B·4A. 시험 DB에서도 6·하루 1회로 남아 있었음). 0011은 배포 때 종목을 `pending`으로 돌려 worker 시작 때 전체 생성을 한 번 한다(답 8A).
 
 ## 답 대기
 
@@ -21,13 +20,13 @@
 
 ## 남은 확인
 
-- 원격 본 Docker의 장중 주가 갱신(KIS·Finnhub): `stock_prices`의 최근 `fetched_at`과 상태 화면 "주가" 줄로 본다(2026-11-10 장 시작 뒤 확인 예정이었고 이 세션에서는 보지 않음).
+- 원격 본 Docker의 장중 주가 갱신(KIS·Finnhub): `stock_prices`의 최근 `fetched_at`과 상태 화면 "주가" 줄로 본다(아직 보지 않음).
 - 13단계: 모의 서버 값이 실전과 같은지(사용자가 증권 앱과 대조), KIS 미국 시세가 실시간인지(미국 장중 KIS `last`와 Finnhub `c` 비교). 14단계: KIS 주가 띠(Rust)를 실제 키로 확인, 12~14단계 휴대폰·PC 화면 확인(사용자 몫).
 - 16단계 남은 작은 일: `/status/system`의 DB 상태 확인(`server/status.rs` `get_system_status`)이 동기 `db.with`다(회원 전용·가벼운 읽기라 남김).
 
 ## 운영 메모
 
-- 본 Docker는 원격 서버 `blockall@blockall-ss`(`~/Ripple`)에서 돈다(2026-11-09 전환). 배포는 `/deploy`, 공개 주소 `https://ripple.anjfgkfkrh.com`. Mac에서는 `-p ripple-check` 없이 `up`하지 않는다. 시험용 Docker(`/real-check`)는 Mac. 같은 터널 토큰·KIS 키를 시험 Docker와 본 Docker에서 함께 쓰지 않는다.
+- 본 Docker는 원격 서버 `blockall@blockall-ss`(`~/Ripple`)에서 돈다(2026-11-09 전환). 배포는 `/deploy`, 공개 주소 `https://ripple.anjfgkfkrh.com`. Mac에서는 `-p ripple-check` 없이 `up`하지 않는다. 시험용 Docker(`/real-check`)는 Mac. 같은 터널 토큰·KIS 키를 시험 Docker와 본 Docker에서 함께 쓰지 않는다. 시험 볼륨 `ripple-check_ripple-data`는 `down -v`로 안 지워질 수 있어 `docker volume rm`으로 확인한다. `.check-restore/ripple.db`는 `stage-check` 뒤 지웠다(다시 쓰려면 새로 받는다).
 - 단계: 0~16단계 완료·배포(16단계 2026-11-08, 기록은 보관소 `../Ripple-archive/separate-role/`). v0.3.0 릴리스(2026-11-07), v0.2.0 이하에서는 업데이트할 수 없음(DEVELOPMENT.md 7장).
 - 사용자가 할 일(개발 환경): ① `sudo chown -R "$(whoami)":staff ~/.npm`(playwright MCP) ② GitHub 토큰을 `GITHUB_PERSONAL_ACCESS_TOKEN`으로 셸 환경에 넣기 ③ 새 세션에서 `/mcp`로 확인.
 - 지난 진행 기록(단계별 체크리스트·배포 기록)은 DECISIONS.md 3장.
