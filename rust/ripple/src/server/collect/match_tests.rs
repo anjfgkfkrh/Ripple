@@ -61,7 +61,7 @@ fn nvidia() -> MatchStock {
         name: "NVIDIA Corporation - Common Stock".into(),
         name_ko: Some("엔비디아".into()),
         aliases: vec![],
-        anchors: vec!["accelerator".into(), "가속기".into()],
+        anchors: vec!["accelerator".into(), "가속기".into(), "hbm".into()],
         keywords: vec![
             keyword(
                 1,
