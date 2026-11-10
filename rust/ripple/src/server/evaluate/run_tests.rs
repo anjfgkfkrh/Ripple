@@ -573,6 +573,8 @@ async fn saves_magnitude_and_display_rule_needs_both_scores() {
     // it("영향도도 저장하고, 표시 기준은 관련도·영향도가 둘 다 기준 이상일 때다")
     let shared = seeded();
     let ids = add_stocks(&shared);
+    // 경계 시나리오는 옛 기본값(영향도 6)으로 지킨다.
+    set_num(&shared, &EVALUATION_MIN_MAGNITUDE, 6.0);
     name_link(&shared, ids.samsung, DISTINCT[0], ago(1));
     name_link(&shared, ids.samsung, DISTINCT[1], ago(2));
     name_link(&shared, ids.samsung, DISTINCT[2], ago(3));

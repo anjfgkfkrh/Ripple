@@ -197,6 +197,8 @@ fn set_keywords(conn: &Connection, id: i64, status: &str, generated_at: Option<E
 fn regenerates_stocks_whose_keywords_were_made_before_this_cycle() {
     // it("이번 주기에 아직 안 했으면 06:00 전에 만든 키워드를 가진 종목을 다시 만든다")
     let db = testdb();
+    // 옛 기본값(매일)로 두어 주기 경계 시나리오를 지킨다.
+    write_str(&db.conn, &EVERY, "daily", now()).unwrap();
     let old = add_stock(&db.conn, "005930");
     let fresh = add_stock(&db.conn, "000660");
     let waiting = add_stock(&db.conn, "035720");
@@ -226,6 +228,7 @@ fn regenerates_stocks_whose_keywords_were_made_before_this_cycle() {
 fn skips_generating_stocks_and_auto_topic_lens_items() {
     // 만드는 중은 빼고, 자동 토픽 항목(검색어는 토픽 갱신이 정함)도 뺀다. 사용자 주제 항목은 그대로 낀다.
     let db = testdb();
+    write_str(&db.conn, &EVERY, "daily", now()).unwrap();
     let generating = add_stock(&db.conn, "005930");
     set_keywords(&db.conn, generating, "generating", None);
     let normal = add_stock(&db.conn, "000660");

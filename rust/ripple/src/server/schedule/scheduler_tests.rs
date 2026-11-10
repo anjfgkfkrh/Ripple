@@ -5,8 +5,8 @@ use tokio::sync::oneshot;
 
 use super::*;
 use crate::server::settings::{
-    TOPICS_FAILED_AT, TOPICS_INTERVAL_HOURS, TOPICS_REFRESHED_AT, TOPICS_STARTED_AT, read_num,
-    read_str,
+    KEYWORDS_REGENERATE_EVERY, TOPICS_FAILED_AT, TOPICS_INTERVAL_HOURS, TOPICS_REFRESHED_AT,
+    TOPICS_STARTED_AT, read_num, read_str, write_str,
 };
 use crate::server::stocks::repository::{RegisterInput, RegisterResult, register_stock};
 use crate::test_support::{SharedTestDb, ms, seed_listings, shared_test_db};
@@ -100,6 +100,8 @@ impl Setup {
                 params![ms("2026-10-20T10:00:00Z"), id],
             )
             .unwrap();
+            // 옛 기본값(매일)로 두어 주기마다 한 번 하는 시나리오를 지킨다.
+            write_str(&conn, &KEYWORDS_REGENERATE_EVERY, "daily", start_time()).unwrap();
             id
         };
         Self {

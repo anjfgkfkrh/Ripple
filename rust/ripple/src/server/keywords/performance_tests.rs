@@ -82,6 +82,14 @@ fn counts_by_last_word_of_the_path_across_regenerated_trees() {
 #[test]
 fn gated_links_count_as_matched_and_pass_follows_the_display_rule() {
     let (db, stock, _) = testdb();
+    // 경계 시나리오는 옛 기본값(영향도 6)으로 지킨다.
+    crate::server::settings::write_num(
+        &db.conn,
+        &crate::server::settings::EVALUATION_MIN_MAGNITUDE,
+        6.0,
+        now(),
+    )
+    .unwrap();
     let at = now() - DAY;
     // 걸러진 연결(평가 없음)
     link(&db, stock, "삼성전자 → HBM", None, at, true);

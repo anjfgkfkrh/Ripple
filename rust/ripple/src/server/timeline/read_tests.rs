@@ -5,7 +5,7 @@ use rusqlite::{Connection, params};
 
 use super::*;
 use crate::server::db::schema::Market;
-use crate::server::settings::write_num;
+use crate::server::settings::{EVALUATION_MIN_MAGNITUDE, write_num};
 use crate::server::stocks::repository::{
     RegisterInput, RegisterResult, delete_stock, register_stock,
 };
@@ -269,7 +269,7 @@ fn read_timeline_filters_by_relevance_orders_newest_and_skips_deleted() {
     assert_eq!(item.match_kind, MatchKind::Name);
     assert!(!page.has_more);
     assert_eq!(page.min_relevance, 6.0);
-    assert_eq!(page.min_magnitude, 6.0);
+    assert_eq!(page.min_magnitude, 5.0);
 
     write_num(c, &EVALUATION_MIN_RELEVANCE, 7.0, now()).unwrap();
     assert_eq!(titles(c, &ALL), names(&["삼성전자 실적"]));
@@ -457,6 +457,8 @@ fn read_timeline_needs_both_scores_and_old_evaluations_use_relevance_only() {
     let t = test_db_with_listings();
     let c = &t.conn;
     let ids = add_stocks(c);
+    // 경계 시나리오는 옛 기본값(영향도 6)으로 지킨다.
+    write_num(c, &EVALUATION_MIN_MAGNITUDE, 6.0, now()).unwrap();
     let add = |title: &str, relevance: f64, magnitude: Option<f64>| {
         let mut link = Link::new(ids.samsung, ago(title.chars().count() as f64))
             .titled(title)

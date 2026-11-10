@@ -117,7 +117,7 @@ async fn shows_cards_by_day_with_filters_and_threshold_text() {
     seed(&web, 2);
     let body = text(&web, "/").await;
     for part in [
-        "관련도 6점·영향도 6점 이상인 기사를 최신순으로 보여 줍니다.",
+        "관련도 6점·영향도 5점 이상인 기사를 최신순으로 보여 줍니다.",
         "data-testid=\"timeline-filters\"",
         "aria-label=\"항목 필터\"",
         "aria-label=\"영향 필터\"",
@@ -229,7 +229,7 @@ async fn nothing_over_the_bar_says_so() {
         .unwrap();
     }
     let body = text(&web, "/").await;
-    assert!(body.contains("아직 관련도 6점·영향도 6점 이상인 기사가 없습니다."));
+    assert!(body.contains("아직 관련도 6점·영향도 5점 이상인 기사가 없습니다."));
 }
 
 #[tokio::test]
