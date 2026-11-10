@@ -19,5 +19,5 @@ time,id,role,stage,task,attempt,model,effort,requests,input,cache_write_5m,cache
 2026-11-10 22:33:29,a4f9a5a08c2b25dd0,diagnose,keyword-topic,work/keyword-topic/tree-screen,1,claude-opus-5-5,기본,4,8,49977,0,127061,2736,49979,0.3300,0.7629,0.4329,56.7
 2026-11-10 22:38:12,ad97284d5fb7f2ff5,work,keyword-topic,work/keyword-topic/tree-screen,2,claude-sonnet-5-5,medium,26,52,70974,0,1763272,12548,89252,0.4793,3.7941,3.3147,87.4
 2026-11-10 22:39:05,aa53176c8e7f1afad,diagnose,keyword-topic,work/keyword-topic/tree-screen,2,claude-opus-5-5,기본,8,16,39633,0,355778,2512,57917,0.3196,1.6319,1.3123,80.4
-2026-11-10 22:44:26,a4aa3789327c50846,work,keyword-topic,work/keyword-topic/tree-screen,3,claude-sonnet-5-5,medium,14,28,46143,0,688764,3776,64421,0.2220,1.5076,1.2856,85.3
-2026-11-10 22:45:41,a7ef7e76bc4136243,review,keyword-topic,work/keyword-topic/tree-screen,3,claude-opus-5-5,기본,8,18,58124,0,409530,2355,114240,0.4197,1.9178,1.4981,78.1
+2026-11-10 22:46:08,a4aa3789327c50846,work,keyword-topic,work/keyword-topic/tree-screen,3,claude-sonnet-5-5,medium,18,38,49648,0,949838,4978,67926,0.2690,2.0488,1.7799,86.9
+2026-11-10 22:49:10,a7ef7e76bc4136243,review,keyword-topic,work/keyword-topic/tree-screen,3,claude-opus-5-5,기본,31,66,111719,0,2519713,13028,114240,1.3234,10.7866,9.4632,87.7
