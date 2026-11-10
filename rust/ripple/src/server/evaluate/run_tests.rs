@@ -11,8 +11,8 @@ use crate::server::stocks::repository::{
     RegisterInput, RegisterResult, delete_stock, register_stock,
 };
 use crate::test_support::{
-    FakeDecider, SharedTestDb, fake_article_decider, fake_decision, ms, seed_lens, seed_listings,
-    seed_market, seed_topic, shared_test_db,
+    FakeDecider, SharedTestDb, fake_article_decider, fake_decision, fake_merged_decision, ms,
+    seed_lens, seed_listings, seed_market, seed_topic, shared_test_db,
 };
 
 // 한국 시간 2026-10-20 12:00
@@ -742,22 +742,27 @@ async fn market_and_topic_items_put_their_kind_and_topic_summary_into_the_jev_in
 
     evaluate(&shared, Some(&decider)).await;
 
-    let calls = decider.calls.lock().unwrap();
-    let (first, second) = (&calls[0].0.stock, &calls[1].0.stock);
+    // 시장·주제 항목은 기사당 한 요청(17단계)이라 합친 호출로 남는다.
+    assert!(decider.calls.lock().unwrap().is_empty());
+    let calls = decider.merged_calls.lock().unwrap();
+    assert_eq!(calls.len(), 2);
+    let (first, second) = (&calls[0].0, &calls[1].0);
     assert_eq!(
-        (first.kind, first.name.as_str(), first.market),
-        (
-            crate::server::ai::decider::types::JudgeTarget::Market,
-            "한국 증시",
-            Market::Kr
-        )
+        (first.topics.len(), &first.market_items, &first.markets),
+        (0, &vec![Market::Kr], &vec![Market::Kr])
     );
     assert_eq!(
-        (second.kind, second.name.as_str(), second.summary.as_deref()),
         (
-            crate::server::ai::decider::types::JudgeTarget::Topic,
+            second.topics[0].name.as_str(),
+            second.topics[0].summary.as_deref(),
+            second.market_items.len(),
+            &second.markets
+        ),
+        (
             "중동 긴장",
-            Some("사우디 시설 공격 위협")
+            Some("사우디 시설 공격 위협"),
+            0,
+            &vec![Market::Kr]
         )
     );
 }
@@ -837,4 +842,296 @@ async fn gated_links_are_not_pending_and_not_counted() {
         [open]
     );
     assert_eq!(count_pending_evaluations(&conn, now()).unwrap(), 1);
+}
+
+// 17단계 eval-merge: 시장·주제 항목은 기사당 Jev 한 요청
+
+struct Items {
+    market_kr: i64,
+    topic_kr: i64,
+    topic_us: i64,
+}
+
+fn add_items(shared: &SharedTestDb) -> Items {
+    let conn = shared.db.lock().unwrap();
+    let market_kr = seed_market(&conn, "KR", now());
+    let topic = seed_topic(&conn, "auto", "금리", &["금리"], now());
+    Items {
+        market_kr,
+        topic_kr: seed_lens(&conn, topic, "금리", "auto", "KR", now()),
+        topic_us: seed_lens(&conn, topic, "금리", "auto", "US", now()),
+    }
+}
+
+/// 이미 있는 기사에 다른 항목이 걸린 연결을 더한다.
+fn link_same_article(shared: &SharedTestDb, match_id: i64, stock_id: i64) -> i64 {
+    let conn = shared.db.lock().unwrap();
+    let article_id: i64 = conn
+        .query_row(
+            "SELECT article_id FROM article_matches WHERE id = ?1",
+            [match_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    conn.execute(
+        "INSERT INTO article_matches (article_id, stock_id, keyword_path, keyword_reason, match_kind, level, created_at) \
+         VALUES (?1, ?2, '경로', NULL, 'keyword', 1, ?3)",
+        rusqlite::params![article_id, stock_id, now()],
+    )
+    .unwrap();
+    conn.last_insert_rowid()
+}
+
+/// 토픽(한국·미국 증시 항목)과 한국 시장 항목이 한 기사에 걸린 연결 셋
+fn merged_trio(shared: &SharedTestDb, items: &Items, title: &str, at: EpochMs) -> [i64; 3] {
+    let topic_kr = add_link(
+        shared,
+        items.topic_kr,
+        title,
+        at,
+        "keyword",
+        "금리 → 인하",
+        None,
+    );
+    [
+        topic_kr,
+        link_same_article(shared, topic_kr, items.topic_us),
+        link_same_article(shared, topic_kr, items.market_kr),
+    ]
+}
+
+fn scored(score: f64, confidence: f64) -> crate::server::ai::decider::types::Scored {
+    crate::server::ai::decider::types::Scored { score, confidence }
+}
+
+fn pin_thresholds(shared: &SharedTestDb) {
+    // 경계값을 기본값에 기대지 않는다.
+    set_num(shared, &EVALUATION_MIN_RELEVANCE, 6.0);
+    set_num(shared, &EVALUATION_MIN_MAGNITUDE, 6.0);
+}
+
+type StoredRow = (f64, f64, String, f64, f64, Option<i64>);
+
+fn stored(shared: &SharedTestDb, match_id: i64) -> StoredRow {
+    shared
+        .db
+        .lock()
+        .unwrap()
+        .query_row(
+            "SELECT relevance, magnitude, impact, relevance_confidence, magnitude_confidence, copied_from \
+             FROM evaluations WHERE match_id = ?1",
+            [match_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
+        )
+        .unwrap()
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn topic_and_market_links_of_one_article_are_asked_in_one_call_and_stored_per_link() {
+    let shared = seeded();
+    let items = add_items(&shared);
+    pin_thresholds(&shared);
+    let [t_kr, t_us, m_kr] = merged_trio(&shared, &items, DISTINCT[0], ago(1));
+    let decider = fake_article_decider(|_| Ok(fake_decision())).with_merged(|input| {
+        let mut decision = fake_merged_decision(input);
+        decision.topics = vec![scored(8.0, 0.9)];
+        decision.markets[0].relevance = Some(scored(5.0, 0.4));
+        decision.markets[0].magnitude = scored(6.0, 0.5);
+        decision.markets[0].impact = crate::server::db::schema::Impact::Negative;
+        decision.markets[1].magnitude = scored(4.0, 0.6);
+        Ok(decision)
+    });
+
+    let summary = evaluate(&shared, Some(&decider)).await;
+
+    assert_eq!(decider.merged_calls.lock().unwrap().len(), 1);
+    assert!(decider.calls.lock().unwrap().is_empty());
+    let input = decider.merged_calls.lock().unwrap()[0].0.clone();
+    assert_eq!(input.topics.len(), 1);
+    assert_eq!(input.market_items, [Market::Kr]);
+    assert_eq!(input.markets, [Market::Kr, Market::Us]);
+    // 토픽 항목(T, 증시 M)은 T 관련도·M 영향도·M 호재/악재, 시장 항목 M은 M 관련도·영향도·호재/악재
+    assert_eq!(
+        stored(&shared, t_kr),
+        (8.0, 6.0, "negative".into(), 0.9, 0.5, None)
+    );
+    assert_eq!(
+        stored(&shared, t_us),
+        (8.0, 4.0, "positive".into(), 0.9, 0.6, None)
+    );
+    assert_eq!(
+        stored(&shared, m_kr),
+        (5.0, 6.0, "negative".into(), 0.4, 0.5, None)
+    );
+    // 표시 기준: 토픽 한국(8·6)만 관련도·영향도를 모두 넘는다.
+    assert_eq!(
+        (
+            summary.evaluated,
+            summary.relevant,
+            summary.failed,
+            summary.remaining
+        ),
+        (3, 1, 0, 0)
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn usage_is_split_per_link_and_sums_to_the_request() {
+    let shared = seeded();
+    let items = add_items(&shared);
+    merged_trio(&shared, &items, DISTINCT[0], ago(1));
+    let decider = fake_article_decider(|_| Ok(fake_decision()));
+
+    let summary = evaluate(&shared, Some(&decider)).await;
+
+    let conn = shared.db.lock().unwrap();
+    let mut stmt = conn
+        .prepare(
+            "SELECT stock_id, input_tokens, output_tokens, cost_usd, purpose FROM usage_logs ORDER BY id",
+        )
+        .unwrap();
+    let rows: Vec<(i64, i64, i64, f64, String)> = stmt
+        .query_map([], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+        })
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(rows.len(), 3);
+    // 1000/50토큰을 셋으로 나누고 나머지는 첫 줄에
+    assert_eq!(
+        rows.iter().map(|r| (r.1, r.2)).collect::<Vec<_>>(),
+        [(334, 18), (333, 16), (333, 16)]
+    );
+    assert_eq!(rows.iter().map(|r| r.1).sum::<i64>(), 1000);
+    assert_eq!(rows.iter().map(|r| r.2).sum::<i64>(), 50);
+    assert!(rows.iter().all(|r| r.4 == "article_evaluation"));
+    let mut stock_ids: Vec<i64> = rows.iter().map(|r| r.0).collect();
+    stock_ids.sort_unstable();
+    let mut expected = vec![items.market_kr, items.topic_kr, items.topic_us];
+    expected.sort_unstable();
+    assert_eq!(stock_ids, expected);
+    // 비용은 그 줄의 입력 토큰 × 단가
+    let price = read_num(
+        &conn,
+        &crate::server::settings::JEV_USD_PER_MILLION_INPUT_TOKENS,
+    )
+    .unwrap();
+    for row in &rows {
+        assert!(close(row.3, row.1 as f64 * price / 1_000_000.0));
+    }
+    assert!(close(
+        summary.cost_usd,
+        rows.iter().map(|r| r.3).sum::<f64>()
+    ));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_merged_call_counts_as_one_toward_the_per_run_limit() {
+    let shared = seeded();
+    let items = add_items(&shared);
+    merged_trio(&shared, &items, DISTINCT[0], ago(1));
+    add_link(
+        &shared,
+        items.market_kr,
+        DISTINCT[1],
+        ago(2),
+        "keyword",
+        "경로",
+        None,
+    );
+    set_num(&shared, &EVALUATION_MAX_PER_RUN, 1.0);
+    let decider = fake_article_decider(|_| Ok(fake_decision()));
+
+    let summary = evaluate(&shared, Some(&decider)).await;
+
+    assert_eq!(decider.merged_calls.lock().unwrap().len(), 1);
+    assert_eq!((summary.evaluated, summary.remaining), (3, 1));
+    assert!(summary.note.unwrap().starts_with("회차 한도 1건"));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn same_news_copies_are_looked_at_per_link_and_only_the_rest_is_asked() {
+    let shared = seeded();
+    let items = add_items(&shared);
+    let title = "한은 기준금리 동결…연 2.5% 유지";
+    // 앞서 같은 소식이 한국 시장 항목에서 평가돼 있다.
+    let earlier = add_link(
+        &shared,
+        items.market_kr,
+        title,
+        ago(5),
+        "keyword",
+        "경로",
+        None,
+    );
+    evaluate(
+        &shared,
+        Some(&fake_article_decider(|_| Ok(fake_decision()))),
+    )
+    .await;
+    let [t_kr, t_us, m_kr] = merged_trio(
+        &shared,
+        &items,
+        "[속보] 한은, 기준금리 동결…연 2.5% 유지",
+        ago(4),
+    );
+    let decider = fake_article_decider(|_| Ok(fake_decision()));
+
+    let summary = evaluate(&shared, Some(&decider)).await;
+
+    let calls = decider.merged_calls.lock().unwrap();
+    assert_eq!(calls.len(), 1);
+    // 시장 항목은 복사로 끝나 질문에서 빠진다.
+    assert!(calls[0].0.market_items.is_empty());
+    assert_eq!((summary.evaluated, summary.copied), (2, 1));
+    let original_id: i64 = shared
+        .db
+        .lock()
+        .unwrap()
+        .query_row(
+            "SELECT id FROM evaluations WHERE match_id = ?1",
+            [earlier],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(stored(&shared, m_kr).5, Some(original_id));
+    assert_eq!(stored(&shared, t_kr).5, None);
+    assert_eq!(stored(&shared, t_us).5, None);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_failed_merged_call_leaves_all_its_links_for_the_next_run() {
+    let shared = seeded();
+    let items = add_items(&shared);
+    merged_trio(&shared, &items, DISTINCT[0], ago(1));
+    let failing = fake_article_decider(|_| Ok(fake_decision()))
+        .with_merged(|_| Err(DeciderError::new("일시 오류", DeciderErrorKind::Upstream)));
+
+    let summary = evaluate(&shared, Some(&failing)).await;
+
+    assert_eq!((summary.evaluated, summary.failed), (0, 1));
+    assert_eq!(count(&shared, "evaluations"), 0);
+    assert_eq!(count(&shared, "usage_logs"), 0);
+    let ok = fake_article_decider(|_| Ok(fake_decision()));
+    let again = evaluate(&shared, Some(&ok)).await;
+    assert_eq!(again.evaluated, 3);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn stock_links_are_still_asked_one_by_one_beside_the_merged_call() {
+    let shared = seeded();
+    let ids = add_stocks(&shared);
+    let items = add_items(&shared);
+    let [t_kr, ..] = merged_trio(&shared, &items, DISTINCT[0], ago(1));
+    link_same_article(&shared, t_kr, ids.samsung);
+    let decider = fake_article_decider(|_| Ok(fake_decision()));
+
+    let summary = evaluate(&shared, Some(&decider)).await;
+
+    let calls = decider.calls.lock().unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].0.stock.name, "삼성전자");
+    assert_eq!(decider.merged_calls.lock().unwrap().len(), 1);
+    assert_eq!(summary.evaluated, 4);
 }

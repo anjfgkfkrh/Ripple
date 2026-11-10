@@ -4,7 +4,8 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::{Value, json};
 
 use crate::server::ai::decider::types::{
-    Decider, DecisionArticle, DecisionInput, DecisionLink, JudgeItem,
+    Decider, DeciderError, DeciderErrorKind, Decision, DecisionArticle, DecisionInput,
+    DecisionLink, JudgeItem, JudgeTarget, MergedDecision, MergedInput, MergedTopic,
 };
 use crate::server::ai::llm::LlmUsage;
 use crate::server::budget::usage::{
@@ -33,6 +34,8 @@ pub struct Pending {
     pub match_id: i64,
     pub article_id: i64,
     pub stock_id: i64,
+    /// 주제 항목이면 그 토픽(같은 토픽의 한국·미국 항목을 한 토픽으로 묶는 데 쓴다)
+    pub topic_id: Option<i64>,
     pub published_at: EpochMs,
     pub input: DecisionInput,
 }
@@ -53,7 +56,7 @@ pub fn pending_evaluations(conn: &Connection, now: EpochMs) -> rusqlite::Result<
     let mut stmt = conn.prepare(
         "SELECT article_matches.id, articles.id, stocks.id, article_matches.match_kind, article_matches.keyword_path, \
                 article_matches.keyword_reason, articles.title, articles.summary, articles.published_at, stocks.kind, \
-                stocks.name, stocks.name_ko, stocks.market, stocks.exchange, stocks.code, topics.summary \
+                stocks.name, stocks.name_ko, stocks.market, stocks.exchange, stocks.code, topics.summary, stocks.topic_id \
          FROM article_matches \
          INNER JOIN articles ON articles.id = article_matches.article_id \
          INNER JOIN stocks ON stocks.id = article_matches.stock_id \
@@ -74,6 +77,7 @@ pub fn pending_evaluations(conn: &Connection, now: EpochMs) -> rusqlite::Result<
             match_id: row.get(0)?,
             article_id: row.get(1)?,
             stock_id: row.get(2)?,
+            topic_id: row.get(16)?,
             published_at: row.get(8)?,
             input: DecisionInput {
                 stock: JudgeItem {
@@ -191,9 +195,241 @@ fn renormalize_json(text: &str) -> String {
     serde_json::from_str::<Value>(text).map_or_else(|_| text.to_string(), |v| v.to_string())
 }
 
+/// 같은 소식의 앞선 평가를 이 연결의 평가로 복사한다. 표시 기준을 넘으면 true.
+fn store_copy(
+    conn: &Connection,
+    item: &Pending,
+    same: &Evaluation,
+    at: EpochMs,
+) -> rusqlite::Result<bool> {
+    conn.execute(
+        "INSERT INTO evaluations (match_id, article_id, stock_id, relevance, relevance_confidence, magnitude, \
+         magnitude_confidence, impact, impact_confidence, impact_probabilities, model, copied_from, evaluated_at) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13) ON CONFLICT DO NOTHING",
+        params![
+            item.match_id,
+            item.article_id,
+            item.stock_id,
+            same.relevance,
+            same.relevance_confidence,
+            same.magnitude,
+            same.magnitude_confidence,
+            same.impact,
+            same.impact_confidence,
+            renormalize_json(&same.impact_probabilities),
+            same.model,
+            same.id,
+            at
+        ],
+    )?;
+    meets_display_rule(conn, same.relevance, same.magnitude)
+}
+
+/// 평가 한 줄과 사용량 한 줄을 저장한다. 표시 기준을 넘으면 true.
+#[allow(clippy::too_many_arguments)]
+fn store_evaluation(
+    conn: &Connection,
+    item: &Pending,
+    relevance: (f64, f64),
+    magnitude: (f64, f64),
+    impact: (&str, f64, [f64; 3]),
+    model: &str,
+    usage: (i64, i64),
+    price: f64,
+    at: EpochMs,
+    summary: &mut EvaluationSummary,
+) -> rusqlite::Result<bool> {
+    let cost_usd = (usage.0 as f64 * price) / 1_000_000.0;
+    record_usage(
+        conn,
+        &UsageEntry {
+            provider: UsageProvider::Typesafe,
+            model,
+            purpose: "article_evaluation",
+            usage: LlmUsage {
+                input_tokens: usage.0,
+                output_tokens: usage.1,
+                cost_usd,
+            },
+            at,
+            stock_id: Some(item.stock_id),
+        },
+    )?;
+    let [positive, negative, neutral] = impact.2;
+    let probabilities = json!({
+        "positive": json_number(positive),
+        "negative": json_number(negative),
+        "neutral": json_number(neutral),
+    });
+    conn.execute(
+        "INSERT INTO evaluations (match_id, article_id, stock_id, relevance, relevance_confidence, magnitude, \
+         magnitude_confidence, impact, impact_confidence, impact_probabilities, model, evaluated_at) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12) ON CONFLICT DO NOTHING",
+        params![
+            item.match_id,
+            item.article_id,
+            item.stock_id,
+            relevance.0,
+            relevance.1,
+            magnitude.0,
+            magnitude.1,
+            impact.0,
+            impact.1,
+            probabilities.to_string(),
+            model,
+            at
+        ],
+    )?;
+    summary.evaluated += 1;
+    summary.cost_usd += cost_usd;
+    meets_display_rule(conn, relevance.0, Some(magnitude.0))
+}
+
+fn store_stock_decision(
+    conn: &Connection,
+    item: &Pending,
+    decision: &Decision,
+    price: f64,
+    at: EpochMs,
+    summary: &mut EvaluationSummary,
+) -> rusqlite::Result<()> {
+    let relevant = store_evaluation(
+        conn,
+        item,
+        (decision.relevance, decision.relevance_confidence),
+        (decision.magnitude, decision.magnitude_confidence),
+        (
+            decision.impact.as_str(),
+            decision.impact_confidence,
+            decision.impact_probabilities,
+        ),
+        &decision.model,
+        (decision.usage.input_tokens, decision.usage.output_tokens),
+        price,
+        at,
+        summary,
+    )?;
+    summary.relevant += i64::from(relevant);
+    Ok(())
+}
+
+/// 토픽을 가리키는 키(같은 토픽의 한국·미국 항목은 같은 키)
+fn topic_key(item: &Pending) -> i64 {
+    item.topic_id.unwrap_or(-item.stock_id)
+}
+
+/// 같은 기사의 시장·주제 항목 연결들을 한 요청의 입력으로 만든다(17단계 eval-merge).
+fn merged_input(members: &[&Pending]) -> MergedInput {
+    let mut topic_keys: Vec<i64> = Vec::new();
+    let mut topics: Vec<MergedTopic> = Vec::new();
+    let mut market_items: Vec<Market> = Vec::new();
+    let mut markets: Vec<Market> = Vec::new();
+    for member in members {
+        let stock = &member.input.stock;
+        if !markets.contains(&stock.market) {
+            markets.push(stock.market);
+        }
+        match stock.kind {
+            JudgeTarget::Topic => {
+                let key = topic_key(member);
+                if !topic_keys.contains(&key) {
+                    topic_keys.push(key);
+                    topics.push(MergedTopic {
+                        name: stock.name.clone(),
+                        summary: stock.summary.clone(),
+                    });
+                }
+            }
+            JudgeTarget::Market if !market_items.contains(&stock.market) => {
+                market_items.push(stock.market);
+            }
+            _ => {}
+        }
+    }
+    markets.sort_by_key(|m| *m != Market::Kr);
+    MergedInput {
+        topics,
+        market_items,
+        markets,
+        article: members[0].input.article.clone(),
+    }
+}
+
+/// 합친 응답을 연결마다 평가 한 줄·사용량 한 줄로 저장한다. 응답에 빠진 항목이 있으면 아무것도 저장하지 않고 false.
+/// 토큰은 연결 수로 나누고 나머지는 첫 줄에 더한다.
+fn store_merged_decision(
+    conn: &Connection,
+    members: &[&Pending],
+    decision: &MergedDecision,
+    price: f64,
+    at: EpochMs,
+    summary: &mut EvaluationSummary,
+) -> rusqlite::Result<bool> {
+    let mut topic_keys: Vec<i64> = Vec::new();
+    for member in members {
+        if member.input.stock.kind == JudgeTarget::Topic && !topic_keys.contains(&topic_key(member))
+        {
+            topic_keys.push(topic_key(member));
+        }
+    }
+    let mut resolved = Vec::with_capacity(members.len());
+    for member in members {
+        let stock = &member.input.stock;
+        let Some(verdict) = decision.markets.iter().find(|v| v.market == stock.market) else {
+            return Ok(false);
+        };
+        let relevance = if stock.kind == JudgeTarget::Topic {
+            topic_keys
+                .iter()
+                .position(|k| *k == topic_key(member))
+                .and_then(|n| decision.topics.get(n))
+                .copied()
+        } else {
+            verdict.relevance
+        };
+        let Some(relevance) = relevance else {
+            return Ok(false);
+        };
+        resolved.push((relevance, verdict));
+    }
+    let count = members.len() as i64;
+    let (input_each, input_rest) = (
+        decision.usage.input_tokens / count,
+        decision.usage.input_tokens % count,
+    );
+    let (output_each, output_rest) = (
+        decision.usage.output_tokens / count,
+        decision.usage.output_tokens % count,
+    );
+    for (index, (member, (relevance, verdict))) in members.iter().zip(resolved).enumerate() {
+        let first = index == 0;
+        let relevant = store_evaluation(
+            conn,
+            member,
+            (relevance.score, relevance.confidence),
+            (verdict.magnitude.score, verdict.magnitude.confidence),
+            (
+                verdict.impact.as_str(),
+                verdict.impact_confidence,
+                verdict.impact_probabilities,
+            ),
+            &decision.model,
+            (
+                input_each + if first { input_rest } else { 0 },
+                output_each + if first { output_rest } else { 0 },
+            ),
+            price,
+            at,
+            summary,
+        )?;
+        summary.relevant += i64::from(relevant);
+    }
+    Ok(true)
+}
+
 /// 평가하지 않은 연결을 Jev로 평가한다(SPEC FR-5, 11단계: 관련도·영향도·호재/악재). 호출마다 월 예산을 먼저 보고
 /// (CLAUDE.md), 쓴 비용을 항목과 함께 기록한다(D-06: 입력 토큰 × 단가). 하나씩 차례로 불러 예산 검사에 앞선 호출이
-/// 모두 들어가게 한다. 같은 항목의 같은 소식(비슷한 제목)은 앞선 평가를 그대로 쓰고 Jev를 부르지 않는다(회차 한도에도 세지 않음).
+/// 모두 들어가게 한다. 시장·주제 항목은 같은 기사의 연결을 모아 한 요청으로 묻고(17단계) 연결마다 저장한다. 종목은 하나씩 묻는다. 같은 항목의 같은 소식(비슷한 제목)은 앞선 평가를 그대로 쓰고 Jev를 부르지 않는다(회차 한도에도 세지 않음).
 /// 예산을 다 쓰거나, 키가 없거나 맞지 않거나, 연달아 실패하면 멈추고 나머지는 남긴다. 실패한 것은 다음 회차에 다시 평가한다.
 pub async fn evaluate_pending<D: Decider>(
     db: &Db,
@@ -224,34 +460,40 @@ pub async fn evaluate_pending<D: Decider>(
     let mut failed_in_row = 0;
     let mut calls = 0.0_f64;
     let mut stopped_at = pending.len();
+    // 처리를 마친 연결(평가·복사·실패). 시장·주제 항목은 같은 기사의 연결을 한꺼번에 처리하므로 앞서 끝날 수 있다.
+    let mut done = vec![false; pending.len()];
     for (index, item) in pending.iter().enumerate() {
+        if done[index] {
+            continue;
+        }
+        let merged = item.input.stock.kind != JudgeTarget::Stock;
+        // 시장·주제 항목은 그 기사의 시장·주제 항목 연결을 모두 모아 Jev 한 요청으로 묻는다(17단계).
+        let group: Vec<usize> = if merged {
+            (index..pending.len())
+                .filter(|&j| {
+                    !done[j]
+                        && pending[j].article_id == item.article_id
+                        && pending[j].input.stock.kind != JudgeTarget::Stock
+                })
+                .collect()
+        } else {
+            vec![index]
+        };
+        let mut asked: Vec<usize> = Vec::new();
         {
             let conn = db.lock().expect("DB 잠금이 깨졌습니다");
-            if let Some(same) = find_same_news_evaluation(&conn, item)? {
-                conn.execute(
-                    "INSERT INTO evaluations (match_id, article_id, stock_id, relevance, relevance_confidence, magnitude, \
-                     magnitude_confidence, impact, impact_confidence, impact_probabilities, model, copied_from, evaluated_at) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13) ON CONFLICT DO NOTHING",
-                    params![
-                        item.match_id,
-                        item.article_id,
-                        item.stock_id,
-                        same.relevance,
-                        same.relevance_confidence,
-                        same.magnitude,
-                        same.magnitude_confidence,
-                        same.impact,
-                        same.impact_confidence,
-                        renormalize_json(&same.impact_probabilities),
-                        same.model,
-                        same.id,
-                        now()
-                    ],
-                )?;
-                summary.copied += 1;
-                if meets_display_rule(&conn, same.relevance, same.magnitude)? {
-                    summary.relevant += 1;
+            for &j in &group {
+                if let Some(same) = find_same_news_evaluation(&conn, &pending[j])? {
+                    if store_copy(&conn, &pending[j], &same, now())? {
+                        summary.relevant += 1;
+                    }
+                    summary.copied += 1;
+                    done[j] = true;
+                } else {
+                    asked.push(j);
                 }
+            }
+            if asked.is_empty() {
                 continue;
             }
             if calls >= max_per_run {
@@ -273,55 +515,38 @@ pub async fn evaluate_pending<D: Decider>(
             }
         }
         calls += 1.0;
-        match decider.decide(&item.input, &model).await {
-            Ok(decision) => {
-                let cost_usd = (decision.usage.input_tokens as f64 * price) / 1_000_000.0;
-                let at = now();
-                let conn = db.lock().expect("DB 잠금이 깨졌습니다");
-                record_usage(
-                    &conn,
-                    &UsageEntry {
-                        provider: UsageProvider::Typesafe,
-                        model: &decision.model,
-                        purpose: "article_evaluation",
-                        usage: LlmUsage {
-                            input_tokens: decision.usage.input_tokens,
-                            output_tokens: decision.usage.output_tokens,
-                            cost_usd,
-                        },
-                        at,
-                        stock_id: Some(item.stock_id),
-                    },
-                )?;
-                let [positive, negative, neutral] = decision.impact_probabilities;
-                let probabilities = json!({
-                    "positive": json_number(positive),
-                    "negative": json_number(negative),
-                    "neutral": json_number(neutral),
-                });
-                conn.execute(
-                    "INSERT INTO evaluations (match_id, article_id, stock_id, relevance, relevance_confidence, magnitude, \
-                     magnitude_confidence, impact, impact_confidence, impact_probabilities, model, evaluated_at) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12) ON CONFLICT DO NOTHING",
-                    params![
-                        item.match_id,
-                        item.article_id,
-                        item.stock_id,
-                        decision.relevance,
-                        decision.relevance_confidence,
-                        decision.magnitude,
-                        decision.magnitude_confidence,
-                        decision.impact.as_str(),
-                        decision.impact_confidence,
-                        probabilities.to_string(),
-                        decision.model,
-                        at
-                    ],
-                )?;
-                summary.evaluated += 1;
-                summary.cost_usd += cost_usd;
-                if meets_display_rule(&conn, decision.relevance, Some(decision.magnitude))? {
-                    summary.relevant += 1;
+        let result: Result<(), DeciderError> = if merged {
+            let members: Vec<&Pending> = asked.iter().map(|&j| &pending[j]).collect();
+            match decider.decide_merged(&merged_input(&members), &model).await {
+                Ok(decision) => {
+                    let at = now();
+                    let conn = db.lock().expect("DB 잠금이 깨졌습니다");
+                    if store_merged_decision(&conn, &members, &decision, price, at, &mut summary)? {
+                        Ok(())
+                    } else {
+                        Err(DeciderError::new(
+                            "Jev 응답 형식이 다릅니다.",
+                            DeciderErrorKind::Upstream,
+                        ))
+                    }
+                }
+                Err(error) => Err(error),
+            }
+        } else {
+            match decider.decide(&item.input, &model).await {
+                Ok(decision) => {
+                    let at = now();
+                    let conn = db.lock().expect("DB 잠금이 깨졌습니다");
+                    store_stock_decision(&conn, item, &decision, price, at, &mut summary)?;
+                    Ok(())
+                }
+                Err(error) => Err(error),
+            }
+        };
+        match result {
+            Ok(()) => {
+                for &j in &asked {
+                    done[j] = true;
                 }
                 failed_in_row = 0;
             }
@@ -331,10 +556,13 @@ pub async fn evaluate_pending<D: Decider>(
                 break;
             }
             Err(error) => {
+                for &j in &asked {
+                    done[j] = true;
+                }
                 summary.failed += 1;
                 failed_in_row += 1;
                 log_error(
-                    &format!("기사 평가 실패: 연결 {}", item.match_id),
+                    &format!("기사 평가 실패: 연결 {}", pending[asked[0]].match_id),
                     &error.message,
                 );
                 if failed_in_row >= MAX_CONSECUTIVE_FAILURES {
@@ -348,7 +576,7 @@ pub async fn evaluate_pending<D: Decider>(
         }
     }
 
-    summary.remaining = (pending.len() - stopped_at) as i64;
+    summary.remaining = done[stopped_at..].iter().filter(|d| !**d).count() as i64;
     summary.ms = i64::try_from(started.elapsed().as_millis()).unwrap_or(i64::MAX);
     if let Some(text) = &note
         && text.starts_with("회차 한도")
