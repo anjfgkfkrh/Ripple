@@ -114,6 +114,17 @@ fn add_stocks_at(shared: &SharedTestDb, at: EpochMs) -> Ids {
         now(),
     )
     .unwrap();
+    // 키워드 연결이 걸러지지 않게 고유어를 둔다(제목에 고유어가 있어야 평가한다).
+    conn.execute(
+        "UPDATE stocks SET anchors = '[\"hbm\",\"엔비디아\"]' WHERE id = ?1",
+        [samsung],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE stocks SET anchors = '[\"가속기\"]' WHERE id = ?1",
+        [nvidia],
+    )
+    .unwrap();
     Ids { samsung, nvidia }
 }
 
