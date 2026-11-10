@@ -51,6 +51,7 @@
 
 - 리뷰(2026-11-10, tree-weekly): 정기 점검은 트리와 고유어가 있어야 증분이다(없으면 전체 생성). 0011 뒤 첫 전체 생성이 끝난 다음 `keywords_generated_at`을 주기 시작 전으로 당기거나 `keywords.autoRegeneratedAt`을 지워 06:00 확인을 일으키면 점검 결과 줄 `키워드 점검: …`(시간·비용, 버린 별칭, 상한 밀어냄)을 잴 수 있다.
 - 리뷰(2026-11-10, eval-merge): 시장·주제 항목은 기사당 Jev 한 요청이고 사용량은 연결마다 한 줄(토큰을 나눔)이라 `usage_logs` `article_evaluation` 줄 수는 Jev 호출 수보다 많다. 호출 수는 worker 기록으로 세고 비용은 줄 합으로 본다. 시장 항목 관련도(`relevance_kr`·`relevance_us`)는 실측에 없던 질문이다.
+- 리뷰(2026-11-10, topic-input): 토픽 갱신 결과 줄의 제목 수(`summary.titles`)는 줄이기 전 수다. 줄인 뒤 수는 요청의 사용자 메시지 "새 뉴스 제목(최근순, N개)"의 N이라, 시험 DB의 `feed_headlines`로 `reduce_titles`와 같은 계산을 하거나 요청을 남겨 센다. company 토픽은 토픽 카드·토픽 항목이 없고 `topics.scope = 'company'`와 붙은 종목의 토픽 가지로 본다.
 
 ## 상위로 올릴 조건
 기본 규칙(범위 밖·기대값 변경·두 번 고쳐도 남는 오류는 보고) + 앱 오류(실패 상태·worker 로그 오류)를 만나면 고치지 말고 로그와 함께 보고
