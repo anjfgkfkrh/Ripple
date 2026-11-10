@@ -69,10 +69,9 @@ pub trait KeywordEnqueuer: Send + Sync {
     fn enqueue(&self, stock_id: i64);
 }
 
-impl<L, D> KeywordEnqueuer for KeywordQueue<L, D>
+impl<L> KeywordEnqueuer for KeywordQueue<L>
 where
     L: LlmClient + 'static,
-    D: Decider + 'static,
 {
     fn enqueue(&self, stock_id: i64) {
         KeywordQueue::enqueue(self, stock_id)

@@ -4,7 +4,6 @@ use std::time::Instant;
 
 use tokio::sync::Notify;
 
-use crate::server::ai::decider::types::Decider;
 use crate::server::ai::llm::LlmClient;
 use crate::server::db::client::Db;
 use crate::server::db::schema::KeywordStatus;
@@ -26,11 +25,9 @@ struct State {
     running: bool,
 }
 
-struct Inner<L, D> {
+struct Inner<L> {
     db: Db,
     llm: Arc<L>,
-    /// 후보 키워드를 관련도·영향도로 고르는 Jev(11단계). 키가 없으면 None(자르지 않음)
-    decider: Option<Arc<D>>,
     now: Option<NowFn>,
     state: Mutex<State>,
     notify: Notify,
@@ -38,11 +35,11 @@ struct Inner<L, D> {
 
 /// worker 안의 키워드 생성 대기열(D-37). 한 번에 하나씩 만들어 LLM 호출이 몰리지 않게 한다.
 /// 등록 응답은 기다리지 않고 바로 돌아간다. tokio 런타임 안에서만 쓴다.
-pub struct KeywordQueue<L, D> {
-    inner: Arc<Inner<L, D>>,
+pub struct KeywordQueue<L> {
+    inner: Arc<Inner<L>>,
 }
 
-impl<L, D> Clone for KeywordQueue<L, D> {
+impl<L> Clone for KeywordQueue<L> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -50,17 +47,15 @@ impl<L, D> Clone for KeywordQueue<L, D> {
     }
 }
 
-impl<L, D> KeywordQueue<L, D>
+impl<L> KeywordQueue<L>
 where
     L: LlmClient + 'static,
-    D: Decider + 'static,
 {
-    pub fn new(db: Db, llm: Arc<L>, decider: Option<Arc<D>>, now: Option<NowFn>) -> Self {
+    pub fn new(db: Db, llm: Arc<L>, now: Option<NowFn>) -> Self {
         Self {
             inner: Arc::new(Inner {
                 db,
                 llm,
-                decider,
                 now,
                 state: Mutex::new(State::default()),
                 notify: Notify::new(),
@@ -170,7 +165,6 @@ where
                     .now
                     .as_deref()
                     .map(|f| f as &(dyn Fn() -> EpochMs + Send + Sync)),
-                decider: self.inner.decider.as_deref(),
             };
             let result = match prepared {
                 Ok(prepared) => {
@@ -209,18 +203,19 @@ fn success_line(
     } else {
         String::new()
     };
-    let headlines = if ok.headlines > 0 {
-        format!(", 기사 제목 {}개 참고", ok.headlines)
+    let stat = if ok.stat_words > 0 {
+        format!(", 통계 낱말 {}개 참고", ok.stat_words)
     } else {
         String::new()
     };
-    let rated = match &ok.unrated_reason {
-        Some(reason) => format!(", 평가 못 해 자르지 않음: {reason}"),
-        None => format!(", Jev 평가 {}개", ok.rated),
+    let terms = if ok.anchors > 0 {
+        format!(", 별칭 {}개·고유어 {}개", ok.aliases, ok.anchors)
+    } else {
+        String::new()
     };
     format!(
-        "키워드 생성: 종목 id {stock_id}, 후보 {}개 → {}개(깊이 {}/{}{dropped}{rated}{headlines}), {seconds}초",
-        ok.candidates, ok.count, ok.deepest, ok.depth
+        "키워드 생성: 종목 id {stock_id}, {}개(깊이 {}/{}{dropped}{terms}{stat}), {seconds}초",
+        ok.count, ok.deepest, ok.depth
     )
 }
 

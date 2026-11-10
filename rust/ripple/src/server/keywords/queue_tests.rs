@@ -4,7 +4,6 @@ use std::time::Duration;
 use super::*;
 use crate::server::ai::llm::{JsonResult, LlmError, LlmErrorKind, LlmUsage, StructuredRequest};
 use crate::server::db::schema::{Market, UsageProvider};
-use crate::server::keywords::generate::NoDecider;
 use crate::server::stocks::repository::{RegisterInput, RegisterResult, register_stock};
 use crate::test_support::{
     FakeLlm, SharedTestDb, fake_llm, sample_keyword_tree, seed_listings, shared_test_db,
@@ -93,11 +92,8 @@ impl LlmClient for SlowLlm {
     }
 }
 
-fn queue_of<L: LlmClient + 'static>(
-    shared: &SharedTestDb,
-    llm: Arc<L>,
-) -> KeywordQueue<L, NoDecider> {
-    KeywordQueue::new(shared.db.clone(), llm, None, None)
+fn queue_of<L: LlmClient + 'static>(shared: &SharedTestDb, llm: Arc<L>) -> KeywordQueue<L> {
+    KeywordQueue::new(shared.db.clone(), llm, None)
 }
 
 // describe("키워드 생성 대기열 (D-37)")
@@ -241,14 +237,29 @@ fn success_line_shows_actual_over_configured_depth() {
     use crate::server::keywords::generate::GenerateOk;
     let ok = GenerateOk {
         count: 6,
-        depth: 3,
+        depth: 2,
         deepest: 1,
-        dropped: 0,
-        candidates: 8,
-        rated: 8,
-        unrated_reason: None,
-        headlines: 0,
+        dropped: 2,
+        stat_words: 12,
+        aliases: 3,
+        anchors: 11,
     };
     let line = success_line(7, &ok, "1.2");
-    assert!(line.contains("(깊이 1/3, Jev 평가 8개)"), "{line}");
+    assert_eq!(
+        line,
+        "키워드 생성: 종목 id 7, 6개(깊이 1/2, 규칙에 안 맞아 버림 2개, 별칭 3개·고유어 11개, 통계 낱말 12개 참고), 1.2초"
+    );
+    let market = GenerateOk {
+        count: 4,
+        depth: 2,
+        deepest: 2,
+        dropped: 0,
+        stat_words: 0,
+        aliases: 0,
+        anchors: 0,
+    };
+    assert_eq!(
+        success_line(8, &market, "0.5"),
+        "키워드 생성: 종목 id 8, 4개(깊이 2/2), 0.5초"
+    );
 }

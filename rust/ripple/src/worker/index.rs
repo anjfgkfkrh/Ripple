@@ -79,7 +79,7 @@ async fn start(env: &Env) -> Result<(), Box<dyn std::error::Error>> {
         client.clone(),
     ));
 
-    // 기사 평가와 키워드·토픽 평가(11단계)에 함께 쓴다. 키가 없으면 평가를 미룬다.
+    // 기사 평가와 토픽 평가(11단계)에 함께 쓴다. 키가 없으면 평가를 미룬다.
     let decider = config.typesafe_api_key.clone().map(|key| {
         Arc::new(TypeSafeDecider::new(
             Some(key),
@@ -87,12 +87,7 @@ async fn start(env: &Env) -> Result<(), Box<dyn std::error::Error>> {
             client.clone(),
         ))
     });
-    let keyword_queue = Arc::new(KeywordQueue::new(
-        db.clone(),
-        llm.clone(),
-        decider.clone(),
-        None,
-    ));
+    let keyword_queue = Arc::new(KeywordQueue::new(db.clone(), llm.clone(), None));
 
     let stale = {
         let conn = db.lock().expect("DB 잠금이 깨졌습니다");

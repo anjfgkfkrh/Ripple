@@ -39,3 +39,27 @@ fn schemas_are_strict_and_have_no_meta_field() {
         assert_strict(&schema, name);
     }
 }
+
+#[test]
+fn keyword_tree_schema_asks_for_aliases_anchors_and_keywords() {
+    let schema = keyword_tree();
+    let keys: Vec<&str> = schema["properties"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(keys, ["aliases", "anchors", "keywords"]);
+    assert_eq!(schema["properties"]["aliases"]["items"]["type"], "string");
+    assert_eq!(schema["properties"]["anchors"]["items"]["type"], "string");
+    let item_keys: Vec<&str> = schema["properties"]["keywords"]["items"]["properties"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        item_keys,
+        ["level", "keyword", "keywordEn", "parent", "reason"]
+    );
+}

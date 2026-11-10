@@ -188,7 +188,7 @@ pub fn seed_listings(conn: &mut Connection) {
     replace_listings(conn, Market::Us, &us).unwrap();
 }
 
-/// 깊이 2 키워드 트리 표본(LLM 출력 형식, 구조 키워드만). 단계마다 5개
+/// 깊이 2 키워드 트리 표본(LLM 출력 형식: 별칭·고유어와 구조 키워드). 단계마다 5개
 pub fn sample_keyword_tree(english: bool) -> Value {
     let en = |text: &str| {
         if english {
@@ -225,7 +225,11 @@ pub fn sample_keyword_tree(english: bool) -> Value {
     keywords.extend(level2.iter().map(|(keyword, keyword_en, parent, reason)| {
         serde_json::json!({ "level": 2, "keyword": keyword, "keywordEn": en(keyword_en), "parent": parent, "reason": reason })
     }));
-    serde_json::json!({ "keywords": keywords })
+    serde_json::json!({
+        "aliases": ["삼전"],
+        "anchors": ["반도체", "메모리", "파운드리", "HBM", "스마트폰"],
+        "keywords": keywords
+    })
 }
 
 use crate::server::ai::decider::types::{
