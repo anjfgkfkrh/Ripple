@@ -49,6 +49,13 @@ DB에 별칭·고유어·지운 별칭·토픽 범위·걸러진 연결 표시 �
   - `aliases_removed`에 있는 것, 이미 고른 것과 같은 것
   이유: 실측에서 LLM이 'HDC현대산업개발'·'삼성' 같은 다른 회사 이름을 냈다(DECISIONS 2장 "유료 확인" 별칭 오류). 버린 대안: 사용자 확인 뒤 저장
 - `Topic`에 `scope: String`(또는 market/company 열거형)을 더한다. 모르는 값은 market으로 읽는다.
+- 0011은 drizzle가 없어진 뒤 처음 더하는 마이그레이션이다. drizzle 대조 시험은 "drizzle 시대(앞 `DRIZZLE_APPLIED_COUNT`=11개)"만 보게 범위를 좁히고, 0011은 따로 시험한다. `migrate_tests.rs`의 아래 4개만 이렇게 고친다(다른 기존 시험의 기대값은 그대로).
+  - `migration_sql_files_are_identical_to_drizzle_folder`: 고정 복사본 개수를 `DRIZZLE_APPLIED_COUNT`와 비교하고, `MIGRATION_SQL[..DRIZZLE_APPLIED_COUNT as usize]`와만 내용 비교
+  - `creates_db_file_and_parent_folder_with_settings_table`: `user_version`을 `MIGRATION_SQL.len()`(=12)과 비교(숫자 고정 대신)
+  - `schema_applied_by_rust_equals_schema_applied_by_drizzle`: Rust 쪽은 `apply_migration_set(.., &MIGRATION_SQL[..11])`로 적용해 비교
+  - `drizzle_db_gets_baseline_once_and_schema_is_unchanged`: `apply_migration_set(.., &MIGRATION_SQL[..11])`를 두 번 돌려 지금 뜻(스키마 그대로, user_version 11, `__drizzle_migrations` 11줄) 유지
+  - 새 시험 하나 더: drizzle로 적용한 DB에 `apply_migrations`(전체) → user_version 12, 스키마가 새 파일 DB에 전체 적용한 것과 같음, `__drizzle_migrations` 11줄 그대로
+  이유: drizzle는 0011을 적용한 적이 없으므로 고정 복사본·`applied.sql`은 0010까지의 기록으로 둔다. 버린 대안: fixtures·`applied.sql`에 0011 더하기(drizzle가 만든 적 없는 기록을 지어냄)
 
 ## 체크포인트 (각각 검사 통과 후 커밋)
 1. 0011과 `MIGRATION_SQL` 길이 12 → 마이그레이션 새 시험 통과
@@ -56,13 +63,15 @@ DB에 별칭·고유어·지운 별칭·토픽 범위·걸러진 연결 표시 �
 3. 별칭 검증 → 별칭 검증 시험 통과
 
 ## 제약
-- 기존 시험의 기대값은 바꾸지 않는다. `topics/`·`test_support.rs`·위 시험 파일은 구조체 칸이 늘어 깨지는 생성 코드만 고친다(`topics/store.rs`의 `Topic` 칸은 예외).
-- drizzle 기준선(`DRIZZLE_APPLIED_COUNT` 등)은 건드리지 않는다.
+- 기존 시험의 기대값은 바꾸지 않는다(예외: 위 "미리 정한 판단"의 `migrate_tests.rs` 4개). `topics/`·`test_support.rs`·위 시험 파일은 구조체 칸이 늘어 깨지는 생성 코드만 고친다(`topics/store.rs`의 `Topic` 칸은 예외).
+- drizzle 기준선(`DRIZZLE_APPLIED_COUNT` 등)과 `tests/fixtures/drizzle/`(`applied.sql`·`meta` 포함)는 건드리지 않는다. `MIGRATION_SQL` 위 설명 주석은 "0000~0010은 drizzle 복사본, 0011부터 Rust 전용"으로 고쳐도 된다.
 - `docs/`는 고치지 않는다(인계에 적음).
 
 ## 알려진 함정
 - `listings`에는 종목 자기 줄도 있다. 같은 시장·코드인 줄은 빼고 비교한다.
 - `listings` 한국 줄은 수천 개다. 검증은 이름 목록을 한 번 읽어 메모리에서 비교한다.
+- 시도 1에서 0011을 더하자 `migrate_tests.rs`의 drizzle 대조 시험 4개가 깨졌다(복사본 개수 11≠12, user_version 12≠11, 스키마 비교 2개). 고치는 방법은 "미리 정한 판단"의 마지막 항목대로. 시도 1이 남긴 미커밋 `migrations/0011_keyword_anchors.sql`·`migrate.rs`(길이 12)는 브리프와 맞으면 그대로 써도 된다.
+- 진단(2026-11-10, 시도 1, sonnet/medium): 브리프 빈틈 — 첫 Rust 전용 마이그레이션이 drizzle 대조 시험을 깨는 것을 브리프가 미리 정하지 않음 → 브리프 빈틈
 
 ## 상위로 올릴 조건
 기본 규칙(범위 밖·기대값 변경·두 번 고쳐도 남는 오류는 보고) + 마이그레이션 업그레이드 시험(`tests/fixtures/drizzle`)이 깨질 때
