@@ -1412,3 +1412,26 @@ fn topic_reads_scope_and_unknown_values_become_market() {
         "market"
     );
 }
+
+// describe("토픽 갱신 입력 줄이기")
+#[test]
+fn reduce_titles_drops_kana_groups_same_news_and_keeps_order() {
+    let titles: Vec<String> = [
+        "삼성전자 반도체 수출 사상 최대 기록",
+        "日本語のニュース 삼성전자",
+        "[속보] 삼성전자 반도체 수출 사상 최대 기록…전망은",
+        "기준금리 동결 결정",
+        "삼성전자 반도체 수출 사상 최대 기록 달성",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    assert_eq!(
+        reduce_titles(&titles),
+        [
+            "삼성전자 반도체 수출 사상 최대 기록 ×3".to_string(),
+            "기준금리 동결 결정".to_string()
+        ]
+    );
+    assert!(reduce_titles(&[]).is_empty());
+}

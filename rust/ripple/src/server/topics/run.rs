@@ -24,7 +24,7 @@ use crate::server::text::js_to_fixed;
 use crate::server::time::{EpochMs, now_ms};
 use crate::server::topics::refresh::{
     MAX_TOPICS, PreviousTopic, RefreshedTopic, build_topic_refresh_messages, clean_topic_refresh,
-    parse_topic_refresh,
+    parse_topic_refresh, reduce_titles,
 };
 use crate::server::topics::store::{
     StockRef, Topic, TopicArticleCounts, TopicLink, active_auto_topics, active_stocks,
@@ -179,7 +179,7 @@ pub async fn refresh_topics<L: LlmClient, D: Decider>(
         .collect();
     let request = StructuredRequest {
         model,
-        messages: build_topic_refresh_messages(&previous, &titles, &item_names),
+        messages: build_topic_refresh_messages(&previous, &reduce_titles(&titles), &item_names),
         schema: topic_refresh(),
         schema_name: "topic_refresh".to_string(),
         max_tokens: MAX_REFRESH_OUTPUT_TOKENS,

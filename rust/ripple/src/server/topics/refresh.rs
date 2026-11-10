@@ -9,6 +9,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::server::ai::llm::LlmMessage;
+use crate::server::similar_title::{is_same_news, title_features};
 use crate::server::text::{js_slice, js_trim};
 
 pub const MAX_TOPICS: usize = 15;
@@ -72,6 +73,37 @@ pub fn parse_topic_refresh(value: &Value) -> Option<RawTopicRefresh> {
     Some(RawTopicRefresh { topics })
 }
 
+/// 가나(U+3040~U+30FF)가 든 제목은 일본어판이라 뺀다.
+fn has_kana(title: &str) -> bool {
+    title.chars().any(|c| ('\u{3040}'..='\u{30FF}').contains(&c))
+}
+
+/// AI에 넣을 제목을 줄인다(최근순 입력): 가나가 든 제목을 빼고, 같은 소식(`is_same_news`)은 처음 나온(가장 최근) 제목
+/// 하나로 묶어 2건 이상이면 뒤에 ` ×N`을 붙인다. 순서는 그대로다.
+pub fn reduce_titles(titles: &[String]) -> Vec<String> {
+    let mut clusters: Vec<(&str, crate::server::similar_title::TitleFeatures, usize)> = Vec::new();
+    for title in titles.iter().filter(|t| !has_kana(t)) {
+        let features = title_features(title);
+        match clusters
+            .iter_mut()
+            .find(|(_, rep, _)| is_same_news(&features, rep))
+        {
+            Some(cluster) => cluster.2 += 1,
+            None => clusters.push((title, features, 1)),
+        }
+    }
+    clusters
+        .into_iter()
+        .map(|(title, _, n)| {
+            if n > 1 {
+                format!("{title} ×{n}")
+            } else {
+                title.to_string()
+            }
+        })
+        .collect()
+}
+
 /// AI에게 보여 주는 이전 토픽
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct PreviousTopic {
@@ -108,8 +140,10 @@ pub fn build_topic_refresh_messages(
         "- 이전 토픽이 계속 이어지면 그 id를 그대로 쓰고, 설명과 검색어는 새 소식에 맞게 고친다. 더 이상 다뤄지지 않는 토픽은 목록에서 뺀다. 새 토픽은 id를 빈 문자열로 둔다.".to_string(),
         "- 이전 토픽 뒤의 '기사 N건'은 최근 24시간에 그 토픽 검색어에 걸린 기사 수다. 새 제목에 없어도 기사가 계속 나오는 토픽은 뺄지 신중히 정한다.".to_string(),
         "- '끝남'이 붙은 토픽은 이미 끝난 것이다. 같은 주제가 다시 다뤄지면 새 토픽을 만들지 말고 그 id를 쓴다. 다뤄지지 않으면 목록에 넣지 않는다.".to_string(),
-        "- 여러 언론사·여러 기사가 다루는 토픽을 먼저 고른다. 정치·외교·전쟁·무역·정책·금리·환율·원자재·산업 동향처럼 여러 업종에 퍼지는 것을 우선한다. 연예·스포츠·사건사고·생활 정보와 회사 한 곳의 작은 소식은 뺀다.".to_string(),
-        "- 토픽 고르기는 내 종목과 상관없이 시장 전체 기준으로 한다.".to_string(),
+        "- 제목 끝의 '×N'은 같은 소식을 다룬 기사가 N건이라는 뜻이다. 여러 기사가 다루는 토픽을 먼저 고른다.".to_string(),
+        "- scope가 market인 토픽: 정치·외교·전쟁·무역·정책·금리·환율·원자재·산업 동향처럼 증시 전체나 여러 업종의 주가를 움직일 것만 고른다. 내 종목과 상관없이 시장 전체 기준으로 고른다.".to_string(),
+        "- scope가 company인 토픽: 내 종목의 주가에 직접 걸린 특정 회사·사업 건(수주·계약·소송·사고·협상 등)이다. related에 그 종목이 있어야 하고, 내 종목과 상관없는 회사 한 곳의 소식은 넣지 않는다.".to_string(),
+        "- 연예·스포츠·사건사고·생활 정보, 인물의 사생활·추문, 주가를 움직일 근거가 제목에 없는 화제성 소식은 기사가 많아도 넣지 않는다.".to_string(),
         "- name: 토픽 이름(짧은 명사구). summary: 지금 무슨 일이 있는지 한국어 한 줄(60자 이내). 제목에 나온 사실만 쓰고 추측하지 않는다.".to_string(),
         format!("- terms: 이 토픽의 기사를 찾는 검색어 2~{MAX_TERMS}개. 1~3단어 명사구로, 제목에 실제로 쓰인 말로 쓴다. 인물·국가처럼 넓은 말은 혼자 쓰지 말고 주제어와 함께 쓴다(예: '트럼프' 대신 '트럼프 관세')."),
         "- related: 사용자 메시지의 '내 종목' 가운데 이 토픽의 영향을 받을 만한 종목과 이어지는 이유 한 줄(40자 이내). 이름은 목록에 있는 그대로 쓰고, 없으면 빈 목록으로 둔다.".to_string(),
