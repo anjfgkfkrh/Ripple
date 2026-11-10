@@ -3,13 +3,13 @@
 > 읽는 때: 세션을 시작할 때 맨 먼저. 지금 하는 일, 답 대기, 다음 할 일만 둔다(화면 한 장 안).
 > 이 문서는 덧붙이지 않고 통째로 다시 쓴다(agentflow review가 작업 통과 때, `/handoff`가 단계 밖 작업 뒤). 끝난 일의 자세한 기록은 [DECISIONS.md](DECISIONS.md) 3장, 단계 표·작업 방법은 [DEVELOPMENT.md](DEVELOPMENT.md)에 둔다. 실제와 다르면 `git log`와 `git status`를 먼저 본다.
 
-마지막 갱신: 2026-11-10 (한국 시간), 17단계 `keyword-topic` 작업 `anchor-match` 리뷰 통과
+마지막 갱신: 2026-11-10 (한국 시간), 17단계 `keyword-topic` 작업 `tree-full` 리뷰 통과
 
 ## 다음 할 일
 
-- **17단계 키워드 트리·토픽 고도화(`keyword-topic`): run 진행 중.** 브랜치 `af/keyword-topic`, 작업 10개는 `work/keyword-topic/PLAN.md`(상태는 PLAN 표). `paid-compare` 통과(OpenRouter 28회 $0.0624), `llm-request` 통과(B1 본문 읽기 실패 분류·전송 실패 한 번 재시도·추론 끄기 기본·B2 결과 줄 실제 깊이, 1장 "17단계 llm-request 구현 세부"), `anchor-schema` 통과(시도 2, 마이그레이션 0011 = 첫 Rust 전용, 별칭·고유어·지운 별칭·`scope`·`gated` 칸과 저장·별칭 검증, 1장 "17단계 anchor-schema 구현 세부"), `anchor-match` 통과(별칭은 이름 연결, 종목 키워드 연결은 제목에 고유어가 없으면 `gated = 1`로 저장하고 평가·평가 대기 수에서 뺌, Rust 시험 660개, 1장 "17단계 anchor-match 구현 세부"). 지금은 고유어를 채우는 쪽이 없어 종목 키워드 연결이 모두 걸러진다(`tree-full`이 채움).
+- **17단계 키워드 트리·토픽 고도화(`keyword-topic`): run 진행 중.** 브랜치 `af/keyword-topic`, 작업 10개는 `work/keyword-topic/PLAN.md`(상태는 PLAN 표). 통과: `paid-compare`(OpenRouter 28회 $0.0624), `llm-request`(B1·B2, 추론 끄기 기본), `anchor-schema`(마이그레이션 0011, 별칭 검증), `anchor-match`(별칭은 이름 연결, 고유어 없는 종목 키워드 연결은 `gated`), `tree-full`(LLM 한 번으로 깊이 2·1단계 6·2단계 12 상한 트리와 별칭·고유어를 받아 한 트랜잭션에 저장, 통계 낱말 참고, Jev 후보 평가 없앰, 고유어 0개면 실패, Rust 시험 672개·E2E 49 통과, 1장 "17단계 tree-full 구현 세부"). 각 작업 세부는 1장 "17단계 … 구현 세부".
   - 리뷰가 정한 것(계획 세부 ⑪, 사용자 확인 필요하면 단계 결과 보고 때): DECISIONS 1장 "17단계 추론 토큰"(OpenRouter 요청에 `reasoning: {"enabled": false}` 기본) · "17단계 토픽 통과 건수"(이전 토픽 줄에 `· 통과 M건` 보임). 수치는 2장 "17단계 추론·통과 건수 비교".
-  - 다음: `tree-full`(E2E `collect.spec.ts` 키워드 연결도 고유어가 있어야 평가됨), `eval-merge`, `topic-input`(선행이 모두 끝남). 0011은 배포 때 기존 종목을 모두 `pending`으로 돌려 worker 시작 때 전체 생성을 한 번 한다(답 8A). `stage-check`가 다시 `.check-restore/ripple.db`를 쓴다(그 전에 최신 백업으로 바꿔 받을지는 그때 확인).
+  - 다음: `tree-weekly`(정기 증분 점검), `eval-merge`, `topic-input`(선행이 모두 끝남). 그 뒤 `tree-screen`, `stage-check`. 0011은 배포 때 기존 종목을 모두 `pending`으로 돌려 worker 시작 때 전체 생성을 한 번 한다(답 8A). `stage-check`가 다시 `.check-restore/ripple.db`를 쓴다(그 전에 최신 백업으로 바꿔 받을지는 그때 확인). 시험 Docker 확인 때 `validate_aliases`가 버린 별칭 수와 통계 낱말 계산 시간(`feed_headlines` 전체를 읽음)을 본다.
   - 결정: DECISIONS.md 1장 "키워드 트리·토픽 고도화" 세 줄, "17단계 `keyword-topic` 계획 답", "17단계 계획 때 정한 세부", 위 두 줄. SPEC 10장 17단계 줄과 FR-3·4·5·6·8·7장 고침.
   - 배포 뒤 사용자 몫: 설정 화면에서 영향도 표시 기준 5, 키워드 재생성 주기 주 1회로 바꾸기(저장된 값은 코드가 덮지 않음, 답 3B·4A).
 

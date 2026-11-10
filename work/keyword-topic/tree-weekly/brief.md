@@ -28,10 +28,12 @@
 - `rust/ripple/src/server/schedule/`
 - `rust/ripple/src/worker/`(대기열 호출 모양이 바뀌는 곳만)
 - `e2e/mock-services.mjs`(`keyword_update` 답 더하기)
+- `rust/ripple/src/test_support.rs`(증분 시험에 쓸 표본·도우미만)
 
 ## 볼 위치
 - `scripts/analysis/keyword-topic/llm_make.py`: `UPDATE_SCHEMA`, `update_messages`(문구 그대로), `stat_words`
-- `server/keywords/generate.rs`, `server/keywords/tree.rs`(tree-full 뒤), `server/keywords/queue.rs`
+- `server/keywords/generate.rs`(`replace_tree`·`try_generate`), `server/keywords/tree.rs`(`build_keyword_tree`·`refine_anchors`·`LEVEL1_MAX`·`LEVEL2_MAX`), `server/keywords/stat_words.rs`(`stat_words`), `server/keywords/queue.rs`(`success_line`)
+- `docs/DECISIONS.md` 1장 "17단계 tree-full 구현 세부"
 - `server/schedule/plan.rs`의 `keyword_plan`, `last_seoul_boundary`·`next_seoul_boundary`, `server/schedule/scheduler.rs`
 - `server/stocks/aliases.rs`의 `validate_aliases`
 - `docs/DECISIONS.md` 1장 "키워드 트리·토픽 고도화 세부" ②③④, "17단계 `keyword-topic` 계획 답" ③⑤, "17단계 계획 때 정한 세부" ①②③④
@@ -68,6 +70,7 @@
 ## 알려진 함정
 - 실측에서 주간 점검은 매번 2~3개를 더했다. 상한·밀어내기가 없으면 트리가 계속 커진다.
 - 0011 이전의 옛 트리는 40개까지 있고 깊이 3이다. 첫 정기 점검에서 3단계 이상은 빼고(상한 규칙으로) 1·2단계만 상한까지 남긴다.
+- 리뷰(2026-11-10, tree-full): 새 키워드는 `relevance`·`magnitude`가 NULL이고 `KeywordQueue`에는 decider가 없다(`KeywordQueue<L>`, `new(db, llm, now)`). 고유어 다듬기는 `tree.rs` `refine_anchors`, 키워드·별칭·고유어 한 트랜잭션 저장은 `generate.rs` `replace_tree`를 다시 쓴다. 전체 생성은 고유어 0개면 `NoAnchors`로 실패한다. 통계 낱말은 `feed_headlines` 전체를 읽으므로 정기 점검에서 항목마다 부르면 그만큼 읽는다. 결과 줄(`success_line`)에 정기 점검 줄을 따로 만들면 `queue_tests`의 `success_line` 시험 기대값은 그대로 둔다.
 
 ## 상위로 올릴 조건
 기본 규칙(범위 밖·기대값 변경·두 번 고쳐도 남는 오류는 보고)
