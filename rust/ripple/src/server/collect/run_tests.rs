@@ -1596,3 +1596,59 @@ fn source_result_json_keeps_ts_key_order() {
         r#"{"id":"rss:a","label":"가 경제","group":"가","fetched":4,"fresh":3,"saved":2,"matched":2,"ms":12,"error":"HTTP 500"}"#
     );
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn keyword_links_without_anchor_in_title_are_saved_gated_and_names_and_aliases_are_not() {
+    let shared = seeded();
+    let ids = add_stocks(&shared);
+    {
+        let conn = shared.db.lock().unwrap();
+        conn.execute(
+            "UPDATE stocks SET aliases = '[\"삼전\"]', anchors = '[\"삼성\"]' WHERE id = ?1",
+            [ids.samsung],
+        )
+        .unwrap();
+    }
+    let deps = build(
+        &shared,
+        vec![(
+            "https://a.example/economy.xml",
+            ok(rss(&[
+                simple_item(
+                    "메모리 가격 오르자 HBM 증설",
+                    "https://news.example/1",
+                    Some(ago(2.0)),
+                ),
+                simple_item(
+                    "삼성 HBM 메모리 증설",
+                    "https://news.example/2",
+                    Some(ago(3.0)),
+                ),
+                simple_item("삼전 주가 반등", "https://news.example/3", Some(ago(1.0))),
+            ])),
+        )],
+        Setup::default(),
+    );
+
+    let summary = run(&deps).await;
+
+    assert_eq!((summary.articles_new, summary.matches_new), (3, 3));
+    let rows: Vec<(String, String, i64)> = query(
+        &shared,
+        "SELECT articles.title, article_matches.match_kind, article_matches.gated FROM article_matches \
+         INNER JOIN articles ON articles.id = article_matches.article_id ORDER BY articles.title",
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+    );
+    assert_eq!(
+        rows,
+        [
+            (
+                "메모리 가격 오르자 HBM 증설".to_string(),
+                "keyword".to_string(),
+                1
+            ),
+            ("삼성 HBM 메모리 증설".to_string(), "keyword".to_string(), 0),
+            ("삼전 주가 반등".to_string(), "name".to_string(), 0),
+        ]
+    );
+}

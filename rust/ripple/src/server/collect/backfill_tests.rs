@@ -139,3 +139,58 @@ fn links_stored_titles_with_urls_to_given_items_only_within_period_and_is_idempo
         (0, 0)
     );
 }
+
+#[test]
+fn stored_headline_links_are_gated_by_title_anchor_and_aliases_link_by_name() {
+    let mut db = test_db();
+    seed_listings(&mut db.conn);
+    let samsung = stock_with_keyword(&mut db, "005930", "HBM");
+    db.conn
+        .execute(
+            "UPDATE stocks SET aliases = '[\"삼전\"]', anchors = '[\"삼성\"]' WHERE id = ?1",
+            [samsung],
+        )
+        .unwrap();
+    save_feed_headlines(
+        &mut db.conn,
+        "rss:test:economy",
+        &[
+            headline("HBM 증설 경쟁", 2, Some("https://news.example/a"), None),
+            headline("삼성 HBM 증설", 3, Some("https://news.example/b"), None),
+            headline("삼전 반등", 4, Some("https://news.example/c"), None),
+            headline(
+                "메모리 투자",
+                5,
+                Some("https://news.example/d"),
+                Some("삼성 HBM 라인"),
+            ),
+        ],
+        now(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        link_stored_headlines(&mut db.conn, &[samsung], ago(24), now()).unwrap(),
+        (4, 4)
+    );
+    let rows: Vec<(String, String, i64)> = db
+        .conn
+        .prepare(
+            "SELECT articles.title, article_matches.match_kind, article_matches.gated FROM article_matches \
+             INNER JOIN articles ON articles.id = article_matches.article_id ORDER BY articles.title",
+        )
+        .unwrap()
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            ("HBM 증설 경쟁".to_string(), "keyword".to_string(), 1),
+            ("메모리 투자".to_string(), "keyword".to_string(), 1),
+            ("삼성 HBM 증설".to_string(), "keyword".to_string(), 0),
+            ("삼전 반등".to_string(), "name".to_string(), 0),
+        ]
+    );
+}
