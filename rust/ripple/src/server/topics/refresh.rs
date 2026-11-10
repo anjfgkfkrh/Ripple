@@ -124,6 +124,9 @@ pub struct PreviousTopic {
     pub terms: Vec<String>,
     /// 최근 24시간에 이 토픽의 검색어에 걸린 기사 수
     pub articles: i64,
+    /// 그 가운데 화면 표시 기준을 통과한 수
+    #[serde(default)]
+    pub shown: i64,
     /// 이미 끝난 토픽(최근 48시간 안). 같은 주제가 다시 나오면 id를 지켜 되살린다
     #[serde(default)]
     pub ended: bool,
@@ -178,15 +181,16 @@ pub fn build_topic_refresh_messages(
     if previous.is_empty() {
         user.push("이전 토픽: (없음)".to_string());
     } else {
-        let mut lines = vec!["이전 토픽(id: 이름 — 설명 [검색어] · 24시간 기사 N건):".to_string()];
+        let mut lines = vec!["이전 토픽(id: 이름 — 설명 [검색어] · 24시간 기사 N건 · 통과 M건):".to_string()];
         lines.extend(previous.iter().map(|topic| {
             format!(
-                "- {}: {} — {} [{}] · 기사 {}건{}",
+                "- {}: {} — {} [{}] · 기사 {}건 · 통과 {}건{}",
                 topic.id,
                 topic.name,
                 topic.summary,
                 topic.terms.join(", "),
                 topic.articles,
+                topic.shown,
                 if topic.ended { " · 끝남" } else { "" }
             )
         }));

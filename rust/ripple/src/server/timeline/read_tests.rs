@@ -938,3 +938,30 @@ fn parse_timeline_params_handles_odd_numbers() {
     // Number("") === 0 이라 id 0이 있으면 통과한다(실제 id는 1부터라 일어나지 않음)
     assert_eq!(filter.topic_id, Some(0));
 }
+
+#[test]
+fn read_topic_cards_leaves_out_company_topics() {
+    let t = test_db_with_listings();
+    let c = &t.conn;
+    add_stocks(c);
+    ensure_default_market(c, ago(80.0)).unwrap();
+    let (_, market_lens) = auto_topic(c, "시장 토픽");
+    let (company, company_lens) = auto_topic(c, "회사 토픽");
+    c.execute("UPDATE topics SET scope = 'company' WHERE id = ?1", params![company.id])
+        .unwrap();
+    for (n, lens) in [(1u32, market_lens[0]), (2u32, company_lens[0])] {
+        Link::new(lens, ago(1.0))
+            .titled(&distinct(n))
+            .keyword("종목")
+            .score(8.0)
+            .magnitude(7.0)
+            .impact("positive")
+            .insert(c);
+    }
+    let names: Vec<String> = read_topic_cards(c, now())
+        .unwrap()
+        .into_iter()
+        .map(|card| card.name)
+        .collect();
+    assert_eq!(names, ["시장 토픽"]);
+}

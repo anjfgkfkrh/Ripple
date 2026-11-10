@@ -535,6 +535,9 @@ pub struct TopicArticleCounts {
 }
 
 /// 토픽마다 `since` 이후 걸린 기사 수. 기사가 없는 토픽도 0으로 채운다.
+/// 통과(`shown`)는 화면 표시 기준(`evaluation.minRelevance`·`minMagnitude`)으로 센다.
+/// market 토픽은 토픽 항목에 걸린 기사를, company 토픽은 붙은 종목에서 경로가 `{종목 표시 이름} → {토픽 이름}`이거나
+/// 그 뒤에 ` → `가 이어지는 연결을 센다.
 pub fn topic_article_counts(
     conn: &Connection,
     topic_ids: &[i64],
@@ -550,34 +553,65 @@ pub fn topic_article_counts(
         return Ok(counts);
     }
     let marks = vec!["?"; topic_ids.len()].join(",");
-    let mut stmt = conn.prepare(&format!(
-        "SELECT stocks.topic_id, count(distinct article_matches.article_id), \
-         count(distinct case when evaluations.relevance >= ? and (evaluations.magnitude is null or evaluations.magnitude >= ?) \
-              then article_matches.article_id end) \
-         FROM article_matches \
-         INNER JOIN articles ON articles.id = article_matches.article_id \
-         INNER JOIN stocks ON stocks.id = article_matches.stock_id \
-         LEFT JOIN evaluations ON evaluations.match_id = article_matches.id \
-         WHERE stocks.kind = 'topic' AND stocks.topic_id IN ({marks}) AND articles.published_at >= ? \
-         GROUP BY stocks.topic_id"
-    ))?;
-    let mut bindings: Vec<rusqlite::types::Value> =
-        vec![min_relevance.into(), min_magnitude.into()];
-    bindings.extend(topic_ids.iter().map(|id| rusqlite::types::Value::from(*id)));
-    bindings.push(since.into());
-    let rows = stmt.query_map(rusqlite::params_from_iter(bindings), |r| {
-        Ok((
-            r.get::<_, Option<i64>>(0)?,
-            r.get::<_, i64>(1)?,
-            r.get::<_, i64>(2)?,
-        ))
-    })?;
-    for row in rows {
-        let (topic_id, matched, shown) = row?;
-        if let Some(topic_id) = topic_id {
-            counts.insert(topic_id, TopicArticleCounts { matched, shown });
+    let ids = || topic_ids.iter().map(|id| rusqlite::types::Value::from(*id));
+    let shown = "count(distinct case when evaluations.relevance >= ? and (evaluations.magnitude is null or evaluations.magnitude >= ?) \
+                 then article_matches.article_id end)";
+    let mut run = |sql: String, bindings: Vec<rusqlite::types::Value>| -> rusqlite::Result<()> {
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(bindings), |r| {
+            Ok((
+                r.get::<_, Option<i64>>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, i64>(2)?,
+            ))
+        })?;
+        for row in rows {
+            let (topic_id, matched, shown) = row?;
+            if let Some(topic_id) = topic_id {
+                counts.insert(topic_id, TopicArticleCounts { matched, shown });
+            }
         }
-    }
+        Ok(())
+    };
+    let thresholds = || -> Vec<rusqlite::types::Value> { vec![min_relevance.into(), min_magnitude.into()] };
+    // market(범위를 모르는 값 포함): 토픽 항목에 걸린 기사
+    let mut bindings = thresholds();
+    bindings.extend(ids());
+    bindings.push(since.into());
+    run(
+        format!(
+            "SELECT stocks.topic_id, count(distinct article_matches.article_id), {shown} \
+             FROM article_matches \
+             INNER JOIN articles ON articles.id = article_matches.article_id \
+             INNER JOIN stocks ON stocks.id = article_matches.stock_id \
+             INNER JOIN topics ON topics.id = stocks.topic_id \
+             LEFT JOIN evaluations ON evaluations.match_id = article_matches.id \
+             WHERE stocks.kind = 'topic' AND topics.scope <> 'company' AND stocks.topic_id IN ({marks}) AND articles.published_at >= ? \
+             GROUP BY stocks.topic_id"
+        ),
+        bindings,
+    )?;
+    // company: 붙은 종목의 토픽 가지 경로로 센다.
+    let mut bindings = thresholds();
+    bindings.extend(ids());
+    bindings.push(since.into());
+    run(
+        format!(
+            "SELECT topics.id, count(distinct article_matches.article_id), {shown} \
+             FROM topics \
+             INNER JOIN keywords ON keywords.topic_id = topics.id AND keywords.level = 1 \
+             INNER JOIN stocks ON stocks.id = keywords.stock_id AND stocks.kind = 'stock' \
+             INNER JOIN article_matches ON article_matches.stock_id = stocks.id \
+             INNER JOIN articles ON articles.id = article_matches.article_id \
+             LEFT JOIN evaluations ON evaluations.match_id = article_matches.id \
+             WHERE topics.scope = 'company' AND topics.id IN ({marks}) AND articles.published_at >= ? \
+             AND (article_matches.keyword_path = coalesce(stocks.name_ko, stocks.name) || '{PATH_SEPARATOR}' || topics.name \
+                  OR substr(article_matches.keyword_path, 1, length(coalesce(stocks.name_ko, stocks.name) || '{PATH_SEPARATOR}' || topics.name || '{PATH_SEPARATOR}')) \
+                     = coalesce(stocks.name_ko, stocks.name) || '{PATH_SEPARATOR}' || topics.name || '{PATH_SEPARATOR}') \
+             GROUP BY topics.id"
+        ),
+        bindings,
+    )?;
     Ok(counts)
 }
 

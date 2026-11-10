@@ -454,7 +454,7 @@ fn values_of(ids: &[i64]) -> Vec<Value> {
 pub fn read_topic_cards(conn: &Connection, now: EpochMs) -> rusqlite::Result<Vec<TopicCard>> {
     let auto_topics = {
         let mut stmt = conn.prepare(&format!(
-            "SELECT {TOPIC_COLUMNS} FROM topics WHERE source = 'auto' AND deleted_at IS NULL"
+            "SELECT {TOPIC_COLUMNS} FROM topics WHERE source = 'auto' AND deleted_at IS NULL AND scope <> 'company'"
         ))?;
         stmt.query_map([], row_to_topic)?
             .collect::<rusqlite::Result<Vec<_>>>()?

@@ -17,7 +17,8 @@ use crate::server::db::client::{Db, atomically};
 use crate::server::keywords::generate::judge_item;
 use crate::server::log::{log, log_error};
 use crate::server::settings::{
-    KEYWORDS_MIN_MAGNITUDE, KEYWORDS_MIN_RELEVANCE, LLM_MODEL, TOPICS_ERROR, TOPICS_FAILED_AT,
+    EVALUATION_MIN_MAGNITUDE, EVALUATION_MIN_RELEVANCE, KEYWORDS_MIN_MAGNITUDE,
+    KEYWORDS_MIN_RELEVANCE, LLM_MODEL, TOPICS_ERROR, TOPICS_FAILED_AT,
     TOPICS_REFRESHED_AT, TOPICS_STARTED_AT, read_num, read_str, write_num, write_str,
 };
 use crate::server::text::js_to_fixed;
@@ -155,12 +156,13 @@ pub async fn refresh_topics<L: LlmClient, D: Decider>(
     let (counts, model) = {
         let conn = db.lock().expect("DB 잠금이 깨졌습니다");
         (
+            // 통과 건수는 화면 표시 기준으로 센다(토픽×종목 쌍을 붙이는 기준 `keywords.min*`와 다르다).
             topic_article_counts(
                 &conn,
                 &candidates.iter().map(|t| t.id).collect::<Vec<_>>(),
                 at - KEEP_WINDOW_MS,
-                min_relevance,
-                min_magnitude,
+                read_num(&conn, &EVALUATION_MIN_RELEVANCE)?,
+                read_num(&conn, &EVALUATION_MIN_MAGNITUDE)?,
             )?,
             read_str(&conn, &LLM_MODEL)?,
         )
@@ -174,6 +176,7 @@ pub async fn refresh_topics<L: LlmClient, D: Decider>(
             summary: topic.summary.clone().unwrap_or_default(),
             terms: topic.terms.clone(),
             articles: counts.get(&topic.id).map_or(0, |c| c.matched),
+            shown: counts.get(&topic.id).map_or(0, |c| c.shown),
             ended: ended_ids.contains(&topic.id),
         })
         .collect();
