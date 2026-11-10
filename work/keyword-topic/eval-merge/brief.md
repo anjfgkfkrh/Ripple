@@ -67,5 +67,7 @@
 - 같은 기사가 같은 토픽의 한국·미국 항목에 모두 걸리면 토픽은 `t1` 하나, 증시는 둘이다.
 - 리뷰(2026-11-10, anchor-match): 평가 대기를 고르는 `evaluate/run.rs` `pending_evaluations`·`count_pending_evaluations`와 화면용 `evaluate/read.rs` `count_pending_evaluations`에 `article_matches.gated = 0` 조건이 있다. 기사당 한 요청으로 묶도록 질의를 바꿀 때 이 조건을 잃지 않는다(시장·토픽 항목은 걸러지지 않지만 같은 기사의 종목 연결이 걸러질 수 있음).
 
+- 리뷰(2026-11-10, tree-screen): 기본값이 바뀌었다(`EVALUATION_MIN_MAGNITUDE` 5, `KEYWORDS_REGENERATE_EVERY` weekly). 영향도 6을 경계로 쓰던 시험은 tree-screen에서 시험 준비에 6을 직접 써서 지켰다. 새 시험도 경계값을 기본값에 기대지 말고 설정으로 직접 쓴다.
+
 ## 상위로 올릴 조건
 기본 규칙(범위 밖·기대값 변경·두 번 고쳐도 남는 오류는 보고) + DB 구조를 바꿔야 할 것 같을 때
