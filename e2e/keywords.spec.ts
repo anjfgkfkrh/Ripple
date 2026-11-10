@@ -56,6 +56,17 @@ test.describe("키워드 생성·트리 보기 (SPEC FR-3, D-13~D-16, D-37)", ()
     await expect(
       item.getByTitle(`${target.name} → 공급망`, { exact: true }),
     ).toHaveCount(0);
+    // 키워드마다 최근 4주 실적(기사·통과 수)을 보이고, Jev 점수는 보이지 않는다(17단계).
+    await expect(item.getByTestId("keyword-stats")).toHaveCount(7);
+    await expect(item.getByTestId("keyword-stats").first()).toHaveText(
+      "기사 0 · 통과 0",
+    );
+    await expect(item).not.toContainText("관련 ");
+    // 종목 이름 아래 별칭 칩(고유어는 보이지 않는다).
+    await expect(item.getByTestId("stock-alias")).toHaveText("가짜별칭×");
+    await expect(item.getByTestId("stock-aliases")).not.toContainText(
+      "데이터센터",
+    );
     // 트리는 구조 키워드만 만든다(시사는 토픽 가지가 맡음, 2026-10-23).
     await expect(item.getByTestId("current-badge")).toHaveCount(0);
     // 영어 표기는 미국 종목에만 있다(D-14).
@@ -80,6 +91,18 @@ test.describe("키워드 생성·트리 보기 (SPEC FR-3, D-13~D-16, D-37)", ()
     await expect(
       item.getByRole("button", { name: `${target.name} 키워드 다시 만들기` }),
     ).toBeVisible();
+
+    // 별칭은 확인창 없이 바로 지우고, 지우면 칩 줄이 사라진다.
+    await item.getByTestId("alias-remove").click();
+    await expect(item.getByTestId("stock-alias")).toHaveCount(0);
+    // 지운 별칭은 다시 열어도 없다(다른 프로젝트의 종목에는 따로 있다).
+    await page.reload();
+    await expect(
+      page
+        .getByTestId("stock")
+        .filter({ hasText: target.name })
+        .getByTestId("stock-alias"),
+    ).toHaveCount(0);
   });
 
   test("만들지 못하면 이유를 보여 주고, 다시 만들 수 있다", async ({

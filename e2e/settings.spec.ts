@@ -29,11 +29,19 @@ test.describe("설정 화면 (SPEC FR-8)", () => {
     const form = await openSettings(page);
     await expect(form.getByLabel("수집 간격")).toBeVisible();
     await expect(form.getByLabel("월 예산 한도(달러)")).toBeVisible();
-    // 11단계: 표시 기준(관련도·영향도), 키워드를 남길 기준, 토픽 갱신 간격·시각
+    // 11단계: 표시 기준(관련도·영향도), 토픽을 종목에 붙일 기준, 토픽 갱신 간격·시각
     await expect(form.getByLabel("관련도 표시 기준(0~10)")).toHaveValue("6");
-    await expect(form.getByLabel("영향도 표시 기준(0~10)")).toHaveValue("6");
-    await expect(form.getByLabel("키워드 남길 관련도(0~10)")).toHaveValue("6");
-    await expect(form.getByLabel("키워드 남길 영향도(0~10)")).toHaveValue("5");
+    await expect(form.getByLabel("영향도 표시 기준(0~10)")).toHaveValue("5");
+    await expect(
+      form.getByLabel("토픽을 종목에 붙일 관련도(0~10)"),
+    ).toHaveValue("6");
+    await expect(
+      form.getByLabel("토픽을 종목에 붙일 영향도(0~10)"),
+    ).toHaveValue("5");
+    // 17단계 기본값: 깊이 2, 주기 주 1회(깊이는 1~2만)
+    await expect(form.getByLabel("확장 깊이")).toHaveValue("2");
+    await expect(form.getByLabel("자동 재생성 주기")).toHaveValue("weekly");
+    await expect(form.getByLabel("확장 깊이").locator("option")).toHaveCount(2);
     await expect(form.getByLabel("토픽 갱신 간격(시간, 0~24)")).toHaveValue(
       "3",
     );
@@ -80,7 +88,7 @@ test.describe("설정 바꾸기와 예산 알림 (FR-8, D-07)", () => {
     ).toHaveValue("anthropic/claude-haiku-5.5");
 
     await form.getByLabel("수집 간격").selectOption("60");
-    await form.getByLabel("자동 재생성 주기").selectOption("weekly");
+    await form.getByLabel("자동 재생성 주기").selectOption("daily");
     await form.getByLabel("월 예산 한도(달러)").fill("7.5");
     await form.getByRole("button", { name: "저장" }).click();
     await expect(form.getByRole("status")).toHaveText("저장했습니다.");
@@ -88,7 +96,7 @@ test.describe("설정 바꾸기와 예산 알림 (FR-8, D-07)", () => {
     await page.reload();
     form = page.getByTestId("settings-form");
     await expect(form.getByLabel("수집 간격")).toHaveValue("60");
-    await expect(form.getByLabel("자동 재생성 주기")).toHaveValue("weekly");
+    await expect(form.getByLabel("자동 재생성 주기")).toHaveValue("daily");
     await expect(form.getByLabel("월 예산 한도(달러)")).toHaveValue("7.5");
     await expect(page.getByTestId("usage")).toContainText("한도 $7.5");
 
@@ -129,7 +137,7 @@ test.describe("설정 바꾸기와 예산 알림 (FR-8, D-07)", () => {
       .getByLabel("키워드·종목 찾기 모델(OpenRouter)")
       .fill("anthropic/claude-haiku-5.5");
     await form.getByLabel("수집 간격").selectOption("30");
-    await form.getByLabel("자동 재생성 주기").selectOption("daily");
+    await form.getByLabel("자동 재생성 주기").selectOption("weekly");
     await form.getByLabel("월 예산 한도(달러)").fill("5");
     await form.getByRole("button", { name: "저장" }).click();
     await expect(form.getByRole("status")).toHaveText("저장했습니다.");
