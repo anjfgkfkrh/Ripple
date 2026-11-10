@@ -15,7 +15,7 @@
 | tree-screen | 트리 화면 실적 표시, 별칭 보기·지우기, 설정 이름·범위·기본값 | `stocks_tests`·`settings_form_tests` 새 시험, 고친 E2E 통과, `/check` 전체 통과, 화면 캡처 | Sonnet / medium | tree-weekly 통과 | 통과 | 3 |
 | eval-merge | 시장·토픽 기사를 기사당 Jev 한 요청으로 평가하고 연결마다 저장, 사용량 나눠 기록 | `questions_tests`·`typesafe_tests`·`evaluate/run_tests` 새 시험 통과, `/check` 전체 통과 | Sonnet / medium | anchor-match 통과 | 통과 | 1 |
 | topic-input | 토픽 갱신 입력 줄이기(일본어·같은 소식 묶기)·새 규칙·`scope`·company 처리·통과 기준 바로잡기 | `topics_tests` 새 시험 통과, `/check` 전체 통과 | Sonnet / medium | paid-compare 통과, anchor-schema 통과 | 통과 | 1 |
-| stage-check | 시험 Docker에서 실제 AI로 전체 흐름을 확인하고 수치를 모은다 | 인계에 항목별 수치·비용($0.15 이하)·화면 캡처, 시험 Docker 내림 | Sonnet / medium | 앞 작업 모두 통과 | 진행 | 1 |
+| stage-check | 시험 Docker에서 실제 AI로 전체 흐름을 확인하고 수치를 모은다 | 인계에 항목별 수치·비용($0.15 이하)·화면 캡처, 시험 Docker 내림 | Sonnet / medium | 앞 작업 모두 통과 | 통과 | 1 |
 
 ## 사람이 승인한 큰 결정
 - DECISIONS.md 1장 "키워드 트리·토픽 고도화" 세 줄(2026-11-10): 고유어 조건, 기사당 한 요청, 트리 주 1회·깊이 2·상한·증분, 토픽 입력 줄이기·`scope`, 영향도 기준 5, 별칭, 트리 화면 수치.
