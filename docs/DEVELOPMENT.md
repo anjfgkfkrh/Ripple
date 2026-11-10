@@ -126,7 +126,8 @@ DECISIONS.md 2장 "다시 잴 때의 방법"으로 옮겼다. 시험용 Docker �
 ## 8. 코드 지도
 
 폴더 구조는 README "폴더 구조". 14단계 R13 뒤 서버 코드는 Rust만 있다. 자주 보는 진입점(모두 `rust/ripple/src/`):
-- 실행 파일: `main.rs`(하위 명령 migrate · worker · web · healthcheck), worker 조립·시작: `worker/index.rs`, 내부 API: `worker/server.rs`, 마이그레이션 진입점: `worker/migrate.rs`, 마이그레이션 목록: `server/db/migrate.rs`(`MIGRATION_SQL`)
+- 실행 파일: `main.rs`(하위 명령 migrate · worker · web · healthcheck), worker 조립·시작: `worker/index.rs`, 내부 API: `worker/server.rs`, 마이그레이션 진입점: `worker/migrate.rs`, 마이그레이션 목록: `server/db/migrate.rs`(`MIGRATION_SQL`, 0000~0010은 drizzle 복사본이고 drizzle 대조 시험은 이 11개만 본다. 0011부터 Rust 전용)
+- 종목 저장: `server/stocks/repository.rs`(`Stock`의 별칭·고유어·지운 별칭, `set_stock_terms`·`remove_alias`), 별칭 검증: `server/stocks/aliases.rs`(`validate_aliases`)
 - 정기 작업: `server/schedule/`(plan = 다음 시각 계산, scheduler = 1분 루프)
 - 수집: `server/collect/run.rs`, 평가: `server/evaluate/run.rs`, Jev: `server/ai/decider/`
 - 키워드: `server/keywords/`(tree = 프롬프트·검증·점수로 고르기(구조 키워드만), generate = 생성·Jev 평가·저장, queue = 대기열, headlines = 종목의 최근 기사 제목), 피드 제목 보관: `server/collect/feed_headlines.rs`, 지난 기사 걸기: `server/collect/backfill.rs`
