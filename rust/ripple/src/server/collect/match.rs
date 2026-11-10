@@ -13,6 +13,10 @@ pub struct MatchStock {
     pub code: String,
     pub name: String,
     pub name_ko: Option<String>,
+    /// 이름처럼 거는 별칭(종목만)
+    pub aliases: Vec<String>,
+    /// 종목의 고유어. 키워드 연결은 제목에 이 중 하나가 있어야 평가한다(없으면 `gated`)
+    pub anchors: Vec<String>,
     pub keywords: Vec<MatchKeyword>,
 }
 
@@ -35,6 +39,8 @@ pub struct StockMatch {
     pub match_kind: MatchKind,
     /// 0이면 종목 자체, 1~4는 키워드 단계
     pub level: i64,
+    /// 키워드 연결인데 제목에 고유어가 없어 평가에서 뺀다(저장은 한다)
+    pub gated: bool,
 }
 
 struct Term {
@@ -47,6 +53,10 @@ struct Term {
 
 struct Prepared {
     id: i64,
+    /// 종목 종류의 키워드 연결만 고유어로 거른다
+    gate: bool,
+    /// 소문자·공백 없앤 고유어
+    anchors: Vec<String>,
     terms: Vec<Term>,
 }
 
@@ -72,6 +82,15 @@ pub fn create_matcher(stocks: &[MatchStock]) -> Matcher {
                     reason: None,
                     kind: MatchKind::Name,
                 });
+                for alias in &stock.aliases {
+                    terms.push(Term {
+                        words: to_words(alias),
+                        level: 0,
+                        path: display.to_string(),
+                        reason: None,
+                        kind: MatchKind::Name,
+                    });
+                }
             }
             for keyword in &stock.keywords {
                 let reason = Some(keyword.reason.clone()).filter(|r| !r.is_empty());
@@ -94,6 +113,13 @@ pub fn create_matcher(stocks: &[MatchStock]) -> Matcher {
             terms.retain(|t| !t.words.is_empty());
             Prepared {
                 id: stock.id,
+                gate: stock.kind == ItemKind::Stock,
+                anchors: stock
+                    .anchors
+                    .iter()
+                    .map(|a| squash(a))
+                    .filter(|a| !a.is_empty())
+                    .collect(),
                 terms,
             }
         })
@@ -102,8 +128,10 @@ pub fn create_matcher(stocks: &[MatchStock]) -> Matcher {
 }
 
 impl Matcher {
-    pub fn find(&self, text: &str) -> Vec<StockMatch> {
-        let haystack = normalize(text);
+    /// 이름·별칭·키워드는 제목+요약에서, 고유어는 제목에서만 찾는다.
+    pub fn find(&self, title: &str, summary: &str) -> Vec<StockMatch> {
+        let haystack = normalize(&format!("{title} {summary}"));
+        let squashed_title = squash(title);
         let mut matches = Vec::new();
         for stock in &self.prepared {
             let hit = stock
@@ -111,12 +139,16 @@ impl Matcher {
                 .iter()
                 .find(|term| term.words.iter().all(|word| contains_word(&haystack, word)));
             if let Some(hit) = hit {
+                let gated = stock.gate
+                    && hit.kind == MatchKind::Keyword
+                    && !stock.anchors.iter().any(|a| squashed_title.contains(a));
                 matches.push(StockMatch {
                     stock_id: stock.id,
                     keyword_path: hit.path.clone(),
                     keyword_reason: hit.reason.clone(),
                     match_kind: hit.kind,
                     level: hit.level,
+                    gated,
                 });
             }
         }
@@ -137,6 +169,14 @@ fn normalize(text: &str) -> String {
     WHITESPACE
         .replace_all(&text.to_lowercase(), " ")
         .into_owned()
+}
+
+/// 고유어 찾기용: 소문자로 바꾸고 공백을 모두 뺀다(낱말 경계 없이 포함만 본다).
+fn squash(text: &str) -> String {
+    text.to_lowercase()
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect()
 }
 
 fn to_words(text: &str) -> Vec<String> {

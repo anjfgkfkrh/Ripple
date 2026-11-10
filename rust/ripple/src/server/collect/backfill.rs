@@ -32,7 +32,7 @@ pub fn link_stored_headlines(
             continue;
         };
         let summary = headline.summary.clone().unwrap_or_default();
-        let matches = matcher.find(&format!("{} {}", headline.title, summary));
+        let matches = matcher.find(&headline.title, &summary);
         if matches.is_empty() {
             continue;
         }

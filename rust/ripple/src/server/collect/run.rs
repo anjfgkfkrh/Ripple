@@ -566,7 +566,7 @@ fn merge_matches(
             order.push(m);
         }
     };
-    for m in matcher.find(&format!("{} {}", item.title, item.summary)) {
+    for m in matcher.find(&item.title, &item.summary) {
         put(m);
     }
     for &stock_id in &item.direct_stock_ids {
@@ -576,6 +576,7 @@ fn merge_matches(
             keyword_reason: None,
             match_kind: MatchKind::Direct,
             level: 0,
+            gated: false,
         });
     }
     order
@@ -631,14 +632,19 @@ pub fn save_items(
         };
         for m in matches {
             new_matches += tx.execute(
-                "INSERT INTO article_matches (article_id, stock_id, keyword_path, keyword_reason, match_kind, level, created_at) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) ON CONFLICT DO NOTHING",
-                params![article_id, m.stock_id, m.keyword_path, m.keyword_reason, m.match_kind.as_str(), m.level, at],
+                "INSERT INTO article_matches (article_id, stock_id, keyword_path, keyword_reason, match_kind, level, gated, created_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) ON CONFLICT DO NOTHING",
+                params![article_id, m.stock_id, m.keyword_path, m.keyword_reason, m.match_kind.as_str(), m.level, m.gated, at],
             )?;
         }
     }
     tx.commit()?;
     Ok((new_articles, new_matches))
+}
+
+/// JSON 글자 목록 칸. 깨졌으면 빈 목록
+fn json_list(text: &str) -> Vec<String> {
+    serde_json::from_str(text).unwrap_or_default()
 }
 
 /// 삭제하지 않은 종목과 키워드 트리
@@ -650,9 +656,11 @@ pub fn load_match_stocks(conn: &Connection) -> rusqlite::Result<Vec<MatchStock>>
         code: String,
         name: String,
         name_ko: Option<String>,
+        aliases: Vec<String>,
+        anchors: Vec<String>,
     }
     let mut stmt = conn.prepare(
-        "SELECT stocks.id, stocks.kind, stocks.market, stocks.code, stocks.name, stocks.name_ko, topics.status \
+        "SELECT stocks.id, stocks.kind, stocks.market, stocks.code, stocks.name, stocks.name_ko, stocks.aliases, stocks.anchors, topics.status \
          FROM stocks LEFT JOIN topics ON topics.id = stocks.topic_id WHERE stocks.deleted_at IS NULL ORDER BY stocks.id ASC",
     )?;
     let rows: Vec<(Row, Option<String>)> = stmt
@@ -674,8 +682,10 @@ pub fn load_match_stocks(conn: &Connection) -> rusqlite::Result<Vec<MatchStock>>
                     code: r.get(3)?,
                     name: r.get(4)?,
                     name_ko: r.get(5)?,
+                    aliases: json_list(&r.get::<_, String>(6)?),
+                    anchors: json_list(&r.get::<_, String>(7)?),
                 },
-                r.get(6)?,
+                r.get(8)?,
             ))
         })?
         .collect::<rusqlite::Result<_>>()?;
@@ -721,6 +731,8 @@ pub fn load_match_stocks(conn: &Connection) -> rusqlite::Result<Vec<MatchStock>>
             code: s.code,
             name: s.name,
             name_ko: s.name_ko,
+            aliases: s.aliases,
+            anchors: s.anchors,
             keywords: by_stock.remove(&s.id).unwrap_or_default(),
         })
         .collect())
