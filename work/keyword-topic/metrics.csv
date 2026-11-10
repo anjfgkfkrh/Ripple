@@ -9,3 +9,5 @@ time,id,role,stage,task,attempt,model,effort,requests,input,cache_write_5m,cache
 2026-11-10 21:41:32,ad4b2558d793bfc63,diagnose,keyword-topic,work/keyword-topic/anchor-schema,1,claude-opus-5-5,기본,8,16,38089,0,358366,3962,56373,0.3414,1.6651,1.3237,79.5
 2026-11-10 21:45:03,a06ad47408a45e214,work,keyword-topic,work/keyword-topic/anchor-schema,2,claude-sonnet-5-5,medium,24,48,60178,0,1455324,14140,78456,0.4375,3.1725,2.7350,86.2
 2026-11-10 21:47:09,a660fd7672203fd89,review,keyword-topic,work/keyword-topic/anchor-schema,2,claude-opus-5-5,기본,16,32,68566,0,1037655,7552,86850,0.7015,4.5761,3.8745,84.7
+2026-11-10 21:51:48,afb6acc9cb776ff02,work,keyword-topic,work/keyword-topic/anchor-match,1,claude-sonnet-5-5,medium,29,58,72146,0,1919936,14418,90424,0.5167,4.1285,3.6118,87.5
+2026-11-10 21:55:15,a2ec9af627fbc56b7,review,keyword-topic,work/keyword-topic/anchor-match,1,claude-opus-5-5,기본,31,62,77246,0,2087219,11481,95530,1.0335,8.8877,7.8542,88.4
