@@ -27,7 +27,9 @@ test.describe("기사 수집과 평가 (SPEC FR-4, FR-5)", () => {
     const schedule = panel.getByTestId("collection-schedule");
     await expect(schedule).toContainText("정기 수집");
     await expect(schedule).toContainText("30분마다");
-    await expect(schedule).toContainText(/매일 06:00 · (곧 시작|다음 )/);
+    await expect(schedule).toContainText(
+      /매일 06:00 확인\(주 1회 점검\) · (곧 시작|다음 )/,
+    );
     await panel.getByRole("button", { name: "지금 수집" }).click();
     // 같은 사이트에는 요청 간격(1.1초)을 두므로 바로 끝나지 않는다.
     await expect(panel.getByRole("button", { name: "수집 중…" })).toBeVisible();

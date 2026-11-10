@@ -250,9 +250,9 @@ fn collect_schedule_text(plan: &CollectionPlan, now: EpochMs) -> String {
 
 fn keywords_schedule_text(plan: &KeywordPlan, now: EpochMs) -> String {
     let every = if plan.every == RegenerateEvery::Weekly {
-        "매주 월요일 06:00"
+        "매일 06:00 확인(주 1회 점검)"
     } else {
-        "매일 06:00"
+        "매일 06:00 확인(매일 점검)"
     };
     if plan.idle {
         every.to_string()
