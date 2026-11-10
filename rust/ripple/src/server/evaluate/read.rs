@@ -30,7 +30,7 @@ pub fn evaluation_totals(conn: &Connection) -> rusqlite::Result<EvaluationTotals
     })
 }
 
-/// 아직 평가하지 않은 최근 7일 기사–종목 연결 수(삭제한 종목 제외, D-05와 같은 범위).
+/// 아직 평가하지 않은 최근 7일 기사–종목 연결 수(삭제한 종목·걸러진 연결 제외, D-05와 같은 범위).
 /// 키가 없거나, 예산을 다 썼거나, 회차 한도에 밀리면 쌓인다.
 pub fn count_pending_evaluations(conn: &Connection, now: EpochMs) -> rusqlite::Result<i64> {
     conn.query_row(
@@ -38,7 +38,8 @@ pub fn count_pending_evaluations(conn: &Connection, now: EpochMs) -> rusqlite::R
          INNER JOIN articles ON articles.id = article_matches.article_id \
          INNER JOIN stocks ON stocks.id = article_matches.stock_id \
          LEFT JOIN evaluations ON evaluations.match_id = article_matches.id \
-         WHERE evaluations.id IS NULL AND stocks.deleted_at IS NULL AND articles.published_at >= ?1",
+         WHERE evaluations.id IS NULL AND article_matches.gated = 0 AND stocks.deleted_at IS NULL \
+           AND articles.published_at >= ?1",
         [now - EVALUATION_WINDOW_MS],
         |r| r.get(0),
     )

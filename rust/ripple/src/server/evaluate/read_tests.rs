@@ -38,6 +38,16 @@ fn counts_unevaluated_matches_in_the_last_seven_days_for_live_stocks() {
     pending(samsung, now - day);
     pending(samsung, now - 8 * day); // 7일 밖
     pending(hynix, now - day);
+    // 걸러진 연결(gated)은 평가하지 않으므로 세지 않는다.
+    let mut gated = LinkSpec::new(samsung, "걸러짐", now - day);
+    gated.relevance = None;
+    let (gated_id, _) = insert_link(&t.conn, &gated);
+    t.conn
+        .execute(
+            "UPDATE article_matches SET gated = 1 WHERE id = ?1",
+            [gated_id],
+        )
+        .unwrap();
     insert_link(&t.conn, &LinkSpec::new(samsung, "평가함", now - day)); // 평가함
     assert_eq!(count_pending_evaluations(&t.conn, now).unwrap(), 2);
     delete_stock(&t.conn, hynix, now).unwrap();
