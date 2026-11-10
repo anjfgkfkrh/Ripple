@@ -23,10 +23,16 @@ pub struct Stock {
     pub backfill_from: Option<EpochMs>,
     pub kind: ItemKind,
     pub topic_id: Option<i64>,
+    /// 회사 별칭(LLM 제안 중 검증을 통과한 것)
+    pub aliases: Vec<String>,
+    /// 고유어(이 글자가 있어야 연결을 평가한다)
+    pub anchors: Vec<String>,
+    /// 사용자가 지운 별칭(다시 제안돼도 버린다)
+    pub aliases_removed: Vec<String>,
 }
 
 pub const STOCK_COLUMNS: &str = "id, market, code, name, name_ko, exchange, user_input, created_at, deleted_at, \
-     keywords_status, keywords_error, keywords_generated_at, backfill_from, kind, topic_id";
+     keywords_status, keywords_error, keywords_generated_at, backfill_from, kind, topic_id, aliases, anchors, aliases_removed";
 
 fn text_enum<T: std::str::FromStr<Err = String>>(
     row: &Row<'_>,
@@ -55,7 +61,58 @@ pub fn row_to_stock(row: &Row<'_>) -> rusqlite::Result<Stock> {
         backfill_from: row.get(12)?,
         kind: text_enum(row, 13)?,
         topic_id: row.get(14)?,
+        aliases: json_list(row, 15)?,
+        anchors: json_list(row, 16)?,
+        aliases_removed: json_list(row, 17)?,
     })
+}
+
+/// JSON 글자 목록 칸을 읽는다. 깨졌으면 빈 목록(`topics.terms`와 같은 방식).
+fn json_list(row: &Row<'_>, index: usize) -> rusqlite::Result<Vec<String>> {
+    let text: String = row.get(index)?;
+    Ok(serde_json::from_str(&text).unwrap_or_default())
+}
+
+/// 별칭·고유어 두 목록을 바꾼다. 없는 종목이면 false.
+pub fn set_stock_terms(
+    conn: &Connection,
+    stock_id: i64,
+    aliases: &[String],
+    anchors: &[String],
+) -> rusqlite::Result<bool> {
+    let changed = conn.execute(
+        "UPDATE stocks SET aliases = ?1, anchors = ?2 WHERE id = ?3",
+        params![
+            serde_json::to_string(aliases).expect("string list"),
+            serde_json::to_string(anchors).expect("string list"),
+            stock_id
+        ],
+    )?;
+    Ok(changed > 0)
+}
+
+/// 별칭을 목록에서 빼고 `aliases_removed`에 더한다. 목록에 없던 별칭이면 false.
+pub fn remove_alias(conn: &Connection, stock_id: i64, alias: &str) -> rusqlite::Result<bool> {
+    let Some(stock) = find_stock(conn, stock_id)? else {
+        return Ok(false);
+    };
+    if !stock.aliases.iter().any(|a| a == alias) {
+        return Ok(false);
+    }
+    let aliases: Vec<&String> = stock.aliases.iter().filter(|a| *a != alias).collect();
+    let mut removed = stock.aliases_removed.clone();
+    if !removed.iter().any(|a| a == alias) {
+        removed.push(alias.to_string());
+    }
+    conn.execute(
+        "UPDATE stocks SET aliases = ?1, aliases_removed = ?2 WHERE id = ?3",
+        params![
+            serde_json::to_string(&aliases).expect("string list"),
+            serde_json::to_string(&removed).expect("string list"),
+            stock_id
+        ],
+    )?;
+    Ok(true)
 }
 
 pub const MAX_NAME_KO_LENGTH: usize = 50;

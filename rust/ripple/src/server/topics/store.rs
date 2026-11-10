@@ -72,10 +72,11 @@ pub struct Topic {
     pub last_seen_at: Option<EpochMs>,
     pub ended_at: Option<EpochMs>,
     pub deleted_at: Option<EpochMs>,
+    /// `market`(시장 전체) 또는 `company`(특정 회사). 모르는 값은 `market`으로 읽는다.
+    pub scope: String,
 }
 
-pub const TOPIC_COLUMNS: &str =
-    "id, source, name, summary, terms, status, created_at, last_seen_at, ended_at, deleted_at";
+pub const TOPIC_COLUMNS: &str = "id, source, name, summary, terms, status, created_at, last_seen_at, ended_at, deleted_at, scope";
 
 pub fn row_to_topic(row: &Row<'_>) -> rusqlite::Result<Topic> {
     let bad = |index: usize, message: String| {
@@ -99,6 +100,14 @@ pub fn row_to_topic(row: &Row<'_>) -> rusqlite::Result<Topic> {
         last_seen_at: row.get(7)?,
         ended_at: row.get(8)?,
         deleted_at: row.get(9)?,
+        scope: {
+            let scope: String = row.get(10)?;
+            if scope == "company" {
+                scope
+            } else {
+                "market".to_string()
+            }
+        },
     })
 }
 

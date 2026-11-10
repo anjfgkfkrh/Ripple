@@ -176,3 +176,83 @@ fn active_checks_by_code_and_id() {
     assert!(!is_active_stock(&db.conn, Market::Kr, "005930").unwrap());
     assert!(!is_active_stock_id(&db.conn, stock.id).unwrap());
 }
+
+fn strings(items: &[&str]) -> Vec<String> {
+    items.iter().map(|s| s.to_string()).collect()
+}
+
+#[test]
+fn new_stock_has_empty_alias_lists_and_terms_round_trip() {
+    let db = seeded();
+    let RegisterResult::Created(stock) = register_stock(
+        &db.conn,
+        &input(Market::Kr, "005930", "삼성전자", None),
+        NOW,
+    )
+    .unwrap() else {
+        panic!("created");
+    };
+    assert!(
+        stock.aliases.is_empty() && stock.anchors.is_empty() && stock.aliases_removed.is_empty()
+    );
+
+    assert!(
+        set_stock_terms(
+            &db.conn,
+            stock.id,
+            &strings(&["삼전", "Samsung"]),
+            &strings(&["반도체"])
+        )
+        .unwrap()
+    );
+    let read = find_stock(&db.conn, stock.id).unwrap().unwrap();
+    assert_eq!(read.aliases, strings(&["삼전", "Samsung"]));
+    assert_eq!(read.anchors, strings(&["반도체"]));
+    assert!(!set_stock_terms(&db.conn, 9999, &[], &[]).unwrap());
+}
+
+#[test]
+fn removing_alias_moves_it_to_removed_list() {
+    let db = seeded();
+    let RegisterResult::Created(stock) = register_stock(
+        &db.conn,
+        &input(Market::Kr, "005930", "삼성전자", None),
+        NOW,
+    )
+    .unwrap() else {
+        panic!("created");
+    };
+    set_stock_terms(&db.conn, stock.id, &strings(&["삼전", "Samsung"]), &[]).unwrap();
+    assert!(remove_alias(&db.conn, stock.id, "삼전").unwrap());
+    let read = find_stock(&db.conn, stock.id).unwrap().unwrap();
+    assert_eq!(read.aliases, strings(&["Samsung"]));
+    assert_eq!(read.aliases_removed, strings(&["삼전"]));
+    assert!(!remove_alias(&db.conn, stock.id, "없는별칭").unwrap());
+    assert!(!remove_alias(&db.conn, stock.id, "삼전").unwrap());
+}
+
+#[test]
+fn broken_json_lists_read_as_empty() {
+    let db = seeded();
+    let RegisterResult::Created(stock) = register_stock(
+        &db.conn,
+        &input(Market::Kr, "005930", "삼성전자", None),
+        NOW,
+    )
+    .unwrap() else {
+        panic!("created");
+    };
+    db.conn
+        .execute(
+            "UPDATE stocks SET aliases = 'oops' WHERE id = ?1",
+            [stock.id],
+        )
+        .unwrap();
+    assert!(
+        find_stock(&db.conn, stock.id)
+            .unwrap()
+            .unwrap()
+            .aliases
+            .is_empty()
+    );
+}

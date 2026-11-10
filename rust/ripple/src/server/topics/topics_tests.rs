@@ -605,6 +605,7 @@ fn topics_without_id_are_continued_by_same_name_or_shared_term_once_each() {
         last_seen_at: None,
         ended_at: None,
         deleted_at: None,
+        scope: "market".into(),
     };
     let result = continue_topics(
         vec![
@@ -1244,6 +1245,7 @@ fn retain_dropped_rules() {
         last_seen_at: None,
         ended_at: None,
         deleted_at: None,
+        scope: "market".into(),
     };
     let row =
         |id: i64, matched: i64, shown: i64| (topic(id), TopicArticleCounts { matched, shown });
@@ -1385,5 +1387,28 @@ fn parse_topic_refresh_follows_zod_rules_and_unused_imports_stay_used() {
             "",
             crate::server::ai::decider::types::DeciderErrorKind::Upstream,
         ),
+    );
+}
+
+#[test]
+fn topic_reads_scope_and_unknown_values_become_market() {
+    let shared = crate::test_support::shared_test_db();
+    let topic = auto_topic(&shared, "중동긴장", &["중동"]);
+    assert_eq!(topic.scope, "market");
+    let conn = shared.db.lock().unwrap();
+    conn.execute(
+        "UPDATE topics SET scope = 'company' WHERE id = ?1",
+        [topic.id],
+    )
+    .unwrap();
+    assert_eq!(
+        find_topic(&conn, topic.id).unwrap().unwrap().scope,
+        "company"
+    );
+    conn.execute("UPDATE topics SET scope = '???' WHERE id = ?1", [topic.id])
+        .unwrap();
+    assert_eq!(
+        find_topic(&conn, topic.id).unwrap().unwrap().scope,
+        "market"
     );
 }
