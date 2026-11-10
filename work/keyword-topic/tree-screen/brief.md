@@ -34,6 +34,7 @@
 - `e2e/settings.spec.ts`
 - `e2e/mock-services.mjs`
 - `README.md`(설정·키워드 설명이 있는 곳만)
+- 기본값 변경으로 깨지는 기존 시험(기대값·시험 입력만, 제품 코드는 안 됨): `rust/ripple/src/server/evaluate/run_tests.rs`, `rust/ripple/src/server/keywords/performance_tests.rs`, `rust/ripple/src/server/schedule/plan_tests.rs`, `rust/ripple/src/server/schedule/scheduler_tests.rs`, `rust/ripple/src/server/timeline/read_tests.rs`, `rust/ripple/src/web/timeline_tests.rs`
 
 ## 볼 위치
 - `templates/stocks/keywords.html`(점수 `keyword-scores` 자리), `templates/stocks/item.html`, `templates/stocks/regen_form.html`(POST 폼·htmx 모양)
@@ -60,7 +61,7 @@
 4. E2E·README·캡처 → `/check` 전체 통과
 
 ## 제약
-- 바꿔도 되는 기대값은 `e2e/settings.spec.ts`의 칸 이름·기본값(영향도 6 → 5, 깊이 범위), `e2e/keywords.spec.ts`의 점수 자리, `settings_tests`·`settings_form_tests`의 기본값·깊이 범위뿐이다.
+- 바꿔도 되는 기대값은 `e2e/settings.spec.ts`의 칸 이름·기본값(영향도 6 → 5, 깊이 범위), `e2e/keywords.spec.ts`의 점수 자리, `settings_tests`·`settings_form_tests`의 기본값·깊이 범위, 그리고 "수정 가능 범위"에 더한 기존 시험 6개 파일의 기본값 의존 부분뿐이다. 이 6개 파일은 시험의 뜻이 기본값 자체를 확인하는 것이면(예: `plan_tests.rs`의 기본 주기, `read_tests.rs`의 `page.min_magnitude`, `web/timeline_tests.rs`의 "영향도 N점 이상" 문구) 기대값을 새 기본값(weekly·5)으로 고치고, 기본값과 상관없는 동작을 확인하는 시험이면(스케줄러 다시 만들기 횟수, 표시 규칙 경계 등) 시험 준비에서 옛 값(`daily`·6)을 설정으로 직접 써서 원래 시나리오를 지킨다. 제품 코드는 바꾸지 않는다.
 - `docs/`는 고치지 않는다(인계에 적음). 실제 API를 부르지 않는다.
 
 ## 알려진 함정
@@ -72,3 +73,6 @@
 
 ## 상위로 올릴 조건
 기본 규칙(범위 밖·기대값 변경·두 번 고쳐도 남는 오류는 보고) + 손님 화면의 동작을 바꿔야 할 때
+
+- 시도 1 결과(마지막 커밋 f968207): 체크포인트 1~3은 끝났고 커밋됐다(실적 표시, 별칭 칩·지우기 web·worker·worker_client, 설정 이름·범위·기본값). 재시도는 이어서 기존 시험 12개(`evaluate::run` 1, `keywords::performance` 1, `schedule::plan` 2, `schedule::scheduler` 4, `timeline::read` 2, `web::timeline` 2; `cargo test` 695 통과·12 실패)를 위 "제약"대로 고친 뒤 체크포인트 4(E2E·README·`/check`·캡처)를 한다. 배제한 방법: 기본값을 되돌리는 것(사용자 결정 3B·4A·⑦), 제품 코드에서 기본값을 우회하는 것.
+- 진단(2026-11-10, 시도 1, Sonnet/medium): 브리프 빈틈 — 기본값(weekly·영향도 5) 변경이 기본값에 기대는 범위 밖 기존 시험 12개를 깨는 것을 브리프가 예상하지 못해 수정 범위·기대값 규칙이 없었다 → 브리프 빈틈
