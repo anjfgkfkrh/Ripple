@@ -68,5 +68,7 @@
 - 앱 전체 설정을 바꾸는 E2E는 데스크톱에서만 차례로 돌고 바로 되돌린다(DEVELOPMENT 4장).
 - 리뷰(2026-11-10, tree-full): `tree.rs`의 `MAX_DEPTH`는 이미 2라 `clamp_depth`(생성·`read.rs` 공용)는 1~2로 자른다. 남은 것은 `settings.rs` 범위·설정 화면이다. 새로 만든 키워드는 관련도·영향도가 NULL이라 지금 점수 자리(`keyword-scores`)는 비어 보이고, E2E 가짜 AI 트리는 7개(별칭 `가짜별칭`, 고유어 `반도체·데이터센터·HBM·메모리·GPU`)다.
 
+- 리뷰(2026-11-10, tree-weekly): 실적 함수는 `server/keywords/performance.rs` `keyword_performance(conn, stock_id, since)`이고 표의 키는 `tree.rs` `normalize_key`(공백 빼고 소문자)한 키워드 글자다. 키워드 줄 글자도 `normalize_key`로 찾아야 맞는다. 정기 점검은 이제 주기와 상관없이 매일 06:00에 확인하고 대상만 주기로 고르므로, 설정 화면 주기 칸 설명이 "다시 만들기"를 말하면 "정기 점검"에 맞게 고친다.
+
 ## 상위로 올릴 조건
 기본 규칙(범위 밖·기대값 변경·두 번 고쳐도 남는 오류는 보고) + 손님 화면의 동작을 바꿔야 할 때
