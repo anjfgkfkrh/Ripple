@@ -25,3 +25,6 @@ time,id,role,stage,task,attempt,model,effort,requests,input,cache_write_5m,cache
 2026-11-10 22:57:53,aa96624114421a32c,review,keyword-topic,work/keyword-topic/eval-merge,1,claude-opus-5-5,기본,19,38,94723,0,1304680,10230,94725,0.9393,5.8024,4.8631,83.8
 2026-11-10 23:56:14,a4af797e62bd2dde1,work,keyword-topic,work/keyword-topic/topic-input,1,claude-sonnet-5-5,medium,39,78,212411,0,3574726,29543,132059,1.1841,7.8699,6.6858,85.0
 2026-11-10 23:58:50,a85eedb68bff8d2e0,review,keyword-topic,work/keyword-topic/topic-input,1,claude-opus-5-5,기본,26,52,98748,0,1863298,9544,98750,1.0575,8.0393,6.9818,86.8
+2026-11-11 00:10:06,ab8933aaad9f9d08e,work,keyword-topic,work/keyword-topic/stage-check,1,claude-sonnet-5-5,medium,58,116,120841,0,4897287,27840,139119,1.0705,10.3149,9.2444,89.6
+2026-11-11 00:12:02,a00ba4b5c229ec6fa,review,keyword-topic,work/keyword-topic/stage-check,1,claude-opus-5-5,기본,15,30,96258,0,931552,10798,96260,0.8837,4.3273,3.4436,79.6
+2026-11-11 15:55:27,32cb75aa-307a-484d-b449-d3a90b9afe5c,run,keyword-topic,,,claude-sonnet-5-5,medium,91,242,0,226938,8764713,30631,145113,2.0910,18.2901,16.1991,88.6
