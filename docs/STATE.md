@@ -3,14 +3,15 @@
 > 읽는 때: 세션을 시작할 때 맨 먼저. 지금 하는 일, 답 대기, 다음 할 일만 둔다(화면 한 장 안).
 > 이 문서는 덧붙이지 않고 통째로 다시 쓴다(agentflow review가 작업 통과 때, `/handoff`가 단계 밖 작업 뒤). 끝난 일의 자세한 기록은 [DECISIONS.md](DECISIONS.md) 3장, 단계 표·작업 방법은 [DEVELOPMENT.md](DEVELOPMENT.md)에 둔다. 실제와 다르면 `git log`와 `git status`를 먼저 본다.
 
-마지막 갱신: 2026-11-14 (한국 시간), 18단계 `article-classify` 계획 승인(브랜치 `af/article-classify`)
+마지막 갱신: 2026-11-14 (한국 시간), 18단계 `article-classify`의 `measure` 통과(브랜치 `af/article-classify`)
 
 ## 다음 할 일
 
-- **18단계 `article-classify` 진행: 사람이 원격 최신 백업을 `.check-restore/ripple.db`로 받아 둔 뒤 새 세션에서 `/agentflow:run article-classify`.** 계획 `work/article-classify/PLAN.md`(작업 9개: measure → schema → market-alias → relink-7d, stock-subject → display-rule → article-nature → nature-tabs → stage-check). 결정은 DECISIONS.md 1장 "기사 분류 개선", "18단계 `article-classify` 계획 답", "18단계 계획 때 정한 세부". `measure`(유료 최대 $0.05)가 통과하면 상위가 질문 문구·기준을 확정하고, 지난 평가 규칙 결과와 7일 성격 묻기 비용을 사용자에게 알린 뒤 진행한다. `stage-check`는 최대 $0.15 승인됨.
+- **18단계 `article-classify`: `measure` 통과(유료 $0.0101). 사람 확인을 기다린다.** 아래 "답 대기" 첫 항목을 보고 이의가 없으면 `work/article-classify/PLAN.md`의 `stock-subject` 상태를 `대기`로 되돌린 뒤 `/agentflow:run article-classify`. 그동안 `schema` → `market-alias` → `relink-7d`는 이어서 돌 수 있다. 결정은 DECISIONS.md 1장 "기사 분류 개선", "18단계 `article-classify` 계획 답", "18단계 계획 때 정한 세부", "18단계 measure 구현 세부", 수치는 2장 "기사 분류 측정". `stage-check`는 최대 $0.15 승인됨.
 
 ## 답 대기
 
+- **18단계 measure 결과 확인(`stock-subject`를 `대기`로 되돌릴지)**: 질문 문구·기준 0.5는 계획대로 두고 브리프에 확정함(예/아니오 `type`은 `"noul"`). 사람이 볼 것 ① 지난 평가 규칙(같은 기사 시장 관련도 > 종목 관련도면 숨김)은 화면 기준을 넘는 종목 평가 2,106건 중 79건을 숨긴다. 그중 23건은 표본 ④(정상 기사가 많은 묶음), 20건은 표본 밖(목록 DECISIONS 2장·measure 인계 c). 계획 답 ⑤ "정상 기사가 많이 숨으면 멈추고 다시 묻는다"의 판단이 필요 ② 7일 성격 한 번 묻기 약 $0.043~0.048(1,632건), 이후 하루 약 $0.007 ③ `bystander` ≥ 0.5: ① 15/15, ④ 4/10, 회사 기사 2/15(s38·s39, 다른 회사 영향 기사), 형식 1/10 ④ `[자막뉴스]` 4건은 `media` 0.19~0.30으로 숨겨지지 않는다(질문 문구를 바꿀지, 그대로 둘지). 뉴스 모음 `roundup`은 0.52·0.56으로 기준 근처.
 - **기사 분류 2-5 나머지**: 젠슨 황 사임 뒤 본인 심경·주변 반응·다른 경영자 비교 기사(영향도 6.9~7.7로 보임)가 왜 엔비디아에 붙는지. 사용자 "지금 그대로, 나중에 수정". 사례는 DECISIONS 2장 "기사 분류 조사".
 - **16단계(작음): 손님이 비밀번호 창으로 권한을 얻은 직후 화면.** A(추천) 그대로 둔다(새로 고치면 맞아짐) / B 비밀번호가 맞으면 원래 요청 뒤 화면을 새로 고친다. DECISIONS.md 1장 "16단계 unlock-ui 구현 세부" ⑤.
 - **17단계에서 뺀 것(답 11A·12A)**: 네이버 뉴스 검색 API 등 수집 보강(I9), 토픽 갱신 모델 교체·토픽 수·간격·목표 금액. 17단계 배포 뒤 비용을 다시 재고 묻는다.

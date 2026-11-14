@@ -288,7 +288,7 @@
 - **web**: 화면과 API.
 
 ### 6.3 Jev 연동 참고
-- Jev는 TypeSafe AI의 의사결정 모델로, 질문 유형은 boolean(0~1 확률), choice(지정 선택지 중 하나), score(정의한 척도의 점수) 세 가지다. 텍스트 입력만 받는다.
+- Jev는 TypeSafe AI의 의사결정 모델로, 질문 유형은 boolean(0~1 확률, API의 `type` 이름은 `"noul"`), choice(지정 선택지 중 하나), score(정의한 척도의 점수) 세 가지다. 텍스트 입력만 받는다.
 - 이 프로젝트에서는 **score(관련도·영향도 0~10)** 와 **choice(호재/악재/중립)** 를 사용한다. 기사는 셋을 한 요청에, 키워드 후보와 토픽–종목 쌍은 관련도·영향도를 한 요청에 묻는다(11단계). 17단계부터 시장·주제 항목에 걸린 기사는 기사당 한 요청에 토픽마다 관련도, 시장 항목마다 관련도, 증시마다 영향도·호재/악재를 묻는다(종목은 지금처럼 하나씩).
 - TypeSafe 공식 TypeScript SDK(`@typesafe-ai/sdk`)는 쓰지 않는다. Rust는 HTTP로 직접 부른다(`rust/ripple/src/server/ai/decider/typesafe.rs`, 14단계 R2). 모델 ID 예: `jev-latest`(최신 안정), `jev-1.13.0`(고정 버전).
 - OpenRouter 경유 시 모델 ID 예: `~typesafe/jev-latest`.
