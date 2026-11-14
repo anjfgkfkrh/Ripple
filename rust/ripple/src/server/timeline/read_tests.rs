@@ -200,6 +200,7 @@ fn distinct(i: u32) -> String {
 }
 
 const ALL: TimelineFilter = TimelineFilter {
+    nature: NatureTab::Fact,
     stock_id: None,
     topic_id: None,
     impact: None,
@@ -870,6 +871,7 @@ fn parse_timeline_params_ignores_unknown_values_and_rounds_limit() {
     assert_eq!(
         filter,
         TimelineFilter {
+            nature: NatureTab::Fact,
             stock_id: Some(2),
             topic_id: Some(7),
             impact: Some(Impact::Negative)
@@ -1169,7 +1171,7 @@ fn read_topic_cards_apply_the_hidden_rule_to_attached_stocks_only() {
 
 fn set_nature(conn: &Connection, article_id: i64, media: Option<f64>, roundup: Option<f64>) {
     conn.execute(
-        "UPDATE articles SET nature_media = ?1, nature_roundup = ?2, nature_at = 1 WHERE id = ?3",
+        "UPDATE articles SET nature_media = ?1, nature_roundup = ?2, nature_fact = 1.0, nature_at = 1 WHERE id = ?3",
         params![media, roundup, article_id],
     )
     .unwrap();
@@ -1235,4 +1237,231 @@ fn nature_hidden_articles_do_not_count_in_topic_cards() {
     let cards = read_topic_cards(c, now()).unwrap();
     assert_eq!(cards.len(), 1);
     assert_eq!(cards[0].shown_total, 2);
+}
+
+// ---- 성격 탭과 태그(article-classify/nature-tabs) ----
+
+const VIEW: TimelineFilter = TimelineFilter {
+    nature: NatureTab::View,
+    ..ALL
+};
+
+/// 성격 확률(사실·해석·전망·기타)을 정한다. `None`이면 성격이 아직 없는 기사.
+fn set_probs(conn: &Connection, article_id: i64, p: Option<[f64; 4]>) {
+    if let Some([fact, analysis, forecast, opinion]) = p {
+        conn.execute(
+            "UPDATE articles SET nature_fact = ?1, nature_analysis = ?2, nature_forecast = ?3, nature_opinion = ?4, \
+             nature_media = 0, nature_roundup = 0, nature_at = 1 WHERE id = ?5",
+            params![fact, analysis, forecast, opinion, article_id],
+        )
+        .unwrap();
+    }
+}
+
+/// (제목, 성격)마다 삼성전자 기사를 시간 간격을 두고 넣는다(제목이 서로 달라 묶이지 않음).
+fn seed_natures(c: &Connection, stock: i64, list: &[(&str, Option<[f64; 4]>)]) {
+    for (n, (title, p)) in list.iter().enumerate() {
+        let (_, article) = Link::new(stock, ago(1.0 + n as f64))
+            .titled(title)
+            .score(8.0)
+            .magnitude(7.0)
+            .insert(c);
+        set_probs(c, article, *p);
+    }
+}
+
+const FACT: [f64; 4] = [0.9, 0.1, 0.1, 0.1];
+const ANALYSIS: [f64; 4] = [0.1, 0.9, 0.1, 0.1];
+const FACT_FORECAST: [f64; 4] = [0.8, 0.1, 0.7, 0.1];
+const NONE_OF_THEM: [f64; 4] = [0.1, 0.1, 0.1, 0.1];
+
+#[test]
+fn nature_tabs_split_by_tags_and_null_goes_to_the_fact_tab() {
+    let t = test_db_with_listings();
+    let c = &t.conn;
+    let ids = add_stocks(c);
+    ensure_default_market(c, ago(80.0)).unwrap();
+    seed_natures(
+        c,
+        ids.samsung,
+        &[
+            ("사실 기사", Some(FACT)),
+            ("해석 기사", Some(ANALYSIS)),
+            ("사실과 전망", Some(FACT_FORECAST)),
+            ("성격 없음", None),
+            ("아무것도 아님", Some(NONE_OF_THEM)),
+        ],
+    );
+    assert_eq!(
+        titles(c, &ALL),
+        names(&["사실 기사", "사실과 전망", "성격 없음"])
+    );
+    assert_eq!(
+        titles(c, &VIEW),
+        names(&["해석 기사", "사실과 전망", "아무것도 아님"])
+    );
+}
+
+#[test]
+fn nature_card_tags_follow_the_article_and_none_for_null() {
+    let t = test_db_with_listings();
+    let c = &t.conn;
+    let ids = add_stocks(c);
+    ensure_default_market(c, ago(80.0)).unwrap();
+    seed_natures(
+        c,
+        ids.samsung,
+        &[
+            ("사실과 전망", Some(FACT_FORECAST)),
+            ("성격 없음", None),
+            ("아무것도 아님", Some(NONE_OF_THEM)),
+        ],
+    );
+    let tags = |filter: &TimelineFilter, title: &str| {
+        read(c, filter, TIMELINE_PAGE_SIZE)
+            .cards
+            .into_iter()
+            .find(|card| card.title == title)
+            .map(|card| card.tags)
+    };
+    let both = Some(vec![NatureTag::Fact, NatureTag::Forecast]);
+    assert_eq!(tags(&ALL, "사실과 전망"), both);
+    assert_eq!(tags(&VIEW, "사실과 전망"), both);
+    assert_eq!(tags(&ALL, "성격 없음"), Some(Vec::new()));
+    assert_eq!(tags(&VIEW, "아무것도 아님"), Some(vec![NatureTag::Other]));
+}
+
+#[test]
+fn nature_same_news_groups_only_articles_in_the_tab_and_merges_tags() {
+    let t = test_db_with_listings();
+    let c = &t.conn;
+    let ids = add_stocks(c);
+    ensure_default_market(c, ago(80.0)).unwrap();
+    let title = "삼성전자 반도체 투자 확대 발표";
+    for (n, (publisher, p)) in [
+        ("가경제", Some(FACT)),
+        ("나경제", Some(ANALYSIS)),
+        ("다경제", Some(FACT_FORECAST)),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let (_, article) = Link::new(ids.samsung, ago(1.0 + n as f64 * 0.1))
+            .titled(title)
+            .by(publisher)
+            .score(8.0)
+            .magnitude(7.0)
+            .insert(c);
+        set_probs(c, article, p);
+    }
+    let fact = read(c, &ALL, TIMELINE_PAGE_SIZE);
+    assert_eq!(fact.cards.len(), 1);
+    let card = &fact.cards[0];
+    assert_eq!(card.publisher, "가경제");
+    assert_eq!(
+        card.others
+            .iter()
+            .map(|o| o.publisher.as_str())
+            .collect::<Vec<_>>(),
+        vec!["다경제"]
+    );
+    // 묶인 기사(사실, 사실+전망) 태그의 합. 해석 기사는 이 탭에 없어 섞이지 않는다.
+    assert_eq!(card.tags, vec![NatureTag::Fact, NatureTag::Forecast]);
+    let view = read(c, &VIEW, TIMELINE_PAGE_SIZE);
+    assert_eq!(view.cards.len(), 1);
+    assert_eq!(view.cards[0].publisher, "나경제");
+    assert_eq!(
+        view.cards[0]
+            .others
+            .iter()
+            .map(|o| o.publisher.as_str())
+            .collect::<Vec<_>>(),
+        vec!["다경제"]
+    );
+    assert_eq!(
+        view.cards[0].tags,
+        vec![NatureTag::Fact, NatureTag::Analysis, NatureTag::Forecast]
+    );
+}
+
+#[test]
+fn nature_tab_combines_with_item_and_impact_filters_and_counts_for_more() {
+    let t = test_db_with_listings();
+    let c = &t.conn;
+    let ids = add_stocks(c);
+    ensure_default_market(c, ago(80.0)).unwrap();
+    let mut list: Vec<(String, Option<[f64; 4]>)> = Vec::new();
+    for n in 0..(TIMELINE_PAGE_SIZE + 2) {
+        list.push((distinct(n as u32), Some(ANALYSIS)));
+    }
+    for (n, (title, p)) in list.iter().enumerate() {
+        let (_, article) = Link::new(ids.samsung, ago(1.0 + n as f64 * 0.01))
+            .titled(title)
+            .score(8.0)
+            .magnitude(7.0)
+            .impact("positive")
+            .insert(c);
+        set_probs(c, article, *p);
+    }
+    // 다른 종목의 해석 기사와 같은 종목의 사실 기사
+    let (_, other) = Link::new(ids.hynix, ago(0.5))
+        .titled("하이닉스 해석")
+        .score(8.0)
+        .magnitude(7.0)
+        .impact("positive")
+        .insert(c);
+    set_probs(c, other, Some(ANALYSIS));
+    let (_, fact) = Link::new(ids.samsung, ago(0.4))
+        .titled("삼성 사실")
+        .score(8.0)
+        .magnitude(7.0)
+        .impact("positive")
+        .insert(c);
+    set_probs(c, fact, Some(FACT));
+
+    let page = read(c, &VIEW, TIMELINE_PAGE_SIZE);
+    assert_eq!(page.cards.len(), TIMELINE_PAGE_SIZE);
+    assert!(page.has_more);
+    let all = read(c, &VIEW, TIMELINE_PAGE_SIZE * 2);
+    assert_eq!(all.cards.len(), TIMELINE_PAGE_SIZE + 3);
+    assert!(!all.has_more);
+    let by_samsung = TimelineFilter {
+        stock_id: Some(ids.samsung),
+        ..VIEW
+    };
+    let page = read(c, &by_samsung, TIMELINE_PAGE_SIZE * 2);
+    assert_eq!(page.cards.len(), TIMELINE_PAGE_SIZE + 2);
+    assert!(!page.has_more);
+    let negative = TimelineFilter {
+        impact: Some(Impact::Negative),
+        ..by_samsung
+    };
+    assert!(titles(c, &negative).is_empty());
+    let positive = TimelineFilter {
+        stock_id: Some(ids.hynix),
+        impact: Some(Impact::Positive),
+        ..VIEW
+    };
+    assert_eq!(titles(c, &positive), names(&["하이닉스 해석"]));
+    let fact_by_samsung = TimelineFilter {
+        stock_id: Some(ids.samsung),
+        ..ALL
+    };
+    assert_eq!(titles(c, &fact_by_samsung), names(&["삼성 사실"]));
+}
+
+#[test]
+fn parse_timeline_params_reads_nature_view_and_defaults_to_fact() {
+    let nature = |value: &str| {
+        parse_timeline_params(&query(&[("nature", value)]), &[], &[], TIMELINE_MAX)
+            .0
+            .nature
+    };
+    assert_eq!(nature("view"), NatureTab::View);
+    assert_eq!(nature("fact"), NatureTab::Fact);
+    assert_eq!(nature("elsewhere"), NatureTab::Fact);
+    assert_eq!(
+        parse_timeline_params(&[], &[], &[], TIMELINE_MAX).0.nature,
+        NatureTab::Fact
+    );
 }

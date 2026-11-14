@@ -6,6 +6,7 @@ use super::*;
 use crate::server::db::schema::PriceSource;
 use crate::server::prices::store::{NewPrice, save_price};
 use crate::server::stocks::repository::{RegisterInput, RegisterResult, register_stock};
+use crate::server::timeline::read::NatureTab;
 use crate::server::timeline::reads::set_articles_read;
 use crate::test_support::{LinkSpec, insert_link, seed_listings};
 use crate::web::test_support::{T0, TestWeb, start_web};
@@ -54,6 +55,7 @@ fn timeline_href_keeps_filters_and_resets_limit() {
     assert_eq!(timeline_href(&none, Some(30)), "/");
     assert_eq!(timeline_href(&none, Some(60)), "/?limit=60");
     let all = TimelineFilter {
+        nature: NatureTab::Fact,
         stock_id: Some(2),
         topic_id: Some(7),
         impact: Some(Impact::Negative),
