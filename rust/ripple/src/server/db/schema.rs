@@ -197,6 +197,63 @@ impl EvaluationSummary {
     }
 }
 
+/// 기사 성격 확률이 이 값 이상이면 그 성격으로 본다.
+pub const NATURE_THRESHOLD: f64 = 0.5;
+/// 종목 평가의 `bystander` 확률이 이 값 이상이면 종목이 주인공이 아닌 것으로 본다.
+pub const BYSTANDER_THRESHOLD: f64 = 0.5;
+
+/// 화면에 보이는 기사 성격 태그
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NatureTag {
+    Fact,
+    Analysis,
+    Forecast,
+    Other,
+}
+
+impl NatureTag {
+    /// 화면 글자
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Fact => "사실",
+            Self::Analysis => "해석",
+            Self::Forecast => "전망",
+            Self::Other => "기타",
+        }
+    }
+}
+
+/// 성격 6확률(`articles.nature_*`)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NatureProbs {
+    pub fact: f64,
+    pub analysis: f64,
+    pub forecast: f64,
+    pub opinion: f64,
+    pub media: f64,
+    pub roundup: f64,
+}
+
+/// 성격 확률에서 (태그 목록, 숨김 여부)를 고른다. 순서는 Fact·Analysis·Forecast·Other.
+/// Other는 opinion이 기준 이상이거나 앞의 셋이 모두 기준 미만일 때. 숨김은 media 또는 roundup이 기준 이상일 때.
+pub fn classify_nature(p: &NatureProbs) -> (Vec<NatureTag>, bool) {
+    let mut tags = Vec::new();
+    if p.fact >= NATURE_THRESHOLD {
+        tags.push(NatureTag::Fact);
+    }
+    if p.analysis >= NATURE_THRESHOLD {
+        tags.push(NatureTag::Analysis);
+    }
+    if p.forecast >= NATURE_THRESHOLD {
+        tags.push(NatureTag::Forecast);
+    }
+    if p.opinion >= NATURE_THRESHOLD || tags.is_empty() {
+        tags.push(NatureTag::Other);
+    }
+    let hidden = p.media >= NATURE_THRESHOLD || p.roundup >= NATURE_THRESHOLD;
+    (tags, hidden)
+}
+
 #[cfg(test)]
 #[path = "schema_tests.rs"]
 mod tests;

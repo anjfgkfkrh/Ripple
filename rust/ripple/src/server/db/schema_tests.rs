@@ -18,3 +18,44 @@ fn enums_round_trip_through_db_strings() {
         assert_eq!(impact.as_str().parse::<Impact>(), Ok(*impact));
     }
 }
+
+#[test]
+fn classify_nature_picks_tags_and_hidden() {
+    let p = |f, a, fo, o, m, r| NatureProbs {
+        fact: f,
+        analysis: a,
+        forecast: fo,
+        opinion: o,
+        media: m,
+        roundup: r,
+    };
+    use NatureTag::*;
+    assert_eq!(
+        classify_nature(&p(0.9, 0.5, 0.1, 0.0, 0.0, 0.0)),
+        (vec![Fact, Analysis], false)
+    );
+    assert_eq!(
+        classify_nature(&p(0.1, 0.1, 0.8, 0.5, 0.0, 0.0)),
+        (vec![Forecast, Other], false)
+    );
+    assert_eq!(
+        classify_nature(&p(0.4, 0.4, 0.4, 0.4, 0.0, 0.0)),
+        (vec![Other], false)
+    );
+    assert_eq!(
+        classify_nature(&p(0.9, 0.0, 0.0, 0.0, 0.5, 0.0)),
+        (vec![Fact], true)
+    );
+    assert_eq!(
+        classify_nature(&p(0.9, 0.0, 0.0, 0.0, 0.49, 0.5)),
+        (vec![Fact], true)
+    );
+    assert_eq!(
+        classify_nature(&p(0.9, 0.0, 0.0, 0.0, 0.49, 0.49)),
+        (vec![Fact], false)
+    );
+    assert_eq!(
+        [Fact, Analysis, Forecast, Other].map(NatureTag::label),
+        ["사실", "해석", "전망", "기타"]
+    );
+}
