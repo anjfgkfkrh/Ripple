@@ -172,3 +172,34 @@ fn last_passed_time_is_the_latest_pass() {
     let table = keyword_performance(&db.conn, stock, now() - 28 * DAY).unwrap();
     assert_eq!(table["hbm"].last_passed_at, Some(second));
 }
+
+#[test]
+fn hidden_stock_evaluations_do_not_pass() {
+    // 숨김 규칙: bystander 0.7은 통과에서 빠지고(걸린 수에는 센다), 0.3·NULL(시장 평가 없음)은 센다
+    let (db, stock, _) = testdb();
+    let at = now() - DAY;
+    for _ in 0..3 {
+        link(&db, stock, "삼성전자 → HBM", Some((8.0, 8.0)), at, false);
+    }
+    let ids: Vec<i64> = {
+        let mut stmt = db
+            .conn
+            .prepare("SELECT match_id FROM evaluations ORDER BY match_id")
+            .unwrap();
+        stmt.query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    };
+    for (id, value) in ids.iter().zip([Some(0.7), Some(0.3), None]) {
+        db.conn
+            .execute(
+                "UPDATE evaluations SET bystander = ?1 WHERE match_id = ?2",
+                params![value, id],
+            )
+            .unwrap();
+    }
+    let table = keyword_performance(&db.conn, stock, at - DAY).unwrap();
+    let hbm = &table["hbm"];
+    assert_eq!((hbm.matched, hbm.passed), (3, 2));
+}

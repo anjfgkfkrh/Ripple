@@ -1718,6 +1718,93 @@ fn company_topic_counts_come_from_the_branch_path_of_attached_stocks() {
 }
 
 #[test]
+fn topic_article_counts_apply_the_hidden_rule_to_stock_evaluations_only() {
+    // 종목 평가가 숨김이면 회사 토픽 통과 수에서 빠지고, 시장 토픽 항목 평가는 규칙을 받지 않는다
+    let (shared, samsung) = setup();
+    ensure_default_market(&shared.db.lock().unwrap(), at(-30.0)).unwrap();
+    let market_topic = auto_topic(&shared, "중동 긴장", &["중동"]);
+    let lens = {
+        let conn = shared.db.lock().unwrap();
+        sync_topic_lenses(&conn, &market_topic, at(-30.0)).unwrap()[0]
+    };
+    let hide = |match_id: i64, value: Option<f64>| {
+        shared
+            .db
+            .lock()
+            .unwrap()
+            .execute(
+                "UPDATE evaluations SET bystander = ?1 WHERE match_id = ?2",
+                rusqlite::params![value, match_id],
+            )
+            .unwrap();
+    };
+    let lens_link = link_to(&shared, lens, 8.0, 8.0);
+    hide(lens_link, Some(0.9));
+
+    let company = {
+        let conn = shared.db.lock().unwrap();
+        conn.execute(
+            "INSERT INTO topics (source, name, summary, terms, created_at, scope) VALUES ('auto', '삼성 수주', 's', '[\"수주\"]', ?1, 'company')",
+            [now()],
+        )
+        .unwrap();
+        let topic = find_topic(&conn, conn.last_insert_rowid())
+            .unwrap()
+            .unwrap();
+        attach_topic_to_stock(
+            &conn,
+            &StockRef::from(&samsung),
+            &topic,
+            &TopicLink {
+                reason: "수주",
+                relevance: 7.0,
+                magnitude: 6.0,
+            },
+            now(),
+        )
+        .unwrap();
+        topic
+    };
+    let display = samsung
+        .name_ko
+        .clone()
+        .unwrap_or_else(|| samsung.name.clone());
+    // 0.7 숨김, 0.3 보임, NULL(시장 평가 없음) 보임
+    for bystander in [Some(0.7), Some(0.3), None] {
+        let m = link_to(&shared, samsung.id, 8.0, 8.0);
+        set_path(&shared, m, &format!("{display} → 삼성 수주"));
+        hide(m, bystander);
+    }
+    let counts = topic_article_counts(
+        &shared.db.lock().unwrap(),
+        &[market_topic.id],
+        at(-24.0),
+        6.0,
+        6.0,
+    )
+    .unwrap();
+    assert_eq!(
+        counts[&market_topic.id].shown, 1,
+        "시장 토픽 항목은 규칙을 받지 않는다"
+    );
+    let counts = topic_article_counts(
+        &shared.db.lock().unwrap(),
+        &[company.id],
+        at(-24.0),
+        6.0,
+        6.0,
+    )
+    .unwrap();
+    assert_eq!(
+        counts[&company.id],
+        TopicArticleCounts {
+            matched: 3,
+            shown: 2
+        }
+    );
+}
+
+#[test]
 fn previous_topic_line_shows_screen_pass_count() {
     let m = build_topic_refresh_messages(
         &[PreviousTopic {
