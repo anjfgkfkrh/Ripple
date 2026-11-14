@@ -3,11 +3,11 @@
 > 읽는 때: 세션을 시작할 때 맨 먼저. 지금 하는 일, 답 대기, 다음 할 일만 둔다(화면 한 장 안).
 > 이 문서는 덧붙이지 않고 통째로 다시 쓴다(agentflow review가 작업 통과 때, `/handoff`가 단계 밖 작업 뒤). 끝난 일의 자세한 기록은 [DECISIONS.md](DECISIONS.md) 3장, 단계 표·작업 방법은 [DEVELOPMENT.md](DEVELOPMENT.md)에 둔다. 실제와 다르면 `git log`와 `git status`를 먼저 본다.
 
-마지막 갱신: 2026-11-14 (한국 시간), 18단계 `article-classify`의 `measure` 통과(브랜치 `af/article-classify`)
+마지막 갱신: 2026-11-14 (한국 시간), 18단계 `article-classify`의 `schema` 통과(브랜치 `af/article-classify`)
 
 ## 다음 할 일
 
-- **18단계 `article-classify`: `measure` 통과(유료 $0.0101). 사람 확인을 기다린다.** 아래 "답 대기" 첫 항목을 보고 이의가 없으면 `work/article-classify/PLAN.md`의 `stock-subject` 상태를 `대기`로 되돌린 뒤 `/agentflow:run article-classify`. 그동안 `schema` → `market-alias` → `relink-7d`는 이어서 돌 수 있다. 결정은 DECISIONS.md 1장 "기사 분류 개선", "18단계 `article-classify` 계획 답", "18단계 계획 때 정한 세부", "18단계 measure 구현 세부", 수치는 2장 "기사 분류 측정". `stage-check`는 최대 $0.15 승인됨.
+- **18단계 `article-classify`: `measure`·`schema` 통과. `stock-subject`는 사람 확인을 기다린다.** 아래 "답 대기" 첫 항목을 보고 이의가 없으면 `work/article-classify/PLAN.md`의 `stock-subject` 상태를 `대기`로 되돌린 뒤 `/agentflow:run article-classify`. 그동안 `market-alias` → `relink-7d`는 이어서 돌 수 있다. `schema`는 마이그레이션 0012(성격 6칸·`nature_at`·`bystander`, `user_version` 13)와 `schema.rs`의 기준 상수·`NatureTag`·`classify_nature`를 더했다(쓰는 코드는 뒤 작업). 결정은 DECISIONS.md 1장 "기사 분류 개선", "18단계 `article-classify` 계획 답", "18단계 계획 때 정한 세부", "18단계 measure 구현 세부", "18단계 schema 구현 세부", 수치는 2장 "기사 분류 측정". `stage-check`는 최대 $0.15 승인됨.
 
 ## 답 대기
 

@@ -75,6 +75,7 @@
 
 ## 알려진 함정
 - 리뷰(2026-11-14, measure): 예/아니오 질문 `type`은 브리프의 `"boolean"`이 아니라 `"noul"`이고 답은 `answers.<이름>.noul`(0~1)이다(`"boolean"`은 HTTP 400). measure도 `"noul"`로 쟀다.
+- 리뷰(2026-11-14, schema): `server/db/schema.rs`에 이미 자유 함수 `classify_nature(&NatureProbs) -> (Vec<NatureTag>, bool)`와 구조체 `NatureProbs`(f64 6칸)가 있다. `Decider` 메서드를 같은 이름으로 두면 헷갈리니 6확률은 `NatureProbs`로 담고, 숨김 기준은 `NATURE_THRESHOLD`를 쓴다.
 
 ## 상위로 올릴 조건
 기본 규칙(범위 밖·기대값 변경·두 번 고쳐도 남는 오류는 보고)

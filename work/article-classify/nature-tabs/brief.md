@@ -59,6 +59,7 @@
 
 ## 알려진 함정
 - 같은 소식 묶기는 SQL 밖에서 한다. 묶는 후보에도 탭 조건을 걸지 않으면 다른 탭 기사가 "외 N곳"에 섞인다.
+- 리뷰(2026-11-14, schema): 태그 고르기는 `server/db/schema.rs`의 `classify_nature(&NatureProbs) -> (Vec<NatureTag>, bool)`, 화면 글자는 `NatureTag::label()`이다. 성격이 없는 기사(`nature_at` NULL)는 이 함수에 넣지 말고 태그 없이 둔다(넣으면 Other가 붙는다).
 
 ## 상위로 올릴 조건
 기본 규칙(범위 밖·기대값 변경·두 번 고쳐도 남는 오류는 보고)
