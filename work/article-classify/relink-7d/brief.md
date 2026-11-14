@@ -46,3 +46,6 @@ worker가 시작할 때 한 번, 저장된 기사 중 최근 7일 것을 시장 
 
 ## 상위로 올릴 조건
 기본 규칙(범위 밖·기대값 변경·두 번 고쳐도 남는 오류는 보고)
+
+## 알려진 함정
+- 리뷰(2026-11-14, market-alias): `pnpm format:check`는 `work/article-classify/measure/first-response.json` 때문에 이미 실패한다(이번 작업과 무관, 고치지 말고 인계에 적는다). 시장 항목 `find`는 별칭이 맞으면 이름 연결(`match_kind = 'name'`, 경로 항목 이름, level 0)을 돌려주며, 이미 키워드로 걸린 기사–항목은 건너뛴다.
