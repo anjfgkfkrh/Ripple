@@ -617,6 +617,62 @@ async fn saves_magnitude_and_display_rule_needs_both_scores() {
     assert_eq!(others, 0);
 }
 
+fn bystanders(shared: &SharedTestDb) -> Vec<Option<f64>> {
+    let conn = shared.db.lock().unwrap();
+    conn.prepare("SELECT bystander FROM evaluations ORDER BY id")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn stock_evaluation_stores_bystander_and_same_news_copy_carries_it() {
+    let shared = seeded();
+    let ids = add_stocks(&shared);
+    let title = "한은 기준금리 동결…연 2.5% 유지";
+    name_link(&shared, ids.samsung, title, ago(5));
+    name_link(
+        &shared,
+        ids.samsung,
+        "[속보] 한은, 기준금리 동결…연 2.5% 유지",
+        ago(4),
+    );
+    let decider = fake_article_decider(|_| {
+        Ok(crate::server::ai::decider::types::Decision {
+            bystander: Some(0.83),
+            ..fake_decision()
+        })
+    });
+    let summary = evaluate(&shared, Some(&decider)).await;
+    assert_eq!((summary.evaluated, summary.copied), (1, 1));
+    assert_eq!(bystanders(&shared), [Some(0.83), Some(0.83)]);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn same_news_copy_of_an_evaluation_without_bystander_stays_null() {
+    let shared = seeded();
+    let ids = add_stocks(&shared);
+    let title = "한은 기준금리 동결…연 2.5% 유지";
+    name_link(&shared, ids.samsung, title, ago(5));
+    name_link(
+        &shared,
+        ids.samsung,
+        "[속보] 한은, 기준금리 동결…연 2.5% 유지",
+        ago(4),
+    );
+    let decider = fake_article_decider(|_| {
+        Ok(crate::server::ai::decider::types::Decision {
+            bystander: None,
+            ..fake_decision()
+        })
+    });
+    let summary = evaluate(&shared, Some(&decider)).await;
+    assert_eq!((summary.evaluated, summary.copied), (1, 1));
+    assert_eq!(bystanders(&shared), [None, None]);
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn same_news_within_24_hours_for_same_item_reuses_the_earlier_evaluation() {
     // it("같은 항목에 24시간 안에 걸린 같은 소식은 앞선 평가를 그대로 쓰고 Jev를 부르지 않는다")
@@ -963,6 +1019,8 @@ async fn topic_and_market_links_of_one_article_are_asked_in_one_call_and_stored_
         stored(&shared, m_kr),
         (5.0, 6.0, "negative".into(), 0.4, 0.5, None)
     );
+    // 시장·주제 평가 줄은 bystander가 NULL
+    assert_eq!(bystanders(&shared), [None, None, None]);
     // 표시 기준: 토픽 한국(8·6)만 관련도·영향도를 모두 넘는다.
     assert_eq!(
         (

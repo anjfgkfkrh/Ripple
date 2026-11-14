@@ -116,6 +116,7 @@ struct Evaluation {
     impact: String,
     impact_confidence: f64,
     impact_probabilities: String,
+    bystander: Option<f64>,
     model: String,
 }
 
@@ -129,7 +130,7 @@ fn find_same_news_evaluation(
     let mut stmt = conn.prepare(
         "SELECT evaluations.id, evaluations.relevance, evaluations.relevance_confidence, evaluations.magnitude, \
                 evaluations.magnitude_confidence, evaluations.impact, evaluations.impact_confidence, \
-                evaluations.impact_probabilities, evaluations.model, articles.title \
+                evaluations.impact_probabilities, evaluations.bystander, evaluations.model, articles.title \
          FROM evaluations INNER JOIN articles ON articles.id = evaluations.article_id \
          WHERE evaluations.stock_id = ?1 AND evaluations.copied_from IS NULL \
            AND articles.published_at >= ?2 AND articles.published_at <= ?3",
@@ -152,9 +153,10 @@ fn find_same_news_evaluation(
                         impact: row.get(5)?,
                         impact_confidence: row.get(6)?,
                         impact_probabilities: row.get(7)?,
-                        model: row.get(8)?,
+                        bystander: row.get(8)?,
+                        model: row.get(9)?,
                     },
-                    row.get(9)?,
+                    row.get(10)?,
                 ))
             },
         )?
@@ -204,8 +206,8 @@ fn store_copy(
 ) -> rusqlite::Result<bool> {
     conn.execute(
         "INSERT INTO evaluations (match_id, article_id, stock_id, relevance, relevance_confidence, magnitude, \
-         magnitude_confidence, impact, impact_confidence, impact_probabilities, model, copied_from, evaluated_at) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13) ON CONFLICT DO NOTHING",
+         magnitude_confidence, impact, impact_confidence, impact_probabilities, bystander, model, copied_from, evaluated_at) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14) ON CONFLICT DO NOTHING",
         params![
             item.match_id,
             item.article_id,
@@ -217,6 +219,7 @@ fn store_copy(
             same.impact,
             same.impact_confidence,
             renormalize_json(&same.impact_probabilities),
+            same.bystander,
             same.model,
             same.id,
             at
@@ -233,6 +236,7 @@ fn store_evaluation(
     relevance: (f64, f64),
     magnitude: (f64, f64),
     impact: (&str, f64, [f64; 3]),
+    bystander: Option<f64>,
     model: &str,
     usage: (i64, i64),
     price: f64,
@@ -263,8 +267,8 @@ fn store_evaluation(
     });
     conn.execute(
         "INSERT INTO evaluations (match_id, article_id, stock_id, relevance, relevance_confidence, magnitude, \
-         magnitude_confidence, impact, impact_confidence, impact_probabilities, model, evaluated_at) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12) ON CONFLICT DO NOTHING",
+         magnitude_confidence, impact, impact_confidence, impact_probabilities, bystander, model, evaluated_at) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13) ON CONFLICT DO NOTHING",
         params![
             item.match_id,
             item.article_id,
@@ -276,6 +280,7 @@ fn store_evaluation(
             impact.0,
             impact.1,
             probabilities.to_string(),
+            bystander,
             model,
             at
         ],
@@ -303,6 +308,7 @@ fn store_stock_decision(
             decision.impact_confidence,
             decision.impact_probabilities,
         ),
+        decision.bystander,
         &decision.model,
         (decision.usage.input_tokens, decision.usage.output_tokens),
         price,
@@ -413,6 +419,7 @@ fn store_merged_decision(
                 verdict.impact_confidence,
                 verdict.impact_probabilities,
             ),
+            None,
             &decision.model,
             (
                 input_each + if first { input_rest } else { 0 },

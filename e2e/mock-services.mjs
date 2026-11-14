@@ -220,6 +220,10 @@ function jevAnswer({ model, state }) {
           ? { positive: 0.85, negative: 0.05, neutral: 0.1 }
           : { positive: 0.1, negative: 0.05, neutral: 0.85 },
       },
+      // 종목 질문에만 있다. 기본은 낮은 확률(화면에서 숨기지 않는다).
+      ...(state.stock !== undefined
+        ? { bystander: { type: "noul", noul: 0.1 } }
+        : {}),
     },
     usage: { input_tokens: 900, output_tokens: 50 },
   };
@@ -368,7 +372,12 @@ createServer(async (request, response) => {
       (lead
         ? parsed.questions?.impact !== undefined || !parsed.state.subject.text
         : parsed.questions?.impact?.type !== "choice" ||
-          !parsed.state?.article?.title)
+          !parsed.state?.article?.title ||
+          // 종목 대상은 예/아니오 질문 bystander(type noul)를 더 묻고, 시장·주제 대상은 묻지 않는다.
+          (parsed.state?.stock !== undefined
+            ? parsed.questions?.bystander?.type !== "noul" ||
+              typeof parsed.questions.bystander.instructions !== "string"
+            : parsed.questions?.bystander !== undefined))
     ) {
       return sendJson(response, 422, { detail: "bad request" });
     }
