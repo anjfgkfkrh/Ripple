@@ -390,15 +390,9 @@ async fn nature_tabs_show_the_current_tab_and_tags_before_titles() {
     assert_eq!(fact.matches("data-testid=\"timeline-card\"").count(), 3);
     // 사실 태그 둘(첫째·둘째), 둘째 기사는 전망 태그도
     assert_eq!(fact.matches("data-testid=\"nature-tag\"").count(), 3);
-    let title_at = fact.find("<a href=\"https://fixture").unwrap_or(0);
-    let tag_at = fact.find("data-testid=\"nature-tag\"").unwrap();
-    assert!(
-        tag_at
-            < fact[tag_at..]
-                .find("hx-boost=\"false\"")
-                .map_or(0, |i| tag_at + i)
-    );
-    let _ = title_at;
+    // 태그 칩 바로 뒤에 제목 링크가 온다(제목 앞)
+    assert!(fact.contains("data-testid=\"nature-tag\">사실</span><a href="));
+    assert!(fact.contains("data-testid=\"nature-tag\">전망</span><a href="));
 
     let view = text(&web, "/?nature=view").await;
     assert!(view.contains("<a href=\"/?nature=view\" aria-current=\"page\""));
