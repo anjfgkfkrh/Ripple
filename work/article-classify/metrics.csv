@@ -1,0 +1,21 @@
+time,id,role,stage,task,attempt,model,effort,requests,input,cache_write_5m,cache_write_1h,cache_read,output,max_context,cost_usd,nocache_usd,saved_usd,saved_pct
+2026-11-14 10:26:27,aaa81ce4-f1dc-43b3-ac70-9619557dce06,plan,article-classify,,,claude-opus-5-5,medium,70,152,0,370822,10217165,83748,424290,5.9831,43.6246,37.6414,86.3
+2026-11-14 13:06:39,a6cdf7d6-8bdc-4c82-8ccf-b1270e6ae644,run,article-classify,,,claude-sonnet-5-5,medium,65,176,0,165139,5216378,16187,110688,1.3444,10.9253,9.5808,87.7
+2026-11-14 10:32:57,a30994576a0703df5,work,article-classify,work/article-classify/measure,1,claude-sonnet-5-5,medium,36,72,142376,0,3483867,32677,142378,1.0312,7.5794,6.5482,86.4
+2026-11-14 10:35:37,a8e34a01ed18aafdc,review,article-classify,work/article-classify/measure,1,claude-opus-5-5,기본,20,40,119771,0,1609791,13196,119773,1.1849,7.1823,5.9974,83.5
+2026-11-14 10:37:35,a7d9787cd50efe15b,work,article-classify,work/article-classify/schema,1,claude-sonnet-5-5,medium,9,18,37081,0,392666,4978,55220,0.1818,0.9093,0.7275,80.0
+2026-11-14 10:38:55,ae52b4b66a5d9edd4,review,article-classify,work/article-classify/schema,1,claude-opus-5-5,기본,15,30,54943,0,820909,5874,73088,0.5565,3.6210,3.0645,84.6
+2026-11-14 10:41:32,ab1916d3bd6ebb26c,work,article-classify,work/article-classify/market-alias,1,claude-sonnet-5-5,medium,24,48,49612,0,1326943,8257,67751,0.3394,2.8358,2.4964,88.0
+2026-11-14 10:43:30,a48d79fc81fcb4d48,review,article-classify,work/article-classify/market-alias,1,claude-opus-5-5,기본,15,30,57590,0,859337,6846,75735,0.5969,3.8047,3.2079,84.3
+2026-11-14 10:45:48,ae712c4c86ba0f202,work,article-classify,work/article-classify/relink-7d,1,claude-sonnet-5-5,medium,20,40,62428,0,1245358,10018,80567,0.3809,2.7158,2.3350,86.0
+2026-11-14 10:48:03,a8af6d0778c0635e3,review,article-classify,work/article-classify/relink-7d,1,claude-opus-5-5,기본,15,30,58295,0,860725,6285,76440,0.5894,3.8019,3.2125,84.5
+2026-11-14 11:07:06,a0d7b3501c3d7a2b6,work,article-classify,work/article-classify/stock-subject,1,claude-sonnet-5-5,medium,25,50,87360,0,1658642,11665,87362,0.5010,3.6088,3.1077,86.1
+2026-11-14 11:09:04,a081496d5a142ca04,review,article-classify,work/article-classify/stock-subject,1,claude-opus-5-5,기본,12,24,76514,0,644771,5139,76516,0.6144,2.9880,2.3736,79.4
+2026-11-14 11:12:43,a3fa52e9bafeabae5,work,article-classify,work/article-classify/display-rule,1,claude-sonnet-5-5,medium,26,52,67947,0,1631365,15372,86086,0.4868,3.5524,3.0656,86.3
+2026-11-14 11:15:49,ab0e7647bf21903c7,review,article-classify,work/article-classify/display-rule,1,claude-opus-5-5,기본,24,48,77212,0,1704488,10302,95357,0.9332,7.3330,6.3998,87.3
+2026-11-14 11:22:33,a651e592e07bb5ee7,work,article-classify,work/article-classify/article-nature,1,claude-sonnet-5-5,medium,50,100,147877,0,5726374,38658,166016,1.3291,12.1353,10.8062,89.0
+2026-11-14 11:25:17,a76c95cdc5c0c5983,review,article-classify,work/article-classify/article-nature,1,claude-opus-5-5,기본,20,40,103916,0,1486371,12266,103918,1.0623,6.6066,5.5443,83.9
+2026-11-14 11:30:26,a435f3071b908f131,work,article-classify,work/article-classify/nature-tabs,1,claude-sonnet-5-5,medium,40,80,121227,0,3700050,28456,139366,0.9578,7.9273,6.9695,87.9
+2026-11-14 11:33:04,abb7b2425d095925e,review,article-classify,work/article-classify/nature-tabs,1,claude-opus-5-5,기본,19,38,100354,0,1318793,8255,100356,0.9308,5.8418,4.9111,84.1
+2026-11-14 11:51:37,a83c24f0d928684e8,work,article-classify,work/article-classify/stage-check,1,claude-sonnet-5-5,medium,58,118,113333,0,5138350,31659,131472,1.1140,10.8202,9.7062,89.7
+2026-11-14 11:52:52,ab4dd872d4773aa38,review,article-classify,work/article-classify/stage-check,1,claude-opus-5-5,기본,13,26,76048,0,731634,6098,76050,0.6486,3.3528,2.7042,80.7
