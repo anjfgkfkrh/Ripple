@@ -5,7 +5,10 @@ use regex::Regex;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use crate::server::db::client::atomically;
-use crate::server::db::schema::{KeywordStatus, Market, TopicSource, TopicStatus};
+use crate::server::db::schema::{
+    BYSTANDER_THRESHOLD, KeywordStatus, Market, TopicSource, TopicStatus,
+};
+use crate::server::evaluate::run::{NOT_HIDDEN_SQL, not_nature_hidden_sql};
 use crate::server::keywords::tree::PATH_SEPARATOR;
 use crate::server::stocks::repository::{
     NEW_STOCK_BACKFILL_MS, STOCK_COLUMNS, Stock, row_to_stock,
@@ -554,8 +557,11 @@ pub fn topic_article_counts(
     }
     let marks = vec!["?"; topic_ids.len()].join(",");
     let ids = || topic_ids.iter().map(|id| rusqlite::types::Value::from(*id));
-    let shown = "count(distinct case when evaluations.relevance >= ? and (evaluations.magnitude is null or evaluations.magnitude >= ?) \
-                 then article_matches.article_id end)";
+    let nature = not_nature_hidden_sql();
+    let shown = format!(
+        "count(distinct case when evaluations.relevance >= ? and (evaluations.magnitude is null or evaluations.magnitude >= ?) \
+         and {NOT_HIDDEN_SQL} and {nature} then article_matches.article_id end)"
+    );
     let mut run = |sql: String, bindings: Vec<rusqlite::types::Value>| -> rusqlite::Result<()> {
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map(rusqlite::params_from_iter(bindings), |r| {
@@ -573,8 +579,13 @@ pub fn topic_article_counts(
         }
         Ok(())
     };
-    let thresholds =
-        || -> Vec<rusqlite::types::Value> { vec![min_relevance.into(), min_magnitude.into()] };
+    let thresholds = || -> Vec<rusqlite::types::Value> {
+        vec![
+            min_relevance.into(),
+            min_magnitude.into(),
+            BYSTANDER_THRESHOLD.into(),
+        ]
+    };
     // market(범위를 모르는 값 포함): 토픽 항목에 걸린 기사
     let mut bindings = thresholds();
     bindings.extend(ids());

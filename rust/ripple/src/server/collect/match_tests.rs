@@ -201,7 +201,8 @@ fn market_and_topic_items_match_by_keywords_only() {
             "시장 금리",
         )],
     }]);
-    assert_eq!(market.find("한국 증시 마감 시황", ""), []);
+    // 별칭 구절이 없고 키워드도 없으면 걸리지 않는다("증시" 하나는 별칭이 아니다).
+    assert_eq!(market.find("증시 마감 시황", ""), []);
     assert_eq!(
         market.find("한은 기준금리 동결", ""),
         [by_keyword(7, "한국 증시 → 기준금리", "시장 금리", 1)]
@@ -326,4 +327,107 @@ fn market_and_topic_items_are_never_gated() {
         }]);
         assert!(!matcher.find("기준금리 동결", "")[0].gated);
     }
+}
+
+fn market_item(id: i64, market: Market, name: &str) -> MatchStock {
+    MatchStock {
+        id,
+        kind: ItemKind::Market,
+        market,
+        code: "MARKET".into(),
+        name: name.into(),
+        name_ko: Some(name.into()),
+        aliases: vec!["무시될 별칭".into()],
+        anchors: vec![],
+        keywords: vec![],
+    }
+}
+
+fn markets() -> Matcher {
+    create_matcher(&[
+        market_item(10, Market::Kr, "한국 증시"),
+        market_item(11, Market::Us, "미국 증시"),
+    ])
+}
+
+fn ids(matcher: &Matcher, title: &str, summary: &str) -> Vec<i64> {
+    matcher
+        .find(title, summary)
+        .iter()
+        .map(|m| m.stock_id)
+        .collect()
+}
+
+#[test]
+fn korean_alias_in_title_or_summary_links_market_by_name_with_item_name_path() {
+    let m = markets();
+    assert_eq!(m.find("코스피 2% 상승", ""), [by_name(10, "한국 증시")]);
+    assert_eq!(
+        m.find("오늘의 시황", "코스닥도 올랐다"),
+        [by_name(10, "한국 증시")]
+    );
+    assert_eq!(ids(&m, "국내증시 약세", ""), [10]);
+}
+
+#[test]
+fn apart_words_do_not_match_us_market() {
+    let m = markets();
+    assert_eq!(
+        ids(&m, "미국 주식 투자자가 늘며 증시 활황", ""),
+        Vec::<i64>::new()
+    );
+    assert_eq!(ids(&m, "미국 증시 마감", ""), [11]);
+}
+
+#[test]
+fn dow_aliases_are_phrases_not_prefixes() {
+    let m = markets();
+    assert_eq!(ids(&m, "다우기술 급등", ""), Vec::<i64>::new());
+    assert_eq!(ids(&m, "다우존스 하락", ""), [11]);
+    assert_eq!(ids(&m, "다우지수 상승", ""), [11]);
+}
+
+#[test]
+fn sp500_matches_with_or_without_space_and_kospi200_is_not_kospi() {
+    let m = markets();
+    assert_eq!(ids(&m, "S&P 500 최고치", ""), [11]);
+    assert_eq!(ids(&m, "S&P500 최고치", ""), [11]);
+    assert_eq!(ids(&m, "KOSPI200 선물 상승", ""), Vec::<i64>::new());
+    assert_eq!(ids(&m, "KOSPI 상승", ""), [10]);
+}
+
+#[test]
+fn month_gap_does_not_match_wall_street_alias() {
+    let m = markets();
+    assert_eq!(ids(&m, "3월 가계 대출", ""), Vec::<i64>::new());
+    assert_eq!(ids(&m, "월가 전망", ""), [11]);
+}
+
+#[test]
+fn lone_securities_market_word_does_not_match() {
+    assert_eq!(
+        ids(&markets(), "증시 전망", "증시가 흔들린다"),
+        Vec::<i64>::new()
+    );
+}
+
+#[test]
+fn alias_hit_beats_keyword_hit_for_market() {
+    let mut item = market_item(10, Market::Kr, "한국 증시");
+    item.keywords = vec![keyword(
+        1,
+        "기준금리",
+        None,
+        "한국 증시 → 기준금리",
+        "시장 금리",
+    )];
+    let m = create_matcher(&[item]);
+    assert_eq!(
+        m.find("코스피 기준금리 동결", ""),
+        [by_name(10, "한국 증시")]
+    );
+    assert_eq!(
+        m.find("기준금리 동결", ""),
+        [by_keyword(10, "한국 증시 → 기준금리", "시장 금리", 1)]
+    );
 }

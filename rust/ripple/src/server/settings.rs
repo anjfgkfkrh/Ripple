@@ -60,6 +60,8 @@ pub const TOPICS_REFRESHED_AT: NumSetting = num("topics.refreshedAt", 0.0);
 pub const TOPICS_STARTED_AT: NumSetting = num("topics.startedAt", 0.0);
 pub const TOPICS_FAILED_AT: NumSetting = num("topics.failedAt", 0.0);
 pub const TOPICS_ERROR: StrSetting = text("topics.error", "");
+/// 최근 7일 기사를 시장 항목에 다시 건 시각(ms). 0이면 아직 안 함(worker 시작 때 한 번)
+pub const MARKET_RELINKED_AT: NumSetting = num("classify.marketRelinkedAt", 0.0);
 /// 수집 회차 하나에서 평가할 최대 연결 수 (D-03, 기본 200)
 pub const EVALUATION_MAX_PER_RUN: NumSetting = num("evaluation.maxPerRun", 200.0);
 /// 정기 수집 간격(분): 15·30·60·180 (SPEC FR-6, D-01 기본 30)

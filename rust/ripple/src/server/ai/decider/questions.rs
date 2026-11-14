@@ -1,5 +1,5 @@
-//! Jev에 묻는 질문(SPEC FR-5, 11단계 결정). 판단을 Jev 한 곳에 모은다. 문구는 `questions.ts`와 글자까지 같아야 한다
-//! (테스트가 TS로 만든 값을 파일로 뽑아 비교한다).
+//! Jev에 묻는 질문(SPEC FR-5, 11단계 결정). 판단을 Jev 한 곳에 모은다. 문구는 고정본 `questions_fixture.json`과 글자까지 같아야 한다
+//! (테스트가 이 파일과 비교한다).
 //! - 기사: 관련도·영향도·호재/악재를 한 요청에 묻는다.
 //! - 키워드·토픽(트리 후보, 토픽×종목 쌍): 관련도·영향도를 묻는다.
 //!
@@ -8,7 +8,7 @@
 use serde_json::{Map, Value, json};
 
 use crate::server::ai::decider::types::{
-    DecisionInput, JudgeItem, JudgeTarget, LeadInput, LeadSubjectType, MergedInput,
+    DecisionArticle, DecisionInput, JudgeItem, JudgeTarget, LeadInput, LeadSubjectType, MergedInput,
 };
 use crate::server::db::schema::{Market, MatchKind};
 
@@ -112,7 +112,7 @@ fn score(instructions: String, criteria: &[&str]) -> Value {
 
 /// 기사 질문: 관련도·영향도(점수)와 호재/악재(선택)
 pub fn build_article_questions(target: JudgeTarget) -> Value {
-    json!({
+    let mut questions = json!({
         "relevance": score(
             format!(
                 "How directly is the `article` about {}? `link` explains how the article was matched.",
@@ -128,7 +128,68 @@ pub fn build_article_questions(target: JudgeTarget) -> Value {
             "What effect does the `article` have on {}?",
             moves_text(target)
         )),
-    })
+    });
+    // 종목 대상일 때만: 다른 대상이 받는 영향을 보도하고 이 회사는 원인·지나가는 언급인가
+    if target == JudgeTarget::Stock {
+        questions["bystander"] = json!({
+            "type": "noul",
+            "instructions": BYSTANDER_INSTRUCTIONS,
+        });
+    }
+    questions
+}
+
+/// 종목 기사 질문 `bystander`의 글자(예/아니오 질문, API type은 "noul")
+pub const BYSTANDER_INSTRUCTIONS: &str = "Does the `article` mainly report how something else (a stock index, another company, or an institution) is affected, with the company in `stock` appearing only as a cause or in passing?";
+
+/// 기사 성격 질문(예/아니오, API type은 "noul"). 이름·순서·글자가 고정이다(article-classify 계획).
+pub const NATURE_QUESTIONS: [(&str, &str); 6] = [
+    (
+        "fact",
+        "Does the `article` report facts: events, announcements, results, or market moves that have already happened?",
+    ),
+    (
+        "analysis",
+        "Does the `article` interpret the causes, meaning, or background of the news, beyond restating the facts?",
+    ),
+    (
+        "forecast",
+        "Does the `article` present a prediction or outlook, such as a target price, an earnings estimate, or an expected market direction?",
+    ),
+    (
+        "opinion",
+        "Is the `article` an editorial, column, or opinion piece arguing the writer's position?",
+    ),
+    (
+        "media",
+        "Is the `article` mainly a photo or video, with only a caption or short description?",
+    ),
+    (
+        "roundup",
+        "Is the `article` a roundup that lists several unrelated news items?",
+    ),
+];
+
+/// 기사 성격 6문항
+pub fn build_nature_questions() -> Value {
+    let mut questions = Map::new();
+    for (name, instructions) in NATURE_QUESTIONS {
+        questions.insert(
+            name.into(),
+            json!({ "type": "noul", "instructions": instructions }),
+        );
+    }
+    Value::Object(questions)
+}
+
+/// 기사 성격 state: 기사(제목, 있으면 요약)만
+pub fn build_nature_state(article: &DecisionArticle) -> Value {
+    let mut article_state = Map::new();
+    article_state.insert("title".into(), json!(article.title));
+    if let Some(summary) = article.summary.as_deref().filter(|s| !s.is_empty()) {
+        article_state.insert("summary".into(), json!(summary));
+    }
+    json!({ "article": Value::Object(article_state) })
 }
 
 fn impact_choice(instructions: String) -> Value {

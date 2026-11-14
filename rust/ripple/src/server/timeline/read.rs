@@ -4,7 +4,11 @@ use std::collections::{HashMap, HashSet};
 use rusqlite::types::Value;
 use rusqlite::{Connection, Row, params_from_iter};
 
-use crate::server::db::schema::{Impact, ItemKind, Market, MatchKind, TopicSource};
+use crate::server::db::schema::{
+    BYSTANDER_THRESHOLD, Impact, ItemKind, Market, MatchKind, NATURE_THRESHOLD, NatureProbs,
+    NatureTag, TopicSource, classify_nature,
+};
+use crate::server::evaluate::run::{NOT_HIDDEN_SQL, not_nature_hidden_sql};
 use crate::server::keywords::tree::PATH_SEPARATOR;
 use crate::server::settings::{EVALUATION_MIN_MAGNITUDE, EVALUATION_MIN_RELEVANCE, read_num};
 use crate::server::similar_title::{
@@ -30,8 +34,18 @@ const HOUR_MS: i64 = 60 * 60 * 1000;
 pub const TOPIC_FADE_MS: i64 = 12 * HOUR_MS;
 pub const TOPIC_HIDE_MS: i64 = 72 * HOUR_MS;
 
+/// 타임라인 탭: 사실 탭(기본) 또는 해석·전망·기타 탭(주소 `nature=view`)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NatureTab {
+    #[default]
+    Fact,
+    View,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct TimelineFilter {
+    /// 기사 성격 탭
+    pub nature: NatureTab,
     /// 종목·시장 항목 하나
     pub stock_id: Option<i64>,
     /// 주제 하나(사용자 주제·자동 토픽, 증시별 항목을 모두)
@@ -76,6 +90,8 @@ pub struct TimelineCard {
     pub others: Vec<OtherArticle>,
     /// 12단계: 카드에 묶인 기사(대표 포함) 가운데 하나라도 읽었으면 읽은 카드
     pub read: bool,
+    /// 성격 태그(묶인 기사의 합, 사실·해석·전망·기타 순). 성격이 없는 기사는 비어 있다.
+    pub tags: Vec<NatureTag>,
 }
 
 /// 주소의 검색 값(stock, topic, impact, limit)을 읽는다. 개수는 `max_limit`(회원 `TIMELINE_MAX`, 손님 `GUEST_TIMELINE_MAX`)까지. 없거나 맞지 않는 값은 무시한다.
@@ -99,6 +115,11 @@ pub fn parse_timeline_params(
     let page = TIMELINE_PAGE_SIZE as f64;
     (
         TimelineFilter {
+            nature: if one("nature") == Some("view") {
+                NatureTab::View
+            } else {
+                NatureTab::Fact
+            },
             stock_id: contains(active_stock_ids, number("stock")),
             topic_id: contains(topic_ids, number("topic")),
             impact: one("impact").and_then(|value| value.parse().ok()),
@@ -113,14 +134,68 @@ pub fn parse_timeline_params(
 
 /// 화면에 보일 평가: 관련도와 영향도가 둘 다 기준 이상(11단계). 11단계 전 평가(영향도 없음)는 관련도만 본다.
 /// 조건 글자와 거기 들어갈 값(`?` 둘)을 돌려준다.
-fn display_rule(conn: &Connection) -> rusqlite::Result<(&'static str, [Value; 2])> {
+/// 숨김 규칙(`NOT_HIDDEN_SQL`)과 기사 성격 숨김이 뒤에 붙는다. 조회에 `evaluations`·`stocks`·`articles` 별칭이 있어야 한다.
+fn display_rule(conn: &Connection) -> rusqlite::Result<(String, [Value; 3])> {
+    let nature = not_nature_hidden_sql();
     Ok((
-        "evaluations.relevance >= ? AND (evaluations.magnitude IS NULL OR evaluations.magnitude >= ?)",
+        format!(
+            "evaluations.relevance >= ? AND (evaluations.magnitude IS NULL OR evaluations.magnitude >= ?) AND {NOT_HIDDEN_SQL} AND {nature}"
+        ),
         [
             Value::Real(read_num(conn, &EVALUATION_MIN_RELEVANCE)?),
             Value::Real(read_num(conn, &EVALUATION_MIN_MAGNITUDE)?),
+            Value::Real(BYSTANDER_THRESHOLD),
         ],
     ))
+}
+
+/// 탭 조건 글자와 값(`?` 자리표). 조회에 `articles` 별칭이 있어야 한다.
+/// 사실 탭은 사실 태그 기사와 성격이 아직 없는 기사, 해석·전망·기타 탭은 그 태그가 붙은 기사.
+fn nature_tab_rule(tab: NatureTab) -> (&'static str, Vec<Value>) {
+    let t = Value::Real(NATURE_THRESHOLD);
+    match tab {
+        NatureTab::Fact => (
+            "(articles.nature_at IS NULL OR articles.nature_fact >= ?)",
+            vec![t],
+        ),
+        NatureTab::View => (
+            "(articles.nature_at IS NOT NULL AND (articles.nature_analysis >= ? OR articles.nature_forecast >= ? \
+             OR articles.nature_opinion >= ? OR (articles.nature_fact < ? AND articles.nature_analysis < ? \
+             AND articles.nature_forecast < ?)))",
+            vec![t; 6],
+        ),
+    }
+}
+
+fn tag_order(tag: NatureTag) -> usize {
+    [
+        NatureTag::Fact,
+        NatureTag::Analysis,
+        NatureTag::Forecast,
+        NatureTag::Other,
+    ]
+    .iter()
+    .position(|t| *t == tag)
+    .unwrap_or(usize::MAX)
+}
+
+/// 기사 행(열 5~9: nature_at, fact, analysis, forecast, opinion)의 성격 태그. 성격이 없으면(NULL) 태그도 없다.
+fn tags_of(row: &Row<'_>) -> rusqlite::Result<Vec<NatureTag>> {
+    let at: Option<i64> = row.get(5)?;
+    if at.is_none() {
+        return Ok(Vec::new());
+    }
+    let p =
+        |i: usize| -> rusqlite::Result<f64> { Ok(row.get::<_, Option<f64>>(i)?.unwrap_or(0.0)) };
+    let probs = NatureProbs {
+        fact: p(6)?,
+        analysis: p(7)?,
+        forecast: p(8)?,
+        opinion: p(9)?,
+        media: 0.0,
+        roundup: 0.0,
+    };
+    Ok(classify_nature(&probs).0)
 }
 
 fn enum_col<T: std::str::FromStr<Err = String>>(
@@ -150,6 +225,7 @@ struct ArticleRow {
     url: String,
     publisher: String,
     published_at: EpochMs,
+    tags: Vec<NatureTag>,
 }
 
 /// 통합 타임라인(SPEC FR-7): 표시 기준 이상인 기사를 최신순으로, 기사 하나에 카드 하나(D-26).
@@ -164,8 +240,11 @@ pub fn read_timeline(
     let min_relevance = read_num(conn, &EVALUATION_MIN_RELEVANCE)?;
     let min_magnitude = read_num(conn, &EVALUATION_MIN_MAGNITUDE)?;
     let (rule, rule_values) = display_rule(conn)?;
-    let mut conditions = vec!["stocks.deleted_at IS NULL".to_string(), rule.to_string()];
+    let mut conditions = vec!["stocks.deleted_at IS NULL".to_string(), rule];
     let mut values: Vec<Value> = rule_values.to_vec();
+    let (tab_rule, tab_values) = nature_tab_rule(filter.nature);
+    conditions.push(tab_rule.to_string());
+    values.extend(tab_values);
     if let Some(stock_id) = filter.stock_id {
         conditions.push("evaluations.stock_id = ?".to_string());
         values.push(Value::Integer(stock_id));
@@ -179,7 +258,9 @@ pub fn read_timeline(
         values.push(Value::Text(impact.as_str().to_string()));
     }
     let page_sql = format!(
-        "SELECT DISTINCT articles.id, articles.title, articles.url, articles.publisher, articles.published_at \
+        "SELECT DISTINCT articles.id, articles.title, articles.url, articles.publisher, articles.published_at, \
+         articles.nature_at, articles.nature_fact, articles.nature_analysis, articles.nature_forecast, \
+         articles.nature_opinion \
          FROM evaluations \
          INNER JOIN articles ON articles.id = evaluations.article_id \
          INNER JOIN stocks ON stocks.id = evaluations.stock_id \
@@ -198,6 +279,7 @@ pub fn read_timeline(
                 url: row.get(2)?,
                 publisher: row.get(3)?,
                 published_at: row.get(4)?,
+                tags: tags_of(row)?,
             })
         })?;
         rows.collect()
@@ -235,6 +317,12 @@ pub fn read_timeline(
                     url: row.url.clone(),
                 });
                 members[i].push(row.id);
+                for tag in &row.tags {
+                    if !cards[i].tags.contains(tag) {
+                        cards[i].tags.push(*tag);
+                    }
+                }
+                cards[i].tags.sort_by_key(|tag| tag_order(*tag));
                 continue;
             }
             cards.push(TimelineCard {
@@ -246,6 +334,7 @@ pub fn read_timeline(
                 stocks: Vec::new(),
                 others: Vec::new(),
                 read: false,
+                tags: row.tags.clone(),
             });
             features.push(mine);
             members.push(vec![row.id]);
@@ -278,6 +367,7 @@ pub fn read_timeline(
              article_matches.match_kind, article_matches.keyword_path \
              FROM evaluations \
              INNER JOIN article_matches ON article_matches.id = evaluations.match_id \
+             INNER JOIN articles ON articles.id = evaluations.article_id \
              INNER JOIN stocks ON stocks.id = evaluations.stock_id \
              LEFT JOIN topics ON topics.id = stocks.topic_id \
              WHERE evaluations.article_id IN ({}) AND stocks.deleted_at IS NULL AND {rule}",
@@ -510,6 +600,7 @@ pub fn read_topic_cards(conn: &Connection, now: EpochMs) -> rusqlite::Result<Vec
             "SELECT evaluations.stock_id, evaluations.article_id, articles.published_at, evaluations.relevance, \
              evaluations.magnitude, evaluations.impact FROM evaluations \
              INNER JOIN articles ON articles.id = evaluations.article_id \
+             INNER JOIN stocks ON stocks.id = evaluations.stock_id \
              WHERE evaluations.stock_id IN ({}) AND {rule}",
             marks(lens_ids.len())
         ))?;
@@ -558,6 +649,8 @@ pub fn read_topic_cards(conn: &Connection, now: EpochMs) -> rusqlite::Result<Vec
             "SELECT evaluations.stock_id, article_matches.keyword_path, evaluations.relevance, \
              evaluations.magnitude, evaluations.impact FROM evaluations \
              INNER JOIN article_matches ON article_matches.id = evaluations.match_id \
+             INNER JOIN articles ON articles.id = evaluations.article_id \
+             INNER JOIN stocks ON stocks.id = evaluations.stock_id \
              WHERE evaluations.stock_id IN ({}) AND {rule}",
             marks(stock_ids.len())
         ))?;

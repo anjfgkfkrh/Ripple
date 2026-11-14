@@ -6,6 +6,7 @@ use super::*;
 use crate::server::db::schema::PriceSource;
 use crate::server::prices::store::{NewPrice, save_price};
 use crate::server::stocks::repository::{RegisterInput, RegisterResult, register_stock};
+use crate::server::timeline::read::NatureTab;
 use crate::server::timeline::reads::set_articles_read;
 use crate::test_support::{LinkSpec, insert_link, seed_listings};
 use crate::web::test_support::{T0, TestWeb, start_web};
@@ -54,6 +55,7 @@ fn timeline_href_keeps_filters_and_resets_limit() {
     assert_eq!(timeline_href(&none, Some(30)), "/");
     assert_eq!(timeline_href(&none, Some(60)), "/?limit=60");
     let all = TimelineFilter {
+        nature: NatureTab::Fact,
         stock_id: Some(2),
         topic_id: Some(7),
         impact: Some(Impact::Negative),
@@ -342,6 +344,125 @@ async fn topic_cards_show_active_and_faded_issues() {
     assert!(picked.contains("<strong>미중 갈등</strong> 기사만 보는 중"));
     assert!(picked.contains(
         "href=\"/\" class=\"text-muted-foreground underline underline-offset-2\">모두 보기"
+    ));
+}
+
+// ---- 성격 탭과 태그(article-classify/nature-tabs) ----
+
+fn set_nature(web: &TestWeb, article_id: i64, fact: f64, analysis: f64, forecast: f64) {
+    web.writer()
+        .execute(
+            "UPDATE articles SET nature_fact = ?1, nature_analysis = ?2, nature_forecast = ?3, nature_opinion = 0.1, \
+             nature_media = 0, nature_roundup = 0, nature_at = 1 WHERE id = ?4",
+            rusqlite::params![fact, analysis, forecast, article_id],
+        )
+        .unwrap();
+}
+
+#[test]
+fn timeline_href_keeps_the_view_tab_and_leaves_nothing_for_the_fact_tab() {
+    let view = TimelineFilter {
+        nature: NatureTab::View,
+        stock_id: Some(2),
+        ..TimelineFilter::default()
+    };
+    assert_eq!(timeline_href(&view, None), "/?stock=2&nature=view");
+    assert_eq!(
+        timeline_href(&view, Some(60)),
+        "/?stock=2&nature=view&limit=60"
+    );
+    assert_eq!(timeline_href(&TimelineFilter::default(), None), "/");
+}
+
+#[tokio::test]
+async fn nature_tabs_show_the_current_tab_and_tags_before_titles() {
+    let web = start_web(None).await;
+    let (_, articles) = seed(&web, 3);
+    set_nature(&web, articles[0], 0.9, 0.1, 0.1);
+    set_nature(&web, articles[1], 0.8, 0.1, 0.7);
+    // articles[2]는 성격 없음
+    let fact = text(&web, "/").await;
+    assert!(fact.contains(
+        "aria-label=\"기사 성격\" class=\"mt-4 flex border-b\" data-testid=\"nature-tabs\""
+    ));
+    assert!(fact.contains("<a href=\"/\" aria-current=\"page\" class=\"-mb-px flex-1 border-b-2 py-2 text-center text-sm transition-colors border-primary"));
+    assert!(fact.contains("href=\"/?nature=view\" class="));
+    assert_eq!(fact.matches("data-testid=\"timeline-card\"").count(), 3);
+    // 사실 태그 둘(첫째·둘째), 둘째 기사는 전망 태그도
+    assert_eq!(fact.matches("data-testid=\"nature-tag\"").count(), 3);
+    // 태그 칩 바로 뒤에 제목 링크가 온다(제목 앞)
+    assert!(fact.contains("data-testid=\"nature-tag\">사실</span><a href="));
+    assert!(fact.contains("data-testid=\"nature-tag\">전망</span><a href="));
+
+    let view = text(&web, "/?nature=view").await;
+    assert!(view.contains("<a href=\"/?nature=view\" aria-current=\"page\""));
+    assert_eq!(view.matches("data-testid=\"timeline-card\"").count(), 1);
+    assert_eq!(view.matches("data-testid=\"nature-tag\"").count(), 2);
+    assert!(view.contains(">전망</span>"));
+    // 모르는 값은 사실 탭
+    let unknown = text(&web, "/?nature=elsewhere").await;
+    assert_eq!(unknown.matches("data-testid=\"timeline-card\"").count(), 3);
+}
+
+#[tokio::test]
+async fn nature_tab_survives_filters_price_strip_topic_cards_and_more_links() {
+    let web = start_web(None).await;
+    let (stock_id, articles) = seed(&web, 31);
+    for id in &articles {
+        set_nature(&web, *id, 0.1, 0.9, 0.1);
+    }
+    save_price(
+        &web.writer(),
+        &NewPrice {
+            stock_id,
+            price: 83_500.0,
+            change: 1_200.0,
+            change_percent: 1.4578,
+            source: PriceSource::Kis,
+            quoted_at: Some(T0 - 60_000),
+            fetched_at: T0,
+        },
+    )
+    .unwrap();
+    {
+        let conn = web.writer();
+        conn.execute(
+            "INSERT INTO topics (source, name, summary, terms, created_at) VALUES ('auto', '중동 긴장', 's', '[]', ?1)",
+            rusqlite::params![T0 - 80 * HOUR],
+        )
+        .unwrap();
+        let topic_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO stocks (market, code, name, name_ko, exchange, user_input, kind, topic_id, keywords_status, created_at) \
+             VALUES ('KR', 'TOPIC-1', '중동 긴장', '중동 긴장', '한국 증시', '중동 긴장', 'topic', ?1, 'ready', ?2)",
+            rusqlite::params![topic_id, T0 - 80 * HOUR],
+        )
+        .unwrap();
+        let mut link = LinkSpec::new(conn.last_insert_rowid(), "가나 소식", T0 - HOUR);
+        link.kind = "keyword";
+        link.magnitude = Some(7.0);
+        let (_, article) = insert_link(&conn, &link);
+        drop(conn);
+        set_nature(&web, article, 0.1, 0.9, 0.1);
+    }
+    let body = text(&web, "/?nature=view").await;
+    for part in [
+        // 항목·영향 칩, 탭의 사실 링크는 탭을 바꾼다(주소에서 값이 빠짐)
+        "href=\"/?stock=1&#38;nature=view\"",
+        "href=\"/?impact=positive&#38;nature=view\"",
+        // 토픽 카드 링크
+        "href=\"/?topic=1&#38;nature=view\"",
+        // 더 보기
+        "href=\"/?nature=view&#38;limit=60\"",
+    ] {
+        assert!(body.contains(part), "{part}");
+    }
+    assert!(body.contains("&#38;nature=view\" class=\"flex min-w-36"));
+    // 사실 탭 링크는 탭 값이 없고, 칩 링크로 탭을 옮겨도 필터가 남는다
+    let filtered = text(&web, "/?nature=view&stock=1&impact=neutral").await;
+    assert!(filtered.contains("<a href=\"/?stock=1&#38;impact=neutral\""));
+    assert!(filtered.contains(
+        "<a href=\"/?stock=1&#38;impact=neutral&#38;nature=view\" aria-current=\"page\""
     ));
 }
 

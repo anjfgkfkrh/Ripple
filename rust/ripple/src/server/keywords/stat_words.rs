@@ -4,7 +4,8 @@ use std::sync::LazyLock;
 use regex::Regex;
 use rusqlite::{Connection, params};
 
-use crate::server::evaluate::run::meets_display_rule;
+use crate::server::db::schema::BYSTANDER_THRESHOLD;
+use crate::server::evaluate::run::{NOT_HIDDEN_SQL, meets_display_rule, not_nature_hidden_sql};
 use crate::server::time::{DAY_MS, EpochMs};
 
 /// 통계 낱말을 셀 기사 기간
@@ -103,26 +104,37 @@ pub fn score_words(titles: &[String], background: &[String]) -> StatWords {
 /// 종목의 통계 낱말. 대상은 그 종목의 이름 연결(`match_kind = 'name'`) 평가 가운데 최근 14일에 평가했고
 /// 화면 표시 기준을 통과한 것의 서로 다른 제목, 배경은 `feed_headlines`의 모든 제목이다.
 pub fn stat_words(conn: &Connection, stock_id: i64, now: EpochMs) -> rusqlite::Result<StatWords> {
-    let mut stmt = conn.prepare(
-        "SELECT articles.title, evaluations.relevance, evaluations.magnitude FROM evaluations \
+    let mut stmt = conn.prepare(&format!(
+        "SELECT articles.title, evaluations.relevance, evaluations.magnitude, \
+                CASE WHEN {NOT_HIDDEN_SQL} AND {nature} THEN 1 ELSE 0 END FROM evaluations \
+         INNER JOIN stocks ON stocks.id = evaluations.stock_id \
          INNER JOIN article_matches ON article_matches.id = evaluations.match_id \
          INNER JOIN articles ON articles.id = evaluations.article_id \
          WHERE evaluations.stock_id = ?1 AND article_matches.match_kind = 'name' \
            AND evaluations.evaluated_at >= ?2",
-    )?;
+        NOT_HIDDEN_SQL = NOT_HIDDEN_SQL.replace('?', "?3"),
+        nature = not_nature_hidden_sql()
+    ))?;
     let rows = stmt
-        .query_map(params![stock_id, now - STAT_DAYS * DAY_MS], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, f64>(1)?,
-                row.get::<_, Option<f64>>(2)?,
-            ))
-        })?
+        .query_map(
+            params![stock_id, now - STAT_DAYS * DAY_MS, BYSTANDER_THRESHOLD],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, f64>(1)?,
+                    row.get::<_, Option<f64>>(2)?,
+                    row.get::<_, i64>(3)? == 1,
+                ))
+            },
+        )?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     let mut seen: HashSet<String> = HashSet::new();
     let mut titles: Vec<String> = Vec::new();
-    for (title, relevance, magnitude) in rows {
-        if meets_display_rule(conn, relevance, magnitude)? && seen.insert(title.clone()) {
+    for (title, relevance, magnitude, not_hidden) in rows {
+        if not_hidden
+            && meets_display_rule(conn, relevance, magnitude)?
+            && seen.insert(title.clone())
+        {
             titles.push(title);
         }
     }

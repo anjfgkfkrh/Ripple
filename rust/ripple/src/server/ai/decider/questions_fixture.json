@@ -33,6 +33,10 @@
           "negative": "Bad news",
           "neutral": "No effect, or the direction is unclear"
         }
+      },
+      "bystander": {
+        "type": "noul",
+        "instructions": "Does the `article` mainly report how something else (a stock index, another company, or an institution) is affected, with the company in `stock` appearing only as a cause or in passing?"
       }
     },
     "market": {

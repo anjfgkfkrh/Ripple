@@ -255,7 +255,7 @@ fn drizzle_db_gets_rust_only_migrations_after_baseline() {
 
     assert_eq!(schema_dump(&ts_db), schema_dump(&fresh));
     let conn = Connection::open(&ts_db).unwrap();
-    assert_eq!(user_version(&conn), 12);
+    assert_eq!(user_version(&conn), 13);
     let rows: i64 = conn
         .query_row("SELECT count(*) FROM __drizzle_migrations", [], |r| {
             r.get(0)
@@ -281,7 +281,7 @@ fn migration_0011_adds_anchor_columns_and_resets_stock_keywords() {
     apply_migrations(&db_path).unwrap();
 
     let conn = Connection::open(&db_path).unwrap();
-    assert_eq!(user_version(&conn), 12);
+    assert_eq!(user_version(&conn), 13);
     let status = |id: i64| -> (String, Option<String>) {
         conn.query_row(
             "SELECT keywords_status, keywords_error FROM stocks WHERE id = ?1",
@@ -303,4 +303,34 @@ fn migration_0011_adds_anchor_columns_and_resets_stock_keywords() {
     assert_eq!((al.as_str(), an.as_str(), rm.as_str()), ("[]", "[]", "[]"));
     assert!(columns_of(&conn, "topics").contains(&"scope".to_string()));
     assert!(columns_of(&conn, "article_matches").contains(&"gated".to_string()));
+}
+
+#[test]
+fn migration_0012_adds_nature_columns_with_null_for_existing_rows() {
+    let dir = TempDir::new().unwrap();
+    let db_path = dir.path().join("ripple.db");
+    apply_migration_set(&db_path, &MIGRATION_SQL[..12]).unwrap();
+    let conn = Connection::open(&db_path).unwrap();
+    let article_cols = columns_of(&conn, "articles");
+    let eval_cols = columns_of(&conn, "evaluations");
+    assert!(!article_cols.contains(&"nature_fact".to_string()));
+    assert!(!eval_cols.contains(&"bystander".to_string()));
+    drop(conn);
+    apply_migrations(&db_path).unwrap();
+
+    let conn = Connection::open(&db_path).unwrap();
+    assert_eq!(user_version(&conn), 13);
+    let article_cols = columns_of(&conn, "articles");
+    for c in [
+        "nature_fact",
+        "nature_analysis",
+        "nature_forecast",
+        "nature_opinion",
+        "nature_media",
+        "nature_roundup",
+        "nature_at",
+    ] {
+        assert!(article_cols.contains(&c.to_string()), "{c}");
+    }
+    assert!(columns_of(&conn, "evaluations").contains(&"bystander".to_string()));
 }

@@ -3,8 +3,9 @@ use crate::server::collect::feed_headlines::{HeadlineItem, save_feed_headlines};
 use crate::server::db::schema::{KeywordKind, Market};
 use crate::server::keywords::generate::replace_keywords;
 use crate::server::keywords::tree::KeywordNode;
+use crate::server::settings::{MARKET_RELINKED_AT, read_num};
 use crate::server::stocks::repository::{RegisterInput, RegisterResult, register_stock};
-use crate::test_support::{TestDb, ms, seed_listings, test_db};
+use crate::test_support::{TestDb, ms, seed_listings, seed_market, test_db};
 
 fn now() -> EpochMs {
     ms("2026-10-22T06:00:00Z")
@@ -192,5 +193,120 @@ fn stored_headline_links_are_gated_by_title_anchor_and_aliases_link_by_name() {
             ("삼성 HBM 증설".to_string(), "keyword".to_string(), 0),
             ("삼전 반등".to_string(), "name".to_string(), 0),
         ]
+    );
+}
+
+const DAY: i64 = 24 * HOUR;
+
+fn article(db: &TestDb, key: &str, title: &str, summary: Option<&str>, age: i64) -> i64 {
+    db.conn
+        .execute(
+            "INSERT INTO articles (url_key, url, title, summary, publisher, feed, published_at, collected_at) \
+             VALUES (?1, ?2, ?3, ?4, '가경제', 'rss:a:economy', ?5, ?5)",
+            rusqlite::params![key, format!("https://{key}"), title, summary, now() - age],
+        )
+        .unwrap();
+    db.conn.last_insert_rowid()
+}
+
+fn link_count(db: &TestDb, article_id: i64) -> i64 {
+    db.conn
+        .query_row(
+            "SELECT COUNT(*) FROM article_matches WHERE article_id = ?1",
+            [article_id],
+            |r| r.get(0),
+        )
+        .unwrap()
+}
+
+// describe("시장 항목 다시 걸기 (article-classify)")
+#[test]
+fn relink_links_recent_articles_to_market_only_and_skips_old_existing_deleted() {
+    let mut db = test_db();
+    seed_listings(&mut db.conn);
+    let kr = seed_market(&db.conn, "KR", now());
+    let us = seed_market(&db.conn, "US", now());
+    db.conn
+        .execute(
+            "UPDATE stocks SET deleted_at = ?1 WHERE id = ?2",
+            [now(), us],
+        )
+        .unwrap();
+    stock_with_keyword(&mut db, "005930", "HBM");
+    let recent = article(&db, "a/recent", "코스피 2% 상승", None, 2 * DAY);
+    let in_summary = article(
+        &db,
+        "a/summary",
+        "오늘의 시황",
+        Some("코스닥도 올랐다"),
+        DAY,
+    );
+    let old = article(&db, "a/old", "코스피 급락", None, 8 * DAY);
+    let linked = article(&db, "a/linked", "코스피 보합", None, DAY);
+    let us_only = article(&db, "a/us", "나스닥 상승", None, DAY);
+    let stock_title = article(&db, "a/stock", "삼성전자 HBM 증설", None, DAY);
+    db.conn
+        .execute(
+            "INSERT INTO article_matches (article_id, stock_id, keyword_path, match_kind, level, created_at) \
+             VALUES (?1, ?2, '한국 증시 → 코스피', 'keyword', 1, ?3)",
+            rusqlite::params![linked, kr, now()],
+        )
+        .unwrap();
+
+    let (checked, added) = relink_recent_market_articles(&mut db.conn, now()).unwrap();
+    assert_eq!((checked, added), (5, 2));
+    assert_eq!(link_count(&db, recent), 1);
+    assert_eq!(link_count(&db, in_summary), 1);
+    assert_eq!(link_count(&db, old), 0);
+    assert_eq!(link_count(&db, linked), 1); // 새 줄 없음
+    assert_eq!(link_count(&db, us_only), 0); // 지운 시장 항목
+    assert_eq!(link_count(&db, stock_title), 0); // 종목 항목은 걸지 않는다
+    let ids: Vec<i64> = db
+        .conn
+        .prepare("SELECT DISTINCT stock_id FROM article_matches")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(ids, [kr]);
+}
+
+#[test]
+fn relink_once_marks_and_does_nothing_the_second_time() {
+    let mut db = test_db();
+    seed_market(&db.conn, "KR", now());
+    let first = article(&db, "b/1", "코스피 상승", None, DAY);
+    assert_eq!(read_num(&db.conn, &MARKET_RELINKED_AT).unwrap(), 0.0);
+
+    assert_eq!(
+        relink_market_articles_once(&mut db.conn, now()).unwrap(),
+        Some((1, 1))
+    );
+    assert_eq!(
+        read_num(&db.conn, &MARKET_RELINKED_AT).unwrap(),
+        now() as f64
+    );
+    assert_eq!(link_count(&db, first), 1);
+
+    // 표시가 있으면 새 기사가 있어도 하지 않는다.
+    let second = article(&db, "b/2", "코스닥 하락", None, DAY);
+    assert_eq!(
+        relink_market_articles_once(&mut db.conn, now() + HOUR).unwrap(),
+        None
+    );
+    assert_eq!(link_count(&db, second), 0);
+}
+
+#[test]
+fn relink_once_marks_even_without_articles() {
+    let mut db = test_db();
+    assert_eq!(
+        relink_market_articles_once(&mut db.conn, now()).unwrap(),
+        Some((0, 0))
+    );
+    assert_eq!(
+        read_num(&db.conn, &MARKET_RELINKED_AT).unwrap(),
+        now() as f64
     );
 }

@@ -5,13 +5,15 @@ use serde_json::{Value, json};
 
 use crate::server::ai::decider::questions::{
     RELEVANCE_SCALE, build_article_questions, build_article_state, build_lead_questions,
-    build_lead_state, build_merged_questions, build_merged_state, market_key,
+    build_lead_state, build_merged_questions, build_merged_state, build_nature_questions,
+    build_nature_state, market_key,
 };
 use crate::server::ai::decider::types::{
-    Decider, DeciderError, DeciderErrorKind, Decision, DecisionInput, JudgeTarget, LeadInput,
-    LeadRating, MarketVerdict, MergedDecision, MergedInput, Scored, TokenUsage,
+    Decider, DeciderError, DeciderErrorKind, Decision, DecisionArticle, DecisionInput, JudgeTarget,
+    LeadInput, LeadRating, MarketVerdict, MergedDecision, MergedInput, NatureDecision, Scored,
+    TokenUsage,
 };
-use crate::server::db::schema::Impact;
+use crate::server::db::schema::{Impact, NatureProbs};
 use crate::server::text::js_parse_number;
 
 pub const TYPESAFE_BASE_URL: &str = "https://api.typesafe.ai";
@@ -294,6 +296,16 @@ impl Decider for TypeSafeDecider {
         else {
             return Err(bad_format());
         };
+        // 종목 대상만 bystander를 묻는다. 예/아니오 답은 `noul`(예일 확률)에 있다.
+        let bystander = if target == JudgeTarget::Stock {
+            let probability = result
+                .pointer("/answers/bystander/noul")
+                .and_then(Value::as_f64)
+                .filter(|p| p.is_finite());
+            Some(probability.ok_or_else(bad_format)?)
+        } else {
+            None
+        };
         let probabilities = impact.and_then(|i| i.get("probabilities"));
         let probability = |key: &str| number_or_zero(probabilities.and_then(|p| p.get(key)));
         Ok(Decision {
@@ -308,6 +320,7 @@ impl Decider for TypeSafeDecider {
                 probability("negative"),
                 probability("neutral"),
             ],
+            bystander,
             model: model_name.to_string(),
             usage: token_usage(&result),
         })
@@ -404,6 +417,41 @@ impl Decider for TypeSafeDecider {
             relevance_confidence: rel_conf,
             magnitude: to_ten(mag),
             magnitude_confidence: mag_conf,
+            model: model_name.to_string(),
+            usage: token_usage(&result),
+        })
+    }
+
+    async fn classify_nature(
+        &self,
+        article: &DecisionArticle,
+        model: &str,
+    ) -> Result<NatureDecision, DeciderError> {
+        let result = self
+            .system_one(model, build_nature_state(article), build_nature_questions())
+            .await?;
+        // 예/아니오 답은 `noul`(예일 확률). 하나라도 빠지거나 숫자가 아니면 형식 오류.
+        let probability = |name: &str| {
+            result
+                .pointer(&format!("/answers/{name}/noul"))
+                .and_then(Value::as_f64)
+                .filter(|p| p.is_finite())
+                .ok_or_else(bad_format)
+        };
+        let probs = NatureProbs {
+            fact: probability("fact")?,
+            analysis: probability("analysis")?,
+            forecast: probability("forecast")?,
+            opinion: probability("opinion")?,
+            media: probability("media")?,
+            roundup: probability("roundup")?,
+        };
+        let model_name = result
+            .get("model")
+            .and_then(Value::as_str)
+            .ok_or_else(bad_format)?;
+        Ok(NatureDecision {
+            probs,
             model: model_name.to_string(),
             usage: token_usage(&result),
         })

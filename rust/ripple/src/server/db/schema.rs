@@ -156,6 +156,12 @@ pub struct EvaluationSummary {
     pub failed: i64,
     /// 예산·키 문제 등으로 손대지 않고 남긴 수
     pub remaining: i64,
+    /// 기사 성격을 Jev에 물은 수(article-classify)
+    pub nature_asked: i64,
+    /// 같은 소식의 앞선 성격을 복사한 수
+    pub nature_copied: i64,
+    /// 성격 묻기에 실패해 다음 회차로 미룬 수
+    pub nature_failed: i64,
     /// 이 회차 평가 비용(달러)
     pub cost_usd: f64,
     pub ms: i64,
@@ -171,6 +177,9 @@ impl EvaluationSummary {
             copied: 0,
             failed: 0,
             remaining: 0,
+            nature_asked: 0,
+            nature_copied: 0,
+            nature_failed: 0,
             cost_usd: 0.0,
             ms: 0,
             note: None,
@@ -190,11 +199,78 @@ impl EvaluationSummary {
             crate::server::text::json_number(self.cost_usd),
         );
         map.insert("ms".into(), self.ms.into());
+        // 성격 묻기를 한 회차에만 적는다(앞선 기록과 같은 모양을 지킨다)
+        for (key, value) in [
+            ("natureAsked", self.nature_asked),
+            ("natureCopied", self.nature_copied),
+            ("natureFailed", self.nature_failed),
+        ] {
+            if value > 0 {
+                map.insert(key.into(), value.into());
+            }
+        }
         if let Some(note) = &self.note {
             map.insert("note".into(), note.clone().into());
         }
         serde_json::Value::Object(map)
     }
+}
+
+/// 기사 성격 확률이 이 값 이상이면 그 성격으로 본다.
+pub const NATURE_THRESHOLD: f64 = 0.5;
+/// 종목 평가의 `bystander` 확률이 이 값 이상이면 종목이 주인공이 아닌 것으로 본다.
+pub const BYSTANDER_THRESHOLD: f64 = 0.5;
+
+/// 화면에 보이는 기사 성격 태그
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NatureTag {
+    Fact,
+    Analysis,
+    Forecast,
+    Other,
+}
+
+impl NatureTag {
+    /// 화면 글자
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Fact => "사실",
+            Self::Analysis => "해석",
+            Self::Forecast => "전망",
+            Self::Other => "기타",
+        }
+    }
+}
+
+/// 성격 6확률(`articles.nature_*`)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NatureProbs {
+    pub fact: f64,
+    pub analysis: f64,
+    pub forecast: f64,
+    pub opinion: f64,
+    pub media: f64,
+    pub roundup: f64,
+}
+
+/// 성격 확률에서 (태그 목록, 숨김 여부)를 고른다. 순서는 Fact·Analysis·Forecast·Other.
+/// Other는 opinion이 기준 이상이거나 앞의 셋이 모두 기준 미만일 때. 숨김은 media 또는 roundup이 기준 이상일 때.
+pub fn classify_nature(p: &NatureProbs) -> (Vec<NatureTag>, bool) {
+    let mut tags = Vec::new();
+    if p.fact >= NATURE_THRESHOLD {
+        tags.push(NatureTag::Fact);
+    }
+    if p.analysis >= NATURE_THRESHOLD {
+        tags.push(NatureTag::Analysis);
+    }
+    if p.forecast >= NATURE_THRESHOLD {
+        tags.push(NatureTag::Forecast);
+    }
+    if p.opinion >= NATURE_THRESHOLD || tags.is_empty() {
+        tags.push(NatureTag::Other);
+    }
+    let hidden = p.media >= NATURE_THRESHOLD || p.roundup >= NATURE_THRESHOLD;
+    (tags, hidden)
 }
 
 #[cfg(test)]

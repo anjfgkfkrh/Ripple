@@ -73,6 +73,22 @@ fn article_questions_are_six_level_scores_and_a_choice() {
 }
 
 #[test]
+fn stock_asks_bystander_yes_no_after_impact_only_for_stock() {
+    let stock = build_article_questions(JudgeTarget::Stock);
+    let keys: Vec<&String> = stock.as_object().unwrap().keys().collect();
+    assert_eq!(keys, ["relevance", "magnitude", "impact", "bystander"]);
+    assert_eq!(stock["bystander"]["type"], "noul");
+    assert_eq!(
+        instructions(&stock["bystander"]),
+        "Does the `article` mainly report how something else (a stock index, another company, or an institution) is affected, with the company in `stock` appearing only as a cause or in passing?"
+    );
+    assert!(stock["bystander"].get("criteria").is_none());
+    for target in [JudgeTarget::Market, JudgeTarget::Topic] {
+        assert!(build_article_questions(target).get("bystander").is_none());
+    }
+}
+
+#[test]
 fn stock_asks_about_company_market_and_topic_about_whole_market() {
     // it("종목은 그 종목을, 시장·주제는 증시 전체를 움직이는지 묻는다(주제는 증시 기준)")
     let stock = build_article_questions(JudgeTarget::Stock);
@@ -444,4 +460,52 @@ fn merged_article_with_one_market_asks_only_that_market_and_omits_empty_topics()
     let questions = build_merged_questions(&input);
     let keys: Vec<&String> = questions.as_object().unwrap().keys().collect();
     assert_eq!(keys, ["relevance_us", "magnitude_us", "impact_us"]);
+}
+
+// article-classify/article-nature: 성격 6문항
+#[test]
+fn nature_questions_are_six_noul_in_fixed_order_and_text() {
+    let questions = build_nature_questions();
+    let keys: Vec<&String> = questions.as_object().unwrap().keys().collect();
+    assert_eq!(
+        keys,
+        [
+            "fact", "analysis", "forecast", "opinion", "media", "roundup"
+        ]
+    );
+    let expected = [
+        "Does the `article` report facts: events, announcements, results, or market moves that have already happened?",
+        "Does the `article` interpret the causes, meaning, or background of the news, beyond restating the facts?",
+        "Does the `article` present a prediction or outlook, such as a target price, an earnings estimate, or an expected market direction?",
+        "Is the `article` an editorial, column, or opinion piece arguing the writer's position?",
+        "Is the `article` mainly a photo or video, with only a caption or short description?",
+        "Is the `article` a roundup that lists several unrelated news items?",
+    ];
+    for (name, text) in [
+        "fact", "analysis", "forecast", "opinion", "media", "roundup",
+    ]
+    .iter()
+    .zip(expected)
+    {
+        assert_eq!(questions[*name]["type"], "noul");
+        assert_eq!(instructions(&questions[*name]), text);
+        assert!(questions[*name].get("criteria").is_none());
+    }
+}
+
+#[test]
+fn nature_state_has_only_article_title_and_optional_summary() {
+    let with_summary = build_nature_state(&DecisionArticle {
+        title: "제목".into(),
+        summary: Some("요약".into()),
+    });
+    assert_eq!(
+        with_summary,
+        json!({"article": {"title": "제목", "summary": "요약"}})
+    );
+    let without = build_nature_state(&DecisionArticle {
+        title: "제목".into(),
+        summary: Some(String::new()),
+    });
+    assert_eq!(without, json!({"article": {"title": "제목"}}));
 }

@@ -23,3 +23,6 @@ rust/ripple/static/app.css
 rust/ripple/styles/shadcn.css
 rust/ripple/styles/tw-animate.css
 .playwright-mcp/
+
+# agentflow 작업 폴더: 측정 응답 원문 등을 글자 그대로 보존한다(단계가 끝나면 보관소로 옮겨진다)
+work/

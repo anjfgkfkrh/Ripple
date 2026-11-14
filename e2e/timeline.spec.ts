@@ -1,6 +1,11 @@
 import Database from "better-sqlite3";
 import { expect, test, type Locator } from "@playwright/test";
-import { asClient, login, waitForListings } from "./helpers";
+import {
+  asClient,
+  login,
+  seedNatureFixtures,
+  waitForListings,
+} from "./helpers";
 import { E2E_DB_PATH } from "./test-env";
 
 // 테스트 DB에 기사·평가를 직접 넣으므로 로컬 E2E에서만 돈다(수집·평가 흐름은 collect.spec이 검사).
@@ -527,5 +532,60 @@ test.describe("타임라인 (SPEC FR-7, D-25, D-26)", () => {
     await readAgainSaved;
     await page.reload();
     await expect(group).toHaveAttribute("data-read", "true");
+  });
+
+  test("기사 성격 탭: 사실 탭과 해석·전망·기타 탭, 제목 앞 태그, 탭을 바꿔도 항목 필터가 남는다", async ({
+    page,
+  }, testInfo) => {
+    await waitForListings();
+    const { stockName, photoTitle, forecastTitle, factTitle } =
+      seedNatureFixtures(testInfo.project.name);
+    await asClient(page, testInfo, "timeline-nature");
+    await login(page, "/");
+    await chip(page.getByTestId("timeline-filters"), "항목", stockName).click();
+    const tabs = page.getByTestId("nature-tabs");
+    const factTab = tabs.getByRole("link", { name: "사실", exact: true });
+    const viewTab = tabs.getByRole("link", {
+      name: "해석·전망·기타",
+      exact: true,
+    });
+
+    // 사실 탭: 일반 기사만, "사실" 태그가 제목 앞에. "[포토]"는 어느 탭에도 없다.
+    await expect(factTab).toHaveAttribute("aria-current", "page");
+    await expect(cards(page)).toHaveCount(1);
+    const fact = cards(page).filter({ hasText: factTitle });
+    await expect(fact.getByTestId("nature-tag")).toHaveText(["사실"]);
+    await expect(page.getByText(forecastTitle)).toHaveCount(0);
+    await expect(page.getByText(photoTitle)).toHaveCount(0);
+    await page.screenshot({
+      path: testInfo.outputPath("nature-fact.png"),
+      fullPage: true,
+      animations: "disabled",
+    });
+
+    // 해석·전망·기타 탭: 전망 기사만 "전망" 태그로. 항목 필터와 주소의 stock 값이 남는다.
+    await viewTab.click();
+    await expect(page).toHaveURL(/nature=view/);
+    await expect(page).toHaveURL(/[?&]stock=\d+/);
+    await expect(viewTab).toHaveAttribute("aria-current", "page");
+    await expect(cards(page)).toHaveCount(1);
+    const forecast = cards(page).filter({ hasText: forecastTitle });
+    await expect(forecast.getByTestId("nature-tag")).toHaveText(["전망"]);
+    await expect(page.getByText(factTitle)).toHaveCount(0);
+    await expect(page.getByText(photoTitle)).toHaveCount(0);
+    await expect(
+      chip(page.getByTestId("timeline-filters"), "항목", stockName),
+    ).toHaveAttribute("aria-current", "true");
+    await page.screenshot({
+      path: testInfo.outputPath("nature-view.png"),
+      fullPage: true,
+      animations: "disabled",
+    });
+
+    // 사실 탭으로 돌아오면 주소에서 탭 값이 빠지고 항목 필터는 남는다.
+    await factTab.click();
+    await expect(page).not.toHaveURL(/nature=/);
+    await expect(page).toHaveURL(/[?&]stock=\d+/);
+    await expect(fact).toHaveCount(1);
   });
 });

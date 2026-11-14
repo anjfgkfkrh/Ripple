@@ -228,6 +228,14 @@ impl Decider for FakeDecider {
         self.models.lock().unwrap().push(model.to_string());
         Ok(self.rating.clone())
     }
+
+    async fn classify_nature(
+        &self,
+        _: &crate::server::ai::decider::types::DecisionArticle,
+        _: &str,
+    ) -> Result<crate::server::ai::decider::types::NatureDecision, DeciderError> {
+        unreachable!("이 테스트는 rate만 쓴다")
+    }
 }
 
 fn lead_input() -> LeadInput {
