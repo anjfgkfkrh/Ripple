@@ -3,16 +3,16 @@
 > 읽는 때: 세션을 시작할 때 맨 먼저. 지금 하는 일, 답 대기, 다음 할 일만 둔다(화면 한 장 안).
 > 이 문서는 덧붙이지 않고 통째로 다시 쓴다(agentflow review가 작업 통과 때, `/handoff`가 단계 밖 작업 뒤). 끝난 일의 자세한 기록은 [DECISIONS.md](DECISIONS.md) 3장, 단계 표·작업 방법은 [DEVELOPMENT.md](DEVELOPMENT.md)에 둔다. 실제와 다르면 `git log`와 `git status`를 먼저 본다.
 
-마지막 갱신: 2026-11-14 (한국 시간), 18단계 `article-classify`의 `display-rule` 통과(브랜치 `af/article-classify`)
+마지막 갱신: 2026-11-14 (한국 시간), 18단계 `article-classify`의 `article-nature` 통과(브랜치 `af/article-classify`)
 
 ## 다음 할 일
 
-- **18단계 `article-classify`: `measure`·`schema`·`market-alias`·`relink-7d`·`stock-subject`·`display-rule` 통과. 다음은 `article-nature`(`/agentflow:run article-classify`로 이어 감).** 종목 평가 요청에 예/아니오 질문 `bystander`(`type` `"noul"`)가 붙어 확률이 `evaluations.bystander`에 저장되고, `display-rule`로 숨김 규칙 하나(`evaluate/run.rs` `NOT_HIDDEN_SQL`)가 타임라인·토픽 카드·토픽 기사 수·키워드 통과 수·통계 낱말에 함께 걸린다: 종목 항목 평가의 `bystander` ≥ 0.5이면 숨기고, `bystander`가 없는 지난 평가는 같은 기사의 시장 항목 관련도가 종목 관련도보다 크면 숨긴다(시장·주제 항목은 받지 않음, 평가 회차 요약 `relevant`는 그대로). 성격 숨김(사진영상·뉴스 모음)은 `article-nature`가 같은 조각에 더한다. 결정은 DECISIONS.md 1장 "기사 분류 개선", "18단계 `article-classify` 계획 답", "18단계 계획 때 정한 세부", "18단계 measure·schema·market-alias·relink-7d·stock-subject·display-rule 구현 세부", 수치는 2장 "기사 분류 측정". `stage-check`는 최대 $0.15 승인됨. 타임라인 조회 속도는 재지 않았다(stage-check에서 실제 DB로 볼 것).
+- **18단계 `article-classify`: `measure`·`schema`·`market-alias`·`relink-7d`·`stock-subject`·`display-rule`·`article-nature` 통과. 다음은 `nature-tabs`(`/agentflow:run article-classify`로 이어 감).** 종목 평가에 예/아니오 질문 `bystander`가 붙고, 숨김 규칙 하나(`evaluate/run.rs` `NOT_HIDDEN_SQL` + 성격 숨김 `not_nature_hidden_sql()`)가 타임라인·토픽 카드·토픽 기사 수·키워드 통과 수·통계 낱말에 함께 걸린다. `article-nature`로 평가 회차 끝에 화면 기준을 넘은 성격 없는 7일 안 기사마다 Jev 별도 요청(예/아니오 6개)을 보내 `articles.nature_*`에 저장하고(같은 소식은 복사, 회차 한도·예산은 평가와 합쳐 셈, 사용량 `purpose = article_nature`), `media`·`roundup` ≥ 0.5 기사는 어디에도 보이지 않는다. 성격 묻기는 평가 루프가 멈추지 않은 회차에만 돈다. 회차 요약 JSON에 `natureAsked` 등(0보다 클 때만), 상태 화면은 아직 읽지 않는다. 결정은 DECISIONS.md 1장 "기사 분류 개선", "18단계 `article-classify` 계획 답", "18단계 계획 때 정한 세부", "18단계 measure~article-nature 구현 세부", 수치는 2장 "기사 분류 측정". `stage-check`는 최대 $0.15 승인됨. 타임라인 조회 속도는 재지 않았다(stage-check에서 실제 DB로 볼 것).
 - **`pnpm format:check`**: measure 작업이 커밋한 `work/article-classify/measure/first-response.json`이 prettier 서식이 아니어서 실패한다고 기록했으나, 2026-11-14 stock-subject 리뷰의 `/check`에서는 통과했다(원인 다시 보지 않음). 단계 끝 `close`에서 `work/`가 보관소로 옮겨지면 사라진다.
 
 ## 답 대기
 
-- **18단계 measure에서 남긴 질문**: `[자막뉴스]` 4건은 `media` 0.19~0.30으로 숨겨지지 않는다(성격 질문 문구를 바꿀지, 그대로 둘지). 뉴스 모음 `roundup`은 0.52·0.56으로 기준 근처. `article-nature` 전에 볼 것.
+- **18단계 measure에서 남긴 질문**: `[자막뉴스]` 4건은 `media` 0.19~0.30으로 숨겨지지 않는다(성격 질문 문구를 바꿀지, 그대로 둘지). 뉴스 모음 `roundup`은 0.52·0.56으로 기준 근처. `article-nature`는 measure 때 글자 그대로 구현됨(문구 바꾸지 않음). stage-check 결과로 다시 볼 것.
 - **기사 분류 2-5 나머지**: 젠슨 황 사임 뒤 본인 심경·주변 반응·다른 경영자 비교 기사(영향도 6.9~7.7로 보임)가 왜 엔비디아에 붙는지. 사용자 "지금 그대로, 나중에 수정". 사례는 DECISIONS 2장 "기사 분류 조사".
 - **16단계(작음): 손님이 비밀번호 창으로 권한을 얻은 직후 화면.** A(추천) 그대로 둔다(새로 고치면 맞아짐) / B 비밀번호가 맞으면 원래 요청 뒤 화면을 새로 고친다. DECISIONS.md 1장 "16단계 unlock-ui 구현 세부" ⑤.
 - **17단계에서 뺀 것(답 11A·12A)**: 네이버 뉴스 검색 API 등 수집 보강(I9), 토픽 갱신 모델 교체·토픽 수·간격·목표 금액. 17단계 배포 뒤 비용을 다시 재고 묻는다.

@@ -60,6 +60,7 @@
 ## 알려진 함정
 - 같은 소식 묶기는 SQL 밖에서 한다. 묶는 후보에도 탭 조건을 걸지 않으면 다른 탭 기사가 "외 N곳"에 섞인다.
 - 리뷰(2026-11-14, schema): 태그 고르기는 `server/db/schema.rs`의 `classify_nature(&NatureProbs) -> (Vec<NatureTag>, bool)`, 화면 글자는 `NatureTag::label()`이다. 성격이 없는 기사(`nature_at` NULL)는 이 함수에 넣지 말고 태그 없이 둔다(넣으면 Other가 붙는다).
+- 리뷰(2026-11-14, article-nature): `display_rule`에는 이미 성격 숨김 `not_nature_hidden_sql()`(자리표 없는 글자, 값 배열은 그대로 `[Value; 3]`)이 붙어 있고 `articles`를 붙인 조회만 쓴다. 탭 조건의 `?`는 그 뒤 값으로 더한다. 가짜 TypeSafe는 화면 기준을 넘은 기사에만 성격을 답하므로 "[포토]"가 어느 탭에도 없다는 E2E는 그 기사가 평가 기준을 넘는 제목·준비여야 의미가 있다(넘지 않으면 성격과 상관없이 숨어 저절로 통과).
 
 ## 상위로 올릴 조건
 기본 규칙(범위 밖·기대값 변경·두 번 고쳐도 남는 오류는 보고)
