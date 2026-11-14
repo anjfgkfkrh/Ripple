@@ -7,7 +7,7 @@ use super::*;
 use crate::server::ai::decider::types::{
     DecisionArticle, DecisionLink, JudgeItem, LeadSubject, LeadSubjectType,
 };
-use crate::server::db::schema::{Market, MatchKind};
+use crate::server::db::schema::{Market, MatchKind, NatureProbs};
 
 fn stock() -> JudgeItem {
     JudgeItem {
@@ -563,4 +563,97 @@ async fn merged_decision_with_a_missing_key_is_a_format_error() {
         assert_eq!(error.kind, DeciderErrorKind::Upstream, "{key}");
         assert_eq!(error.message, "Jev 응답 형식이 다릅니다.");
     }
+}
+
+// article-classify/article-nature: 기사 성격 6문항
+fn nature_answer() -> Value {
+    let noul = |p: f64| json!({ "type": "noul", "noul": p });
+    json!({
+        "model": "jev-1.13.0",
+        "answers": {
+            "fact": noul(0.97), "analysis": noul(0.77), "forecast": noul(0.12),
+            "opinion": noul(0.06), "media": noul(0.02), "roundup": noul(0.05),
+        },
+        "usage": { "input_tokens": 717, "output_tokens": 103 },
+    })
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn classify_nature_reads_six_probabilities_and_sends_six_noul_questions() {
+    let server = server_with(vec![json_response(200, nature_answer())]).await;
+    let article = DecisionArticle {
+        title: "삼성전자 3분기 실적".into(),
+        summary: None,
+    };
+    let decision = decider(&server)
+        .classify_nature(&article, "jev-1.13.0")
+        .await
+        .unwrap();
+    assert_eq!(
+        decision.probs,
+        NatureProbs {
+            fact: 0.97,
+            analysis: 0.77,
+            forecast: 0.12,
+            opinion: 0.06,
+            media: 0.02,
+            roundup: 0.05,
+        }
+    );
+    assert_eq!(decision.model, "jev-1.13.0");
+    assert_eq!(
+        decision.usage,
+        TokenUsage {
+            input_tokens: 717,
+            output_tokens: 103
+        }
+    );
+    let requests = server.received_requests().await.unwrap();
+    let body: Value = serde_json::from_slice(&requests[0].body).unwrap();
+    assert_eq!(
+        body["state"],
+        json!({"article": {"title": "삼성전자 3분기 실적"}})
+    );
+    let questions = body["questions"].as_object().unwrap();
+    let keys: Vec<&String> = questions.keys().collect();
+    assert_eq!(
+        keys,
+        [
+            "fact", "analysis", "forecast", "opinion", "media", "roundup"
+        ]
+    );
+    assert!(questions.values().all(|q| q["type"] == "noul"));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn classify_nature_missing_any_probability_is_a_format_error() {
+    for name in [
+        "fact", "analysis", "forecast", "opinion", "media", "roundup",
+    ] {
+        let mut body = nature_answer();
+        body["answers"].as_object_mut().unwrap().remove(name);
+        let server = server_with(vec![json_response(200, body)]).await;
+        let article = DecisionArticle {
+            title: "제목".into(),
+            summary: None,
+        };
+        let error = decider(&server)
+            .classify_nature(&article, "jev-1.13.0")
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind, DeciderErrorKind::Upstream, "{name} 빠짐");
+    }
+    let mut body = nature_answer();
+    body["answers"]["media"] = json!({ "type": "noul", "noul": "0.1" });
+    let server = server_with(vec![json_response(200, body)]).await;
+    let article = DecisionArticle {
+        title: "제목".into(),
+        summary: None,
+    };
+    assert!(
+        decider(&server)
+            .classify_nature(&article, "jev-1.13.0")
+            .await
+            .is_err()
+    );
 }

@@ -70,7 +70,7 @@ use serde_json::Value;
 use crate::server::ai::llm::{
     JsonResult, LlmClient, LlmError, LlmMessage, LlmUsage, StructuredRequest,
 };
-use crate::server::db::schema::UsageProvider;
+use crate::server::db::schema::{NatureProbs, UsageProvider};
 
 /// `FakeLlm`이 받은 요청(`tests/fixtures.ts`의 `fakeLlm().calls` 대응)
 #[derive(Debug, Clone, PartialEq)]
@@ -234,7 +234,7 @@ pub fn sample_keyword_tree(english: bool) -> Value {
 
 use crate::server::ai::decider::types::{
     DeciderError, Decision, DecisionInput, LeadInput, LeadRating, MarketVerdict, MergedDecision,
-    MergedInput, Scored, TokenUsage,
+    MergedInput, NatureDecision, Scored, TokenUsage,
 };
 
 /// 기본 키워드·토픽 평가(관련 7점·영향 6점·입력 500토큰)
@@ -313,6 +313,30 @@ pub struct FakeDecider {
     /// 합친 평가(기사당 한 요청) 호출
     pub merged_calls: Mutex<Vec<(MergedInput, String)>>,
     pub rate_calls: Mutex<Vec<(LeadInput, String)>>,
+    nature_answer: NatureAnswer,
+    /// 기사 성격 호출(제목, 모델)
+    pub nature_calls: Mutex<Vec<(String, String)>>,
+}
+
+type NatureAnswer = Box<dyn Fn(&str) -> Result<NatureDecision, DeciderError> + Send + Sync>;
+
+/// 기본 성격 답: 사실 0.9, 나머지 0.1(어디에도 숨지 않는다)
+pub fn fake_nature_decision() -> NatureDecision {
+    NatureDecision {
+        probs: NatureProbs {
+            fact: 0.9,
+            analysis: 0.1,
+            forecast: 0.1,
+            opinion: 0.1,
+            media: 0.1,
+            roundup: 0.1,
+        },
+        model: "jev-1.13.0".into(),
+        usage: TokenUsage {
+            input_tokens: 700,
+            output_tokens: 100,
+        },
+    }
 }
 
 /// 키워드·토픽 평가만 정한다(기사 평가는 기본 결과).
@@ -326,6 +350,8 @@ pub fn fake_decider(
         merged_calls: Mutex::new(Vec::new()),
         calls: Mutex::new(Vec::new()),
         rate_calls: Mutex::new(Vec::new()),
+        nature_answer: Box::new(|_| Ok(fake_nature_decision())),
+        nature_calls: Mutex::new(Vec::new()),
     }
 }
 
@@ -340,6 +366,8 @@ pub fn fake_article_decider(
         merged_calls: Mutex::new(Vec::new()),
         calls: Mutex::new(Vec::new()),
         rate_calls: Mutex::new(Vec::new()),
+        nature_answer: Box::new(|_| Ok(fake_nature_decision())),
+        nature_calls: Mutex::new(Vec::new()),
     }
 }
 
@@ -350,6 +378,15 @@ impl FakeDecider {
         answer: impl Fn(&MergedInput) -> Result<MergedDecision, DeciderError> + Send + Sync + 'static,
     ) -> Self {
         self.merged_answer = Box::new(answer);
+        self
+    }
+
+    /// 기사 성격 호출의 결과(또는 오류)를 정한다. 인자는 기사 제목.
+    pub fn with_nature(
+        mut self,
+        answer: impl Fn(&str) -> Result<NatureDecision, DeciderError> + Send + Sync + 'static,
+    ) -> Self {
+        self.nature_answer = Box::new(answer);
         self
     }
 }
@@ -381,6 +418,18 @@ impl crate::server::ai::decider::types::Decider for FakeDecider {
             .unwrap()
             .push((input.clone(), model.to_string()));
         (self.rate_answer)(input)
+    }
+
+    async fn classify_nature(
+        &self,
+        article: &crate::server::ai::decider::types::DecisionArticle,
+        model: &str,
+    ) -> Result<NatureDecision, DeciderError> {
+        self.nature_calls
+            .lock()
+            .unwrap()
+            .push((article.title.clone(), model.to_string()));
+        (self.nature_answer)(&article.title)
     }
 }
 

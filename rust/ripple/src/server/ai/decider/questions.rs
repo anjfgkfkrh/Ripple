@@ -8,7 +8,7 @@
 use serde_json::{Map, Value, json};
 
 use crate::server::ai::decider::types::{
-    DecisionInput, JudgeItem, JudgeTarget, LeadInput, LeadSubjectType, MergedInput,
+    DecisionArticle, DecisionInput, JudgeItem, JudgeTarget, LeadInput, LeadSubjectType, MergedInput,
 };
 use crate::server::db::schema::{Market, MatchKind};
 
@@ -141,6 +141,56 @@ pub fn build_article_questions(target: JudgeTarget) -> Value {
 
 /// 종목 기사 질문 `bystander`의 글자(예/아니오 질문, API type은 "noul")
 pub const BYSTANDER_INSTRUCTIONS: &str = "Does the `article` mainly report how something else (a stock index, another company, or an institution) is affected, with the company in `stock` appearing only as a cause or in passing?";
+
+/// 기사 성격 질문(예/아니오, API type은 "noul"). 이름·순서·글자가 고정이다(article-classify 계획).
+pub const NATURE_QUESTIONS: [(&str, &str); 6] = [
+    (
+        "fact",
+        "Does the `article` report facts: events, announcements, results, or market moves that have already happened?",
+    ),
+    (
+        "analysis",
+        "Does the `article` interpret the causes, meaning, or background of the news, beyond restating the facts?",
+    ),
+    (
+        "forecast",
+        "Does the `article` present a prediction or outlook, such as a target price, an earnings estimate, or an expected market direction?",
+    ),
+    (
+        "opinion",
+        "Is the `article` an editorial, column, or opinion piece arguing the writer's position?",
+    ),
+    (
+        "media",
+        "Is the `article` mainly a photo or video, with only a caption or short description?",
+    ),
+    (
+        "roundup",
+        "Is the `article` a roundup that lists several unrelated news items?",
+    ),
+];
+
+/// 기사 성격 6문항
+pub fn build_nature_questions() -> Value {
+    let mut questions = Map::new();
+    for (name, instructions) in NATURE_QUESTIONS {
+        questions.insert(
+            name.into(),
+            json!({ "type": "noul", "instructions": instructions }),
+        );
+    }
+    Value::Object(questions)
+}
+
+/// 기사 성격 state: 기사(제목, 있으면 요약)만
+pub fn build_nature_state(article: &DecisionArticle) -> Value {
+    let mut article_state = Map::new();
+    article_state.insert("title".into(), json!(article.title));
+    if let Some(summary) = article.summary.as_deref().filter(|s| !s.is_empty()) {
+        article_state.insert("summary".into(), json!(summary));
+    }
+    json!({ "article": Value::Object(article_state) })
+}
 
 fn impact_choice(instructions: String) -> Value {
     json!({

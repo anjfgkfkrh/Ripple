@@ -461,3 +461,51 @@ fn merged_article_with_one_market_asks_only_that_market_and_omits_empty_topics()
     let keys: Vec<&String> = questions.as_object().unwrap().keys().collect();
     assert_eq!(keys, ["relevance_us", "magnitude_us", "impact_us"]);
 }
+
+// article-classify/article-nature: 성격 6문항
+#[test]
+fn nature_questions_are_six_noul_in_fixed_order_and_text() {
+    let questions = build_nature_questions();
+    let keys: Vec<&String> = questions.as_object().unwrap().keys().collect();
+    assert_eq!(
+        keys,
+        [
+            "fact", "analysis", "forecast", "opinion", "media", "roundup"
+        ]
+    );
+    let expected = [
+        "Does the `article` report facts: events, announcements, results, or market moves that have already happened?",
+        "Does the `article` interpret the causes, meaning, or background of the news, beyond restating the facts?",
+        "Does the `article` present a prediction or outlook, such as a target price, an earnings estimate, or an expected market direction?",
+        "Is the `article` an editorial, column, or opinion piece arguing the writer's position?",
+        "Is the `article` mainly a photo or video, with only a caption or short description?",
+        "Is the `article` a roundup that lists several unrelated news items?",
+    ];
+    for (name, text) in [
+        "fact", "analysis", "forecast", "opinion", "media", "roundup",
+    ]
+    .iter()
+    .zip(expected)
+    {
+        assert_eq!(questions[*name]["type"], "noul");
+        assert_eq!(instructions(&questions[*name]), text);
+        assert!(questions[*name].get("criteria").is_none());
+    }
+}
+
+#[test]
+fn nature_state_has_only_article_title_and_optional_summary() {
+    let with_summary = build_nature_state(&DecisionArticle {
+        title: "제목".into(),
+        summary: Some("요약".into()),
+    });
+    assert_eq!(
+        with_summary,
+        json!({"article": {"title": "제목", "summary": "요약"}})
+    );
+    let without = build_nature_state(&DecisionArticle {
+        title: "제목".into(),
+        summary: Some(String::new()),
+    });
+    assert_eq!(without, json!({"article": {"title": "제목"}}));
+}

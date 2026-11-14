@@ -2,7 +2,7 @@ use std::future::Future;
 
 use serde::Deserialize;
 
-use crate::server::db::schema::{Impact, Market, MatchKind};
+use crate::server::db::schema::{Impact, Market, MatchKind, NatureProbs};
 
 /// 판단 대상: 종목, 시장(한국·미국 증시), 주제(사용자 주제·자동 토픽, 증시 기준으로 판단) (11단계)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
@@ -193,6 +193,14 @@ pub struct LeadRating {
     pub usage: TokenUsage,
 }
 
+/// 기사 성격 6확률(예/아니오 질문의 예일 확률)
+#[derive(Debug, Clone, PartialEq)]
+pub struct NatureDecision {
+    pub probs: NatureProbs,
+    pub model: String,
+    pub usage: TokenUsage,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeciderErrorKind {
     NoApiKey,
@@ -250,6 +258,13 @@ pub trait Decider: Send + Sync {
         input: &LeadInput,
         model: &str,
     ) -> impl Future<Output = Result<LeadRating, DeciderError>> + Send;
+
+    /// 기사 성격 6문항(사실·해석·전망·의견·사진영상·뉴스 모음)을 한 요청으로 묻는다.
+    fn classify_nature(
+        &self,
+        article: &DecisionArticle,
+        model: &str,
+    ) -> impl Future<Output = Result<NatureDecision, DeciderError>> + Send;
 }
 
 /// 하나를 여러 곳(수집·키워드 대기열·토픽 갱신)이 나눠 쓸 때
@@ -276,5 +291,13 @@ impl<T: Decider> Decider for std::sync::Arc<T> {
         model: &str,
     ) -> impl Future<Output = Result<LeadRating, DeciderError>> + Send {
         (**self).rate(input, model)
+    }
+
+    fn classify_nature(
+        &self,
+        article: &DecisionArticle,
+        model: &str,
+    ) -> impl Future<Output = Result<NatureDecision, DeciderError>> + Send {
+        (**self).classify_nature(article, model)
     }
 }
