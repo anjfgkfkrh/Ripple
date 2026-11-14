@@ -14,7 +14,7 @@
 | display-rule | 숨김 규칙 하나(새 질문·지난 평가 규칙)를 타임라인·토픽 수·키워드 통과·통계 낱말에 적용 | `timeline/read_tests`·`store` 시험·`performance_tests`·`stat_words` 시험 새 시험 통과, `/check` 전체 통과 | Sonnet / medium | stock-subject 통과 | 통과 | 1 |
 | article-nature | 보이는 기사의 성격을 Jev 별도 요청으로 묻고 저장·복사, 사진영상·뉴스 모음 숨김 | `questions_tests`·`typesafe_tests`·`evaluate` 시험 새 시험 통과, `/check` 전체 통과 | Sonnet / medium | display-rule 통과 | 통과 | 1 |
 | nature-tabs | 제목 앞 성격 태그와 사실 / 해석·전망·기타 탭 | `timeline/read_tests`·`web/timeline_tests` 새 시험, E2E `timeline.spec.ts` 새 시험 통과, `/check` 전체 통과, 휴대폰·PC 캡처 | Sonnet / medium | article-nature 통과 | 통과 | 1 |
-| stage-check | 시험 Docker에서 실제 AI로 다시 걸기·평가·성격 묻기를 돌리고 표본 ①②④를 다시 센다 | 인계에 항목별 수치·비용($0.15 이하)·화면 캡처, 시험 Docker 내림 | Sonnet / medium | 앞 작업 모두 통과 | 대기 | 0 |
+| stage-check | 시험 Docker에서 실제 AI로 다시 걸기·평가·성격 묻기를 돌리고 표본 ①②④를 다시 센다 | 인계에 항목별 수치·비용($0.15 이하)·화면 캡처, 시험 Docker 내림 | Sonnet / medium | 앞 작업 모두 통과 | 진행 | 1 |
 
 ## 사람이 승인한 큰 결정
 - DECISIONS.md 1장 "기사 분류 개선"(2026-11-13, ①~⑱): 주어·성격 두 축, 시장 고정 별칭(제목+요약), 최근 7일 다시 걸고 평가, 종목 예/아니오 질문, 지난 기사는 표시 규칙, 성격 태그 여럿·두 탭, 사진영상·뉴스 모음 숨김, 일관성 유료 측정 최대 $0.05.
