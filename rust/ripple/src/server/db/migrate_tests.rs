@@ -6,6 +6,7 @@ use tempfile::TempDir;
 
 use super::*;
 use crate::server::db::client::{DbAccess, enable_wal, open_db};
+use crate::server::evaluate::run::NOT_HIDDEN_SQL;
 
 /// TS(drizzle) 시절의 고정 파일: `drizzle/`(마이그레이션 원본과 journal)와 TS로 만든 DB의 `.dump`(`applied.sql`).
 fn drizzle_fixtures() -> PathBuf {
@@ -255,7 +256,7 @@ fn drizzle_db_gets_rust_only_migrations_after_baseline() {
 
     assert_eq!(schema_dump(&ts_db), schema_dump(&fresh));
     let conn = Connection::open(&ts_db).unwrap();
-    assert_eq!(user_version(&conn), 13);
+    assert_eq!(user_version(&conn), 14);
     let rows: i64 = conn
         .query_row("SELECT count(*) FROM __drizzle_migrations", [], |r| {
             r.get(0)
@@ -281,7 +282,7 @@ fn migration_0011_adds_anchor_columns_and_resets_stock_keywords() {
     apply_migrations(&db_path).unwrap();
 
     let conn = Connection::open(&db_path).unwrap();
-    assert_eq!(user_version(&conn), 13);
+    assert_eq!(user_version(&conn), 14);
     let status = |id: i64| -> (String, Option<String>) {
         conn.query_row(
             "SELECT keywords_status, keywords_error FROM stocks WHERE id = ?1",
@@ -319,7 +320,7 @@ fn migration_0012_adds_nature_columns_with_null_for_existing_rows() {
     apply_migrations(&db_path).unwrap();
 
     let conn = Connection::open(&db_path).unwrap();
-    assert_eq!(user_version(&conn), 13);
+    assert_eq!(user_version(&conn), 14);
     let article_cols = columns_of(&conn, "articles");
     for c in [
         "nature_fact",
@@ -333,4 +334,32 @@ fn migration_0012_adds_nature_columns_with_null_for_existing_rows() {
         assert!(article_cols.contains(&c.to_string()), "{c}");
     }
     assert!(columns_of(&conn, "evaluations").contains(&"bystander".to_string()));
+}
+
+#[test]
+fn migration_0013_indexes_evaluations_by_article_for_hidden_rule() {
+    // 숨김 규칙(`NOT_HIDDEN_SQL`)의 하위 쿼리가 같은 기사의 평가를 표 전체를 훑지 않고 색인으로 찾는다.
+    let dir = TempDir::new().unwrap();
+    let db_path = dir.path().join("ripple.db");
+    apply_migrations(&db_path).unwrap();
+    let conn = Connection::open(&db_path).unwrap();
+    assert_eq!(user_version(&conn), 14);
+    let sql = format!(
+        "EXPLAIN QUERY PLAN SELECT evaluations.id FROM evaluations \
+         INNER JOIN articles ON articles.id = evaluations.article_id \
+         INNER JOIN stocks ON stocks.id = evaluations.stock_id WHERE {NOT_HIDDEN_SQL}"
+    );
+    let plan: Vec<String> = conn
+        .prepare(&sql)
+        .unwrap()
+        .query_map([0.5], |r| r.get(3))
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap();
+    assert!(
+        plan.iter()
+            .any(|d| d.contains("SEARCH m USING INDEX evaluations_article")),
+        "{plan:?}"
+    );
+    assert!(!plan.iter().any(|d| d == "SCAN m"), "{plan:?}");
 }

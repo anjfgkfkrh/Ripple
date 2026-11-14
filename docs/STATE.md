@@ -3,12 +3,13 @@
 > 읽는 때: 세션을 시작할 때 맨 먼저. 지금 하는 일, 답 대기, 다음 할 일만 둔다(화면 한 장 안).
 > 이 문서는 덧붙이지 않고 통째로 다시 쓴다(agentflow review가 작업 통과 때, `/handoff`가 단계 밖 작업 뒤). 끝난 일의 자세한 기록은 [DECISIONS.md](DECISIONS.md) 3장, 단계 표·작업 방법은 [DEVELOPMENT.md](DEVELOPMENT.md)에 둔다. 실제와 다르면 `git log`와 `git status`를 먼저 본다.
 
-마지막 갱신: 2026-11-14 (한국 시간), 18단계 `article-classify` 보관·main 합치기·본 Docker 배포 완료(main `d3e3904`, 푸시는 아직)
+마지막 갱신: 2026-11-14 16:30 (한국 시간), 화면 느림 고치기(마이그레이션 0013 `evaluations_article` 색인) 구현·`/check` 통과, 커밋·배포 전(main `eb34b95` 위 미커밋)
 
 ## 다음 할 일
 
+- **화면 느림 고치기 커밋·배포(요청 대기)**: 페이지마다 CPU 100%의 원인은 18단계 숨김 규칙 하위 쿼리에 색인이 없던 것. 마이그레이션 0013(`evaluations(article_id)` 색인)과 시험을 더했고 `/check` 전부 통과(원격 사본으로 `/` 18.4초 → 0.47초, `/stocks` 30.6초 → 0.14초). main에 커밋(`node scripts/check-secrets.mjs` 먼저) → `/deploy`. 배포 뒤 원격 CPU와 `/` 응답 시간을 확인한다. 기록: DECISIONS.md 1장 "화면 느림 고치기", 2장 "화면 느림 원인", 3장 맨 위.
 - **18단계 배포 직후 확인(사용자 몫)**: 휴대폰·PC에서 타임라인 "사실"·"해석·전망·기타" 탭과 제목 앞 성격 태그, 시장 항목에 걸린 지수 기사를 본다. worker 첫 시작 때 최근 7일 기사 다시 걸기와 7일 성격 묻기가 몇 회차에 걸쳐 돈다(약 $0.06 예상). 끝난 뒤 상태 화면의 AI 사용량과 숨김 기사 수(사진영상·뉴스 모음)를 본다.
-- main은 아직 푸시하지 않았다(요청 시 `--history` 검사 뒤 푸시). 다음 단계는 SPEC 10장 순서에 따라 `/agentflow:plan <단계>`로 시작한다.
+- 다음 단계는 SPEC 10장 순서에 따라 `/agentflow:plan <단계>`로 시작한다.
 - 배포 기록: DECISIONS.md 3장 맨 위. 단계 기록은 보관소 `../Ripple-archive/article-classify/`.
 
 ## 답 대기
@@ -25,7 +26,7 @@
 - 엔비디아 이름 연결이 17단계 배포 뒤에만 있다(원인 확인 안 함, 엔비디아는 별칭 없음).
 - 원격 본 Docker의 장중 주가 갱신(KIS·Finnhub): `stock_prices`의 최근 `fetched_at`과 상태 화면 "주가" 줄로 본다(아직 보지 않음).
 - 13단계: 모의 서버 값이 실전과 같은지(사용자가 증권 앱과 대조), KIS 미국 시세가 실시간인지(미국 장중 KIS `last`와 Finnhub `c` 비교). 14단계: KIS 주가 띠(Rust)를 실제 키로 확인, 12~14단계 휴대폰·PC 화면 확인(사용자 몫).
-- 18단계: 타임라인 탭 SQL 조회 속도를 실제 DB로 재지 않았다(stage-check에서도 안 잼). nature-tabs E2E는 DB에 성격 값을 직접 넣어 가짜 TypeSafe 성격 답 경로를 타지 않는다.
+- 18단계: 타임라인 탭 SQL 조회 속도는 원격 사본으로 잼(색인 전 18초, 0013 뒤 0.5초 이하, DECISIONS 2장 "화면 느림 원인"). nature-tabs E2E는 DB에 성격 값을 직접 넣어 가짜 TypeSafe 성격 답 경로를 타지 않는다.
 - 16단계 남은 작은 일: `/status/system`의 DB 상태 확인(`server/status.rs` `get_system_status`)이 동기 `db.with`다(회원 전용·가벼운 읽기라 남김).
 
 ## 운영 메모

@@ -6,7 +6,7 @@ use rusqlite_migration::{M, Migrations};
 
 /// `migrations/`의 SQL(0000~0010은 drizzle 마이그레이션 `drizzle/0000~0010`을 내용 그대로 복사한 것, 0011부터 Rust 전용). 순서 = 파일 이름 순서.
 /// `--> statement-breakpoint`는 SQL 주석이라 그대로 실행된다.
-pub const MIGRATION_SQL: [&str; 13] = [
+pub const MIGRATION_SQL: [&str; 14] = [
     include_str!("../../../migrations/0000_init.sql"),
     include_str!("../../../migrations/0001_stocks_listings_usage.sql"),
     include_str!("../../../migrations/0002_keywords.sql"),
@@ -20,6 +20,7 @@ pub const MIGRATION_SQL: [&str; 13] = [
     include_str!("../../../migrations/0010_stock_prices.sql"),
     include_str!("../../../migrations/0011_keyword_anchors.sql"),
     include_str!("../../../migrations/0012_article_nature.sql"),
+    include_str!("../../../migrations/0013_evaluations_article_index.sql"),
 ];
 
 /// drizzle이 적용해 둔 DB의 기준선: `__drizzle_migrations`의 줄 수와 마지막 `created_at`
