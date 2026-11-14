@@ -968,3 +968,144 @@ fn read_topic_cards_leaves_out_company_topics() {
         .collect();
     assert_eq!(names, ["시장 토픽"]);
 }
+
+// ---- 숨김 규칙(18단계 display-rule) ----
+
+fn set_bystander(conn: &Connection, match_id: i64, value: Option<f64>) {
+    conn.execute(
+        "UPDATE evaluations SET bystander = ?1 WHERE match_id = ?2",
+        params![value, match_id],
+    )
+    .unwrap();
+}
+
+fn card_stock_ids(conn: &Connection, filter: &TimelineFilter, title: &str) -> Option<Vec<i64>> {
+    read(conn, filter, TIMELINE_PAGE_SIZE)
+        .cards
+        .into_iter()
+        .find(|card| card.title == title)
+        .map(|card| card.stocks.iter().map(|s| s.stock_id).collect())
+}
+
+#[test]
+fn hidden_rule_bystander_at_or_above_threshold_hides_the_stock_but_not_the_market() {
+    // bystander 0.7 → 종목은 카드에서 빠지고 시장 항목이 기준 이상이면 카드는 시장으로 남음, 0.3 → 보임
+    let t = test_db_with_listings();
+    let c = &t.conn;
+    let ids = add_stocks(c);
+    let market = ensure_default_market(c, now()).unwrap().unwrap();
+    let (m, article) = Link::new(ids.samsung, ago(1.0))
+        .titled("숨길 기사")
+        .score(7.0)
+        .magnitude(7.0)
+        .insert(c);
+    set_bystander(c, m, Some(0.7));
+    let (mm, _) = Link::new(market, ago(1.0))
+        .on(article)
+        .score(8.0)
+        .magnitude(7.0)
+        .insert(c);
+    set_bystander(c, mm, Some(0.9)); // 시장 항목은 이 규칙을 받지 않음
+    let (m2, _) = Link::new(ids.hynix, ago(2.0))
+        .titled("보일 기사")
+        .score(7.0)
+        .magnitude(7.0)
+        .insert(c);
+    set_bystander(c, m2, Some(0.3));
+
+    assert_eq!(card_stock_ids(c, &ALL, "숨길 기사"), Some(vec![market]));
+    assert_eq!(card_stock_ids(c, &ALL, "보일 기사"), Some(vec![ids.hynix]));
+    // 종목 필터에서도 같은 규칙
+    let by_samsung = TimelineFilter {
+        stock_id: Some(ids.samsung),
+        ..ALL
+    };
+    assert!(titles(c, &by_samsung).is_empty());
+    let by_hynix = TimelineFilter {
+        stock_id: Some(ids.hynix),
+        ..ALL
+    };
+    assert_eq!(titles(c, &by_hynix), names(&["보일 기사"]));
+}
+
+#[test]
+fn hidden_rule_without_bystander_compares_with_the_market_relevance_of_the_same_article() {
+    // bystander NULL: 시장 9 > 종목 7 → 빠짐, 시장 7 <= 종목 7 → 보임, 시장 평가 없음 → 보임
+    let t = test_db_with_listings();
+    let c = &t.conn;
+    let ids = add_stocks(c);
+    let market = ensure_default_market(c, now()).unwrap().unwrap();
+    let (_, a) = Link::new(ids.samsung, ago(1.0))
+        .titled("시장이 더 큼")
+        .score(7.0)
+        .magnitude(7.0)
+        .insert(c);
+    Link::new(market, ago(1.0))
+        .on(a)
+        .score(9.0)
+        .magnitude(7.0)
+        .insert(c);
+    let (_, b) = Link::new(ids.hynix, ago(2.0))
+        .titled("시장이 같음")
+        .score(7.0)
+        .magnitude(7.0)
+        .insert(c);
+    Link::new(market, ago(2.0))
+        .on(b)
+        .score(7.0)
+        .magnitude(7.0)
+        .insert(c);
+    Link::new(ids.kakao, ago(3.0))
+        .titled("시장 평가 없음")
+        .score(7.0)
+        .magnitude(7.0)
+        .insert(c);
+
+    assert_eq!(card_stock_ids(c, &ALL, "시장이 더 큼"), Some(vec![market]));
+    assert_eq!(
+        card_stock_ids(c, &ALL, "시장이 같음").map(|v| v.len()),
+        Some(2)
+    );
+    assert_eq!(
+        card_stock_ids(c, &ALL, "시장 평가 없음"),
+        Some(vec![ids.kakao])
+    );
+    let by_samsung = TimelineFilter {
+        stock_id: Some(ids.samsung),
+        ..ALL
+    };
+    assert!(titles(c, &by_samsung).is_empty());
+    let by_kakao = TimelineFilter {
+        stock_id: Some(ids.kakao),
+        ..ALL
+    };
+    assert_eq!(titles(c, &by_kakao), names(&["시장 평가 없음"]));
+}
+
+#[test]
+fn hidden_rule_leaves_topic_items_alone_and_hides_the_stock_only_card_entirely() {
+    // 숨겨진 종목 평가만 있는 기사는 카드가 없고, 주제 항목은 규칙을 받지 않는다
+    let t = test_db_with_listings();
+    let c = &t.conn;
+    let ids = add_stocks(c);
+    ensure_default_market(c, ago(80.0)).unwrap();
+    let (m, _) = Link::new(ids.samsung, ago(1.0))
+        .titled("종목만")
+        .score(8.0)
+        .magnitude(7.0)
+        .insert(c);
+    set_bystander(c, m, Some(0.8));
+    let AddTopicResult::Added { lens_ids, .. } =
+        add_user_topic(c, "부동산 시장", ago(80.0)).unwrap()
+    else {
+        panic!("주제");
+    };
+    let (tm, _) = Link::new(lens_ids[0], ago(2.0))
+        .titled("주제 기사")
+        .score(8.0)
+        .magnitude(7.0)
+        .insert(c);
+    set_bystander(c, tm, Some(0.9));
+
+    assert_eq!(titles(c, &ALL), names(&["주제 기사"]));
+}

@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use rusqlite::{Connection, params};
 
-use crate::server::evaluate::run::meets_display_rule;
+use crate::server::db::schema::BYSTANDER_THRESHOLD;
+use crate::server::evaluate::run::{NOT_HIDDEN_SQL, meets_display_rule};
 use crate::server::keywords::tree::{PATH_SEPARATOR, normalize_key};
 use crate::server::time::EpochMs;
 
@@ -26,26 +27,30 @@ pub fn keyword_performance(
     stock_id: i64,
     since: EpochMs,
 ) -> rusqlite::Result<HashMap<String, KeywordPerformance>> {
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare(&format!(
         "SELECT article_matches.keyword_path, article_matches.created_at, \
-                evaluations.relevance, evaluations.magnitude \
+                evaluations.relevance, evaluations.magnitude, \
+                CASE WHEN {NOT_HIDDEN_SQL} THEN 1 ELSE 0 END \
          FROM article_matches \
          LEFT JOIN evaluations ON evaluations.match_id = article_matches.id \
+         INNER JOIN stocks ON stocks.id = article_matches.stock_id \
          WHERE article_matches.stock_id = ?1 AND article_matches.match_kind = 'keyword' \
            AND article_matches.created_at >= ?2",
-    )?;
+        NOT_HIDDEN_SQL = NOT_HIDDEN_SQL.replace('?', "?3")
+    ))?;
     let rows = stmt
-        .query_map(params![stock_id, since], |row| {
+        .query_map(params![stock_id, since, BYSTANDER_THRESHOLD], |row| {
             Ok((
                 row.get::<_, Option<String>>(0)?,
                 row.get::<_, EpochMs>(1)?,
                 row.get::<_, Option<f64>>(2)?,
                 row.get::<_, Option<f64>>(3)?,
+                row.get::<_, i64>(4)? == 1,
             ))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     let mut table: HashMap<String, KeywordPerformance> = HashMap::new();
-    for (path, created_at, relevance, magnitude) in rows {
+    for (path, created_at, relevance, magnitude, not_hidden) in rows {
         let Some(last) = path
             .as_deref()
             .and_then(|p| p.rsplit(PATH_SEPARATOR).next())
@@ -55,6 +60,7 @@ pub fn keyword_performance(
         let entry = table.entry(normalize_key(last)).or_default();
         entry.matched += 1;
         if let Some(relevance) = relevance
+            && not_hidden
             && meets_display_rule(conn, relevance, magnitude)?
         {
             entry.passed += 1;

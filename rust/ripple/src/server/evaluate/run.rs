@@ -171,6 +171,11 @@ fn find_same_news_evaluation(
         .map(|(evaluation, _)| evaluation))
 }
 
+/// 숨김 규칙 SQL 조각(종목 항목 평가에만 적용). 조회에 `evaluations`·`stocks` 별칭이 있어야 하고
+/// `?` 하나에 `BYSTANDER_THRESHOLD`를 넣는다. 숨기는 경우: 구경꾼 확률이 기준 이상이거나,
+/// 구경꾼 값이 없는 평가에서 같은 기사의 시장 항목 관련도가 이 종목 관련도보다 클 때.
+pub const NOT_HIDDEN_SQL: &str = "NOT (stocks.kind = 'stock' AND (COALESCE(evaluations.bystander, 0) >= ? OR (evaluations.bystander IS NULL AND EXISTS (SELECT 1 FROM evaluations AS m INNER JOIN stocks AS ms ON ms.id = m.stock_id WHERE m.article_id = evaluations.article_id AND ms.kind = 'market' AND ms.deleted_at IS NULL AND m.relevance > evaluations.relevance))))";
+
 /// 표시 기준(관련도·영향도 둘 다, 11단계) 이상인지
 pub fn meets_display_rule(
     conn: &Connection,
