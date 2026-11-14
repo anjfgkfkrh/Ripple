@@ -95,6 +95,9 @@ pub struct Decision {
     pub impact_confidence: f64,
     /// positive·negative·neutral 순서
     pub impact_probabilities: [f64; 3],
+    /// "다른 대상이 받는 영향을 보도하고 이 회사는 원인·언급으로만 나오는가"의 예일 확률 0~1.
+    /// 종목 대상이면 Some, 그 밖은 None
+    pub bystander: Option<f64>,
     /// 응답한 실제 모델 버전
     pub model: String,
     pub usage: TokenUsage,

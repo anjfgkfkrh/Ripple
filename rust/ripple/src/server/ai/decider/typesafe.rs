@@ -294,6 +294,16 @@ impl Decider for TypeSafeDecider {
         else {
             return Err(bad_format());
         };
+        // 종목 대상만 bystander를 묻는다. 예/아니오 답은 `noul`(예일 확률)에 있다.
+        let bystander = if target == JudgeTarget::Stock {
+            let probability = result
+                .pointer("/answers/bystander/noul")
+                .and_then(Value::as_f64)
+                .filter(|p| p.is_finite());
+            Some(probability.ok_or_else(bad_format)?)
+        } else {
+            None
+        };
         let probabilities = impact.and_then(|i| i.get("probabilities"));
         let probability = |key: &str| number_or_zero(probabilities.and_then(|p| p.get(key)));
         Ok(Decision {
@@ -308,6 +318,7 @@ impl Decider for TypeSafeDecider {
                 probability("negative"),
                 probability("neutral"),
             ],
+            bystander,
             model: model_name.to_string(),
             usage: token_usage(&result),
         })

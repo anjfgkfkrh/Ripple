@@ -266,6 +266,7 @@ pub fn fake_decision() -> Decision {
         impact: crate::server::db::schema::Impact::Positive,
         impact_confidence: 0.8,
         impact_probabilities: [0.8, 0.1, 0.1],
+        bystander: Some(0.1),
         model: "jev-1.13.0".to_string(),
         usage: TokenUsage {
             input_tokens: 1000,
