@@ -7,7 +7,7 @@
 | 작업 | 목표 | 완료 조건 | 모델/effort | 선행 | 상태 | 시도 |
 |---|---|---|---|---|---|---|
 | measure | 무료: 보이는 기사 수·지난 평가 규칙 결과·별칭 걸림 수를 세고, 유료: Jev 예/아니오 응답 모양과 성격·종목 질문 일관성을 잰다 | 인계에 무료 수치 표, 첫 유료 응답 원문, 일관성 표, 비용($0.05 이하) | Sonnet / medium | 없음 | 통과 | 1 |
-| schema | 마이그레이션 0012(`articles` 성격 6칸·`nature_at`, `evaluations.bystander`)와 읽기 구조 | `migrate_tests`·`schema_tests` 새 시험 통과, Rust 검사 전체 통과 | Sonnet / medium | measure 통과 | 진행 | 1 |
+| schema | 마이그레이션 0012(`articles` 성격 6칸·`nature_at`, `evaluations.bystander`)와 읽기 구조 | `migrate_tests`·`schema_tests` 새 시험 통과, Rust 검사 전체 통과 | Sonnet / medium | measure 통과 | 통과 | 1 |
 | market-alias | 한국·미국 증시를 코드 고정 별칭 구절로 제목+요약에서 건다 | `match_tests`·`collect/run_tests` 새 시험 통과, `/check` 전체 통과 | Sonnet / medium | schema 통과 | 대기 | 0 |
 | relink-7d | worker 시작 때 최근 7일 저장 기사를 시장 항목에 한 번 다시 건다 | `backfill_tests` 새 시험 통과, `/check` 전체 통과 | Sonnet / medium | market-alias 통과 | 대기 | 0 |
 | stock-subject | 종목 평가에 예/아니오 질문 `bystander`를 더해 해석·저장·복사 | `questions_tests`·`typesafe_tests`·`evaluate/run_tests` 새 시험 통과, `/check` 전체 통과 | Sonnet / medium | measure 통과, schema 통과 | 사람 | 0 |
