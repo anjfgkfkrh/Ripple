@@ -3,16 +3,16 @@
 > 읽는 때: 세션을 시작할 때 맨 먼저. 지금 하는 일, 답 대기, 다음 할 일만 둔다(화면 한 장 안).
 > 이 문서는 덧붙이지 않고 통째로 다시 쓴다(agentflow review가 작업 통과 때, `/handoff`가 단계 밖 작업 뒤). 끝난 일의 자세한 기록은 [DECISIONS.md](DECISIONS.md) 3장, 단계 표·작업 방법은 [DEVELOPMENT.md](DEVELOPMENT.md)에 둔다. 실제와 다르면 `git log`와 `git status`를 먼저 본다.
 
-마지막 갱신: 2026-11-14 (한국 시간), 18단계 `article-classify`의 `relink-7d` 통과(브랜치 `af/article-classify`)
+마지막 갱신: 2026-11-14 (한국 시간), 18단계 `article-classify`의 `stock-subject` 통과(브랜치 `af/article-classify`)
 
 ## 다음 할 일
 
-- **18단계 `article-classify`: `measure`·`schema`·`market-alias`·`relink-7d` 통과. `stock-subject`는 사람 확인을 기다린다(남은 작업은 모두 그 뒤).** 아래 "답 대기" 첫 항목을 보고 이의가 없으면 `work/article-classify/PLAN.md`의 `stock-subject` 상태를 `대기`로 되돌린 뒤 `/agentflow:run article-classify`. `market-alias`로 시장 항목(한국·미국 증시)이 코드 고정 별칭 구절(제목+요약)로 이름 연결되고, `relink-7d`로 worker가 처음 시작할 때 한 번 최근 7일 저장 기사를 시장 항목에 다시 건다(설정 `classify.marketRelinkedAt`, AI 없음, 평가는 다음 수집 회차). 결정은 DECISIONS.md 1장 "기사 분류 개선", "18단계 `article-classify` 계획 답", "18단계 계획 때 정한 세부", "18단계 measure·schema·market-alias·relink-7d 구현 세부", 수치는 2장 "기사 분류 측정". `stage-check`는 최대 $0.15 승인됨.
-- **`pnpm format:check`가 실패한다**: `work/article-classify/measure/first-response.json`(measure 작업이 커밋한 응답 원문)이 prettier 서식이 아니다. 코드와 무관해 작업들은 통과로 보고 있다. `work/`를 `.prettierignore`에 넣거나 파일을 서식화할지는 상위·사람이 정한다(단계 끝 `close`에서 보관소로 옮기면 사라짐).
+- **18단계 `article-classify`: `measure`·`schema`·`market-alias`·`relink-7d`·`stock-subject` 통과. 다음은 `display-rule`(`/agentflow:run article-classify`로 이어 감).** 사람이 measure 결과(지난 평가 규칙이 화면 기준을 넘는 종목 평가 2,106건 중 79건 숨김, 7일 성격 묻기 약 $0.043~0.048 등)를 보고 `stock-subject`를 `대기`로 되돌려 진행했다. `stock-subject`로 종목 평가 요청에 예/아니오 질문 `bystander`(`type` `"noul"`)가 붙고 확률이 `evaluations.bystander`에 저장·같은 소식 복사로 옮겨진다(시장·주제 평가는 NULL, 화면 숨김은 아직 없음, `display-rule`이 한다). 종목 응답에 `bystander` 답이 없으면 그 평가는 형식 오류로 다음 회차에 다시 묻는다. 결정은 DECISIONS.md 1장 "기사 분류 개선", "18단계 `article-classify` 계획 답", "18단계 계획 때 정한 세부", "18단계 measure·schema·market-alias·relink-7d·stock-subject 구현 세부", 수치는 2장 "기사 분류 측정". `stage-check`는 최대 $0.15 승인됨.
+- **`pnpm format:check`**: measure 작업이 커밋한 `work/article-classify/measure/first-response.json`이 prettier 서식이 아니어서 실패한다고 기록했으나, 2026-11-14 stock-subject 리뷰의 `/check`에서는 통과했다(원인 다시 보지 않음). 단계 끝 `close`에서 `work/`가 보관소로 옮겨지면 사라진다.
 
 ## 답 대기
 
-- **18단계 measure 결과 확인(`stock-subject`를 `대기`로 되돌릴지)**: 질문 문구·기준 0.5는 계획대로 두고 브리프에 확정함(예/아니오 `type`은 `"noul"`). 사람이 볼 것 ① 지난 평가 규칙(같은 기사 시장 관련도 > 종목 관련도면 숨김)은 화면 기준을 넘는 종목 평가 2,106건 중 79건을 숨긴다. 그중 23건은 표본 ④(정상 기사가 많은 묶음), 20건은 표본 밖(목록 DECISIONS 2장·measure 인계 c). 계획 답 ⑤ "정상 기사가 많이 숨으면 멈추고 다시 묻는다"의 판단이 필요 ② 7일 성격 한 번 묻기 약 $0.043~0.048(1,632건), 이후 하루 약 $0.007 ③ `bystander` ≥ 0.5: ① 15/15, ④ 4/10, 회사 기사 2/15(s38·s39, 다른 회사 영향 기사), 형식 1/10 ④ `[자막뉴스]` 4건은 `media` 0.19~0.30으로 숨겨지지 않는다(질문 문구를 바꿀지, 그대로 둘지). 뉴스 모음 `roundup`은 0.52·0.56으로 기준 근처.
+- **18단계 measure에서 남긴 질문**: `[자막뉴스]` 4건은 `media` 0.19~0.30으로 숨겨지지 않는다(성격 질문 문구를 바꿀지, 그대로 둘지). 뉴스 모음 `roundup`은 0.52·0.56으로 기준 근처. `article-nature` 전에 볼 것.
 - **기사 분류 2-5 나머지**: 젠슨 황 사임 뒤 본인 심경·주변 반응·다른 경영자 비교 기사(영향도 6.9~7.7로 보임)가 왜 엔비디아에 붙는지. 사용자 "지금 그대로, 나중에 수정". 사례는 DECISIONS 2장 "기사 분류 조사".
 - **16단계(작음): 손님이 비밀번호 창으로 권한을 얻은 직후 화면.** A(추천) 그대로 둔다(새로 고치면 맞아짐) / B 비밀번호가 맞으면 원래 요청 뒤 화면을 새로 고친다. DECISIONS.md 1장 "16단계 unlock-ui 구현 세부" ⑤.
 - **17단계에서 뺀 것(답 11A·12A)**: 네이버 뉴스 검색 API 등 수집 보강(I9), 토픽 갱신 모델 교체·토픽 수·간격·목표 금액. 17단계 배포 뒤 비용을 다시 재고 묻는다.
