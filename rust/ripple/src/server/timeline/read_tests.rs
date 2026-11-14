@@ -1109,3 +1109,58 @@ fn hidden_rule_leaves_topic_items_alone_and_hides_the_stock_only_card_entirely()
 
     assert_eq!(titles(c, &ALL), names(&["주제 기사"]));
 }
+
+#[test]
+fn read_topic_cards_apply_the_hidden_rule_to_attached_stocks_only() {
+    // 토픽 항목 평가는 bystander 0.9여도 세고, 붙은 종목의 숨긴 평가(0.7)는 영향에서 빠진다
+    let t = test_db_with_listings();
+    let c = &t.conn;
+    let ids = add_stocks(c);
+    ensure_default_market(c, ago(80.0)).unwrap();
+    let (mideast, lenses) = auto_topic(c, "중동 긴장");
+    let (lm, _) = Link::new(lenses[0], ago(1.0))
+        .titled(&distinct(1))
+        .keyword("종목")
+        .score(8.0)
+        .magnitude(7.0)
+        .impact("negative")
+        .insert(c);
+    set_bystander(c, lm, Some(0.9));
+    let samsung = crate::server::stocks::repository::list_active_stocks(c)
+        .unwrap()
+        .into_iter()
+        .find(|s| s.id == ids.samsung)
+        .unwrap();
+    attach_topic_to_stock(
+        c,
+        &StockRef::from(&samsung),
+        &mideast,
+        &TopicLink {
+            reason: "중동 수주",
+            relevance: 7.0,
+            magnitude: 6.0,
+        },
+        ago(10.0),
+    )
+    .unwrap();
+    let (sm, _) = Link::new(ids.samsung, ago(1.0))
+        .titled("사우디 수주 기대")
+        .keyword("삼성전자 → 중동 긴장 → 중동 긴장")
+        .score(7.0)
+        .magnitude(7.0)
+        .impact("positive")
+        .insert(c);
+    set_bystander(c, sm, Some(0.7));
+
+    let cards = read_topic_cards(c, now()).unwrap();
+    assert_eq!(cards.len(), 1);
+    assert_eq!(cards[0].shown_total, 1);
+    assert_eq!(
+        cards[0].related,
+        [RelatedStock {
+            stock_id: ids.samsung,
+            name: "삼성전자".to_string(),
+            impact: None
+        }]
+    );
+}
