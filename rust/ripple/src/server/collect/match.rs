@@ -4,7 +4,7 @@ use regex::Regex;
 
 use crate::server::db::schema::{ItemKind, Market, MatchKind};
 
-/// 기사와 맞춰 볼 항목: 종목 이름과 키워드 트리. 시장·주제 항목은 이름으로 걸지 않는다(11단계).
+/// 기사와 맞춰 볼 항목: 종목 이름과 키워드 트리. 주제 항목은 이름으로 걸지 않고, 시장 항목은 고정 별칭 구절로 건다.
 #[derive(Debug, Clone)]
 pub struct MatchStock {
     pub id: i64,
@@ -43,8 +43,36 @@ pub struct StockMatch {
     pub gated: bool,
 }
 
+/// 시장 항목(한국·미국 증시)을 거는 고정 별칭 구절(결정 ⑧). "증시" 하나는 넣지 않는다.
+fn market_aliases(market: Market) -> &'static [&'static str] {
+    match market {
+        Market::Kr => &[
+            "코스피",
+            "코스닥",
+            "KOSPI",
+            "KOSDAQ",
+            "국내 증시",
+            "국내증시",
+            "한국 증시",
+        ],
+        Market::Us => &[
+            "나스닥",
+            "S&P500",
+            "S&P 500",
+            "다우지수",
+            "다우존스",
+            "뉴욕증시",
+            "미국 증시",
+            "월가",
+        ],
+    }
+}
+
 struct Term {
+    /// 구절 찾기(`phrase`)일 때는 비어 있다
     words: Vec<String>,
+    /// 있으면 낱말이 아니라 이 구절이 이어져 있어야 건다
+    phrase: Option<String>,
     level: i64,
     path: String,
     reason: Option<String>,
@@ -72,11 +100,12 @@ pub fn create_matcher(stocks: &[MatchStock]) -> Matcher {
         .iter()
         .map(|stock| {
             let display = stock.name_ko.as_deref().unwrap_or(&stock.name);
-            // 시장(한국 증시)·주제는 이름이 아니라 키워드로만 건다(11단계 결정).
+            // 주제는 키워드로만, 시장은 고정 별칭 구절과 키워드로 건다.
             let mut terms: Vec<Term> = Vec::new();
             if stock.kind == ItemKind::Stock {
                 terms.push(Term {
                     words: to_words(display),
+                    phrase: None,
                     level: 0,
                     path: display.to_string(),
                     reason: None,
@@ -85,6 +114,19 @@ pub fn create_matcher(stocks: &[MatchStock]) -> Matcher {
                 for alias in &stock.aliases {
                     terms.push(Term {
                         words: to_words(alias),
+                        phrase: None,
+                        level: 0,
+                        path: display.to_string(),
+                        reason: None,
+                        kind: MatchKind::Name,
+                    });
+                }
+            }
+            if stock.kind == ItemKind::Market {
+                for alias in market_aliases(stock.market) {
+                    terms.push(Term {
+                        words: Vec::new(),
+                        phrase: Some(normalize(alias)),
                         level: 0,
                         path: display.to_string(),
                         reason: None,
@@ -97,6 +139,7 @@ pub fn create_matcher(stocks: &[MatchStock]) -> Matcher {
                 let mut push = |text: &str| {
                     terms.push(Term {
                         words: to_words(text),
+                        phrase: None,
                         level: keyword.level,
                         path: keyword.path.clone(),
                         reason: reason.clone(),
@@ -110,7 +153,7 @@ pub fn create_matcher(stocks: &[MatchStock]) -> Matcher {
             }
             // 가까운 경로가 먼저 오게 한다(정렬은 안정적이라 같은 단계는 원래 순서).
             terms.sort_by_key(|t| t.level);
-            terms.retain(|t| !t.words.is_empty());
+            terms.retain(|t| t.phrase.is_some() || !t.words.is_empty());
             Prepared {
                 id: stock.id,
                 gate: stock.kind == ItemKind::Stock,
@@ -134,10 +177,10 @@ impl Matcher {
         let squashed_title = squash(title);
         let mut matches = Vec::new();
         for stock in &self.prepared {
-            let hit = stock
-                .terms
-                .iter()
-                .find(|term| term.words.iter().all(|word| contains_word(&haystack, word)));
+            let hit = stock.terms.iter().find(|term| match &term.phrase {
+                Some(phrase) => contains_phrase(&haystack, phrase),
+                None => term.words.iter().all(|word| contains_word(&haystack, word)),
+            });
             if let Some(hit) = hit {
                 let gated = stock.gate
                     && hit.kind == MatchKind::Keyword
@@ -189,6 +232,35 @@ fn to_words(text: &str) -> Vec<String> {
 
 fn is_word_char(c: char) -> bool {
     c.is_ascii_lowercase() || c.is_ascii_digit()
+}
+
+/// 구절이 이어져 있으면 참. 구절의 첫·끝 글자가 영문·숫자이면 바로 앞·뒤 글자가 영문·숫자가 아니어야 한다.
+fn contains_phrase(haystack: &str, phrase: &str) -> bool {
+    if phrase.is_empty() {
+        return false;
+    }
+    let first_ascii = phrase.chars().next().is_some_and(is_word_char);
+    let last_ascii = phrase.chars().next_back().is_some_and(is_word_char);
+    let mut from = 0;
+    while let Some(offset) = haystack[from..].find(phrase) {
+        let start = from + offset;
+        let end = start + phrase.len();
+        let before_ok = !first_ascii
+            || haystack[..start]
+                .chars()
+                .next_back()
+                .is_none_or(|c| !is_word_char(c));
+        let after_ok = !last_ascii
+            || haystack[end..]
+                .chars()
+                .next()
+                .is_none_or(|c| !is_word_char(c));
+        if before_ok && after_ok {
+            return true;
+        }
+        from = start + haystack[start..].chars().next().map_or(1, char::len_utf8);
+    }
+    false
 }
 
 /// 영문·숫자 낱말은 앞뒤가 영문·숫자가 아닐 때만 찾는다(JS `(?<![a-z0-9])word(?![a-z0-9])`). 그 밖의 낱말은 포함 여부만 본다.
