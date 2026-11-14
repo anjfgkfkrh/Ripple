@@ -26,7 +26,7 @@ use crate::server::time::{
     EpochMs, format_seoul_date_time, format_timeline_time, seoul_date_key, timeline_day_label,
 };
 use crate::server::timeline::read::{
-    GUEST_TIMELINE_MAX, TIMELINE_MAX, TIMELINE_PAGE_SIZE, TimelineCard, TimelineFilter,
+    GUEST_TIMELINE_MAX, NatureTab, TIMELINE_MAX, TIMELINE_PAGE_SIZE, TimelineCard, TimelineFilter,
     TimelineStock, TopicCard, parse_timeline_params, read_timeline, read_topic_cards,
 };
 use crate::server::timeline::reads::MAX_READ_BATCH;
@@ -209,6 +209,8 @@ pub struct CardView {
     pub publisher: String,
     pub time_text: String,
     pub read: bool,
+    /// 성격 태그 글자(사실·해석·전망·기타 순). 없으면 칩도 없다.
+    pub tags: Vec<&'static str>,
     pub stocks: Vec<CardStockView>,
     pub others: Vec<OtherView>,
 }
@@ -223,6 +225,13 @@ pub struct FiltersView {
     pub impacts: Vec<ChipView>,
 }
 
+/// 기사 성격 탭 두 개: 사실 / 해석·전망·기타
+pub struct NatureTabsView {
+    pub fact_href: String,
+    pub view_href: String,
+    pub view_active: bool,
+}
+
 pub struct AutoTopicView {
     pub name: String,
     pub all_href: String,
@@ -235,6 +244,7 @@ pub struct TimelineBody {
     pub min_magnitude: String,
     pub prices: Vec<PriceView>,
     pub topics: Option<TopicsView>,
+    pub tabs: Option<NatureTabsView>,
     pub filters: Option<FiltersView>,
     pub auto_topic: Option<AutoTopicView>,
     pub pending: i64,
@@ -258,6 +268,9 @@ pub fn timeline_href(filter: &TimelineFilter, limit: Option<usize>) -> String {
     }
     if let Some(impact) = filter.impact {
         params.push(format!("impact={}", impact.as_str()));
+    }
+    if filter.nature == NatureTab::View {
+        params.push("nature=view".to_string());
     }
     if let Some(limit) = limit.filter(|l| *l > TIMELINE_PAGE_SIZE) {
         params.push(format!("limit={limit}"));
@@ -340,6 +353,15 @@ fn filters_view(
         });
     }
     FiltersView { items, impacts }
+}
+
+fn tabs_view(filter: &TimelineFilter) -> NatureTabsView {
+    let tab = |nature| timeline_href(&TimelineFilter { nature, ..*filter }, None);
+    NatureTabsView {
+        fact_href: tab(NatureTab::Fact),
+        view_href: tab(NatureTab::View),
+        view_active: filter.nature == NatureTab::View,
+    }
 }
 
 fn price_view(item: &PriceStripItem, filter: &TimelineFilter, now: EpochMs) -> PriceView {
@@ -484,6 +506,7 @@ fn card_view(card: &TimelineCard, now: EpochMs) -> CardView {
         publisher: card.publisher.clone(),
         time_text: format_timeline_time(card.published_at, now),
         read: card.read,
+        tags: card.tags.iter().map(|tag| tag.label()).collect(),
         stocks: card
             .stocks
             .iter()
@@ -582,6 +605,7 @@ pub fn build_body(
             min_magnitude: String::new(),
             prices: Vec::new(),
             topics: None,
+            tabs: None,
             filters: None,
             auto_topic: None,
             pending: 0,
@@ -626,6 +650,7 @@ pub fn build_body(
             .map(|item| price_view(item, &filter, now))
             .collect(),
         topics: topics_view(&topic_cards, &filter, now),
+        tabs: Some(tabs_view(&filter)),
         filters: Some(filters_view(&stock_chips, &markets, &user_topics, &filter)),
         auto_topic,
         pending,

@@ -23,6 +23,9 @@
 {% endif %}
 </section>
 {% endif %}
+{% if let Some(tabs) = body.tabs %}
+<nav aria-label="기사 성격" class="mt-4 flex border-b" data-testid="nature-tabs"><a href="{{ tabs.fact_href }}"{% if !tabs.view_active %} aria-current="page"{% endif %} class="-mb-px flex-1 border-b-2 py-2 text-center text-sm transition-colors {% if !tabs.view_active %}border-primary font-medium text-foreground{% else %}border-transparent text-muted-foreground hover:text-foreground{% endif %}">사실</a><a href="{{ tabs.view_href }}"{% if tabs.view_active %} aria-current="page"{% endif %} class="-mb-px flex-1 border-b-2 py-2 text-center text-sm transition-colors {% if tabs.view_active %}border-primary font-medium text-foreground{% else %}border-transparent text-muted-foreground hover:text-foreground{% endif %}">해석·전망·기타</a></nav>
+{% endif %}
 {% if let Some(filters) = body.filters %}
 <div class="mt-4 space-y-2" data-testid="timeline-filters">
 <nav aria-label="항목 필터" class="flex items-start gap-3"><span class="w-8 shrink-0 pt-1 text-xs text-muted-foreground">항목</span><div class="flex flex-wrap gap-1.5">{% for chip in filters.items %}<a href="{{ chip.href }}"{% if chip.active %} aria-current="true"{% endif %} class="rounded-full border px-3 py-1 text-xs transition-colors {% if chip.active %}border-primary bg-primary text-primary-foreground{% else %}text-muted-foreground hover:bg-muted hover:text-foreground{% endif %}">{{ chip.label }}</a>{% endfor %}</div></nav>
