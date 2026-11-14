@@ -1,6 +1,12 @@
 import Database from "better-sqlite3";
 import { expect, test } from "@playwright/test";
-import { asClient, login, searchStock, waitForListings } from "./helpers";
+import {
+  asClient,
+  login,
+  searchStock,
+  seedNatureFixtures,
+  waitForListings,
+} from "./helpers";
 import { E2E_APP_PASSWORD, E2E_DB_PATH } from "./test-env";
 
 // 손님 보기·비밀번호 창·손님 읽음(16단계). 손님 GET은 IP별 1분 60번이라 시험마다 접속자를 따로 쓰고 많이 열지 않는다.
@@ -262,5 +268,35 @@ test.describe("손님 보기와 비밀번호 창 (16단계)", () => {
     } finally {
       await other.close();
     }
+  });
+
+  test("손님도 기사 성격 탭과 제목 앞 태그를 같게 본다", async ({
+    page,
+  }, testInfo) => {
+    await waitForListings();
+    const { stockName, photoTitle, forecastTitle, factTitle } =
+      seedNatureFixtures(testInfo.project.name);
+    await asClient(page, testInfo, "guest-nature");
+    await page.goto("/");
+    await expect(page.locator("body")).toHaveAttribute("data-access", "guest");
+    await page
+      .getByRole("navigation", { name: "항목 필터" })
+      .getByRole("link", { name: stockName, exact: true })
+      .click();
+    await expect(cards(page)).toHaveCount(1);
+    await expect(
+      cards(page).filter({ hasText: factTitle }).getByTestId("nature-tag"),
+    ).toHaveText(["사실"]);
+    await expect(page.getByText(photoTitle)).toHaveCount(0);
+    await page
+      .getByTestId("nature-tabs")
+      .getByRole("link", { name: "해석·전망·기타", exact: true })
+      .click();
+    await expect(page).toHaveURL(/nature=view/);
+    await expect(cards(page)).toHaveCount(1);
+    await expect(
+      cards(page).filter({ hasText: forecastTitle }).getByTestId("nature-tag"),
+    ).toHaveText(["전망"]);
+    await expect(page.getByText(photoTitle)).toHaveCount(0);
   });
 });
