@@ -15,7 +15,7 @@ use crate::server::stocks::repository::{
     RegisterInput, RegisterResult, delete_stock, register_stock,
 };
 use crate::test_support::{
-    FakeDecider, SharedTestDb, fake_article_decider, fake_decision, ms, seed_listings,
+    FakeDecider, SharedTestDb, fake_article_decider, fake_decision, ms, seed_listings, seed_market,
     shared_test_db,
 };
 
@@ -1661,5 +1661,40 @@ async fn keyword_links_without_anchor_in_title_are_saved_gated_and_names_and_ali
             ("삼성 HBM 메모리 증설".to_string(), "keyword".to_string(), 0),
             ("삼전 주가 반등".to_string(), "name".to_string(), 0),
         ]
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn alias_only_article_is_saved_with_market_name_link_and_not_gated() {
+    // 시장 항목은 고정 별칭 구절로 건다(기사 분류 개선)
+    let shared = seeded();
+    let market = seed_market(&shared.db.lock().unwrap(), "KR", now());
+    let deps = build(
+        &shared,
+        vec![(
+            "https://a.example/economy.xml",
+            ok(rss(&[
+                simple_item(
+                    "코스피 2% 상승 마감",
+                    "https://n.example/m1",
+                    Some(ago(1.0)),
+                ),
+                simple_item("날씨 소식", "https://n.example/m2", Some(ago(1.0))),
+            ])),
+        )],
+        Setup::default(),
+    );
+
+    let summary = run(&deps).await;
+
+    assert_eq!((summary.articles_new, summary.matches_new), (1, 1));
+    let rows: Vec<(i64, String, String, i64, i64)> = query(
+        &shared,
+        "SELECT stock_id, keyword_path, match_kind, level, gated FROM article_matches",
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+    );
+    assert_eq!(
+        rows,
+        [(market, "한국 증시".to_string(), "name".to_string(), 0, 0)]
     );
 }
