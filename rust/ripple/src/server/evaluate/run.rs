@@ -12,7 +12,10 @@ use crate::server::budget::usage::{
     BudgetCheckError, UsageEntry, assert_within_budget, record_usage,
 };
 use crate::server::db::client::Db;
-use crate::server::db::schema::{EvaluationSummary, Market, MatchKind, UsageProvider};
+use crate::server::db::schema::{
+    BYSTANDER_THRESHOLD, EvaluationSummary, Market, MatchKind, NATURE_THRESHOLD, NatureProbs,
+    UsageProvider,
+};
 use crate::server::log::log_error;
 use crate::server::settings::{
     EVALUATION_MAX_PER_RUN, EVALUATION_MIN_MAGNITUDE, EVALUATION_MIN_RELEVANCE, JEV_MODEL,
@@ -175,6 +178,14 @@ fn find_same_news_evaluation(
 /// `?` 하나에 `BYSTANDER_THRESHOLD`를 넣는다. 숨기는 경우: 구경꾼 확률이 기준 이상이거나,
 /// 구경꾼 값이 없는 평가에서 같은 기사의 시장 항목 관련도가 이 종목 관련도보다 클 때.
 pub const NOT_HIDDEN_SQL: &str = "NOT (stocks.kind = 'stock' AND (COALESCE(evaluations.bystander, 0) >= ? OR (evaluations.bystander IS NULL AND EXISTS (SELECT 1 FROM evaluations AS m INNER JOIN stocks AS ms ON ms.id = m.stock_id WHERE m.article_id = evaluations.article_id AND ms.kind = 'market' AND ms.deleted_at IS NULL AND m.relevance > evaluations.relevance))))";
+
+/// 기사 성격 숨김 SQL 조각: `media`나 `roundup`이 기준(`NATURE_THRESHOLD`) 이상인 기사를 뺀다. 성격이 없으면(NULL) 숨기지 않는다.
+/// 조회에 `articles` 별칭이 있어야 한다. 기준은 글자에 바로 넣는다(자리표가 없어 번호를 맞출 일이 없다).
+pub fn not_nature_hidden_sql() -> String {
+    format!(
+        "(COALESCE(articles.nature_media, 0) < {NATURE_THRESHOLD} AND COALESCE(articles.nature_roundup, 0) < {NATURE_THRESHOLD})"
+    )
+}
 
 /// 표시 기준(관련도·영향도 둘 다, 11단계) 이상인지
 pub fn meets_display_rule(
@@ -439,6 +450,193 @@ fn store_merged_decision(
     Ok(true)
 }
 
+/// 성격을 물을 기사
+struct NatureTarget {
+    id: i64,
+    published_at: EpochMs,
+    article: DecisionArticle,
+}
+
+/// 성격을 아직 모르는 최근 7일 기사 가운데 화면 기준(관련도·영향도·구경꾼 숨김)을 넘는 평가가 하나라도 있는 것.
+/// 기사 성격 숨김은 따지지 않는다(성격을 모르니). 최근 발행순.
+fn nature_targets(conn: &Connection, now: EpochMs) -> rusqlite::Result<Vec<NatureTarget>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT articles.id, articles.title, articles.summary, articles.published_at FROM articles \
+         WHERE articles.nature_at IS NULL AND articles.published_at >= ? AND EXISTS ( \
+           SELECT 1 FROM evaluations INNER JOIN stocks ON stocks.id = evaluations.stock_id \
+           WHERE evaluations.article_id = articles.id AND stocks.deleted_at IS NULL \
+             AND evaluations.relevance >= ? AND (evaluations.magnitude IS NULL OR evaluations.magnitude >= ?) \
+             AND {NOT_HIDDEN_SQL}) \
+         ORDER BY articles.published_at DESC, articles.id DESC"
+    ))?;
+    let params = params![
+        now - EVALUATION_WINDOW_MS,
+        read_num(conn, &EVALUATION_MIN_RELEVANCE)?,
+        read_num(conn, &EVALUATION_MIN_MAGNITUDE)?,
+        BYSTANDER_THRESHOLD
+    ];
+    stmt.query_map(params, |row| {
+        Ok(NatureTarget {
+            id: row.get(0)?,
+            published_at: row.get(3)?,
+            article: DecisionArticle {
+                title: row.get(1)?,
+                summary: row.get(2)?,
+            },
+        })
+    })?
+    .collect()
+}
+
+/// 같은 소식(발행 ±24시간, 비슷한 제목)으로 이미 성격이 있는 기사의 6확률
+fn find_same_news_nature(
+    conn: &Connection,
+    target: &NatureTarget,
+) -> rusqlite::Result<Option<NatureProbs>> {
+    let mut stmt = conn.prepare(
+        "SELECT title, nature_fact, nature_analysis, nature_forecast, nature_opinion, nature_media, nature_roundup \
+         FROM articles WHERE nature_at IS NOT NULL AND id <> ?1 AND published_at >= ?2 AND published_at <= ?3 \
+         ORDER BY published_at DESC, id DESC",
+    )?;
+    let candidates: Vec<(String, NatureProbs)> = stmt
+        .query_map(
+            params![
+                target.id,
+                target.published_at - SAME_NEWS_WINDOW_MS,
+                target.published_at + SAME_NEWS_WINDOW_MS
+            ],
+            |row| {
+                let value = |i: usize| row.get::<_, Option<f64>>(i).map(|v| v.unwrap_or(0.0));
+                Ok((
+                    row.get::<_, String>(0)?,
+                    NatureProbs {
+                        fact: value(1)?,
+                        analysis: value(2)?,
+                        forecast: value(3)?,
+                        opinion: value(4)?,
+                        media: value(5)?,
+                        roundup: value(6)?,
+                    },
+                ))
+            },
+        )?
+        .collect::<rusqlite::Result<_>>()?;
+    let mine = title_features(&target.article.title);
+    Ok(candidates
+        .into_iter()
+        .find(|(title, _)| is_same_news(&mine, &title_features(title)))
+        .map(|(_, probs)| probs))
+}
+
+fn store_nature(
+    conn: &Connection,
+    article_id: i64,
+    probs: &NatureProbs,
+    at: EpochMs,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE articles SET nature_fact = ?1, nature_analysis = ?2, nature_forecast = ?3, nature_opinion = ?4, \
+         nature_media = ?5, nature_roundup = ?6, nature_at = ?7 WHERE id = ?8",
+        params![
+            probs.fact,
+            probs.analysis,
+            probs.forecast,
+            probs.opinion,
+            probs.media,
+            probs.roundup,
+            at,
+            article_id
+        ],
+    )?;
+    Ok(())
+}
+
+/// 평가를 마친 뒤 같은 회차에서, 화면 기준을 넘고 성격이 아직 없는 기사의 성격 6개를 Jev에 묻는다(article-classify).
+/// 같은 소식에 앞선 답이 있으면 묻지 않고 복사한다. 회차 한도는 평가 호출과 합쳐 세고(`calls`), 호출 전에 예산을 본다.
+/// 실패한 기사는 `nature_at`이 비어 있어 다음 회차에 다시 묻는다. 멈춘 이유가 있으면 돌려준다.
+async fn classify_pending_natures<D: Decider>(
+    db: &Db,
+    decider: &D,
+    settings: (&str, f64, f64),
+    calls: &mut f64,
+    now: &(dyn Fn() -> EpochMs + Send + Sync),
+    summary: &mut EvaluationSummary,
+) -> rusqlite::Result<Option<String>> {
+    let (model, price, max_per_run) = settings;
+    let targets = {
+        let conn = db.lock().expect("DB 잠금이 깨졌습니다");
+        nature_targets(&conn, now())?
+    };
+    let mut failed_in_row = 0;
+    for target in &targets {
+        {
+            let conn = db.lock().expect("DB 잠금이 깨졌습니다");
+            if let Some(probs) = find_same_news_nature(&conn, target)? {
+                store_nature(&conn, target.id, &probs, now())?;
+                summary.nature_copied += 1;
+                continue;
+            }
+            if *calls >= max_per_run {
+                return Ok(Some(format!(
+                    "성격 묻기는 회차 한도 {}건에 닿아 남은 기사를 다음 회차에 묻습니다.",
+                    crate::server::text::js_number(max_per_run)
+                )));
+            }
+            match assert_within_budget(&conn, now()) {
+                Ok(()) => {}
+                Err(BudgetCheckError::Exceeded(_)) => {
+                    return Ok(Some(
+                        "이번 달 AI 예산을 모두 써서 성격 묻기를 멈췄습니다.".to_string(),
+                    ));
+                }
+                Err(BudgetCheckError::Db(e)) => return Err(e),
+            }
+        }
+        *calls += 1.0;
+        match decider.classify_nature(&target.article, model).await {
+            Ok(decision) => {
+                let at = now();
+                let cost_usd = (decision.usage.input_tokens as f64 * price) / 1_000_000.0;
+                let conn = db.lock().expect("DB 잠금이 깨졌습니다");
+                record_usage(
+                    &conn,
+                    &UsageEntry {
+                        provider: UsageProvider::Typesafe,
+                        model: &decision.model,
+                        purpose: "article_nature",
+                        usage: LlmUsage {
+                            input_tokens: decision.usage.input_tokens,
+                            output_tokens: decision.usage.output_tokens,
+                            cost_usd,
+                        },
+                        at,
+                        stock_id: None,
+                    },
+                )?;
+                store_nature(&conn, target.id, &decision.probs, at)?;
+                summary.nature_asked += 1;
+                summary.cost_usd += cost_usd;
+                failed_in_row = 0;
+            }
+            Err(error) if error.fatal() => return Ok(Some(error.message)),
+            Err(error) => {
+                summary.nature_failed += 1;
+                failed_in_row += 1;
+                log_error(
+                    &format!("기사 성격 묻기 실패: 기사 {}", target.id),
+                    &error.message,
+                );
+                if failed_in_row >= MAX_CONSECUTIVE_FAILURES {
+                    return Ok(Some(format!(
+                        "Jev 성격 요청이 {MAX_CONSECUTIVE_FAILURES}번 연달아 실패해 멈췄습니다. 다음 회차에 다시 합니다."
+                    )));
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
 /// 평가하지 않은 연결을 Jev로 평가한다(SPEC FR-5, 11단계: 관련도·영향도·호재/악재). 호출마다 월 예산을 먼저 보고
 /// (CLAUDE.md), 쓴 비용을 항목과 함께 기록한다(D-06: 입력 토큰 × 단가). 하나씩 차례로 불러 예산 검사에 앞선 호출이
 /// 모두 들어가게 한다. 시장·주제 항목은 같은 기사의 연결을 모아 한 요청으로 묻고(17단계) 연결마다 저장한다. 종목은 하나씩 묻는다. 같은 항목의 같은 소식(비슷한 제목)은 앞선 평가를 그대로 쓰고 Jev를 부르지 않는다(회차 한도에도 세지 않음).
@@ -586,6 +784,12 @@ pub async fn evaluate_pending<D: Decider>(
                 }
             }
         }
+    }
+
+    if note.is_none() {
+        let settings = (model.as_str(), price, max_per_run);
+        note =
+            classify_pending_natures(db, decider, settings, &mut calls, &now, &mut summary).await?;
     }
 
     summary.remaining = done[stopped_at..].iter().filter(|d| !**d).count() as i64;

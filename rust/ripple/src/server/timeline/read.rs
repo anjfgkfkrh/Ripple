@@ -7,7 +7,7 @@ use rusqlite::{Connection, Row, params_from_iter};
 use crate::server::db::schema::{
     BYSTANDER_THRESHOLD, Impact, ItemKind, Market, MatchKind, TopicSource,
 };
-use crate::server::evaluate::run::NOT_HIDDEN_SQL;
+use crate::server::evaluate::run::{NOT_HIDDEN_SQL, not_nature_hidden_sql};
 use crate::server::keywords::tree::PATH_SEPARATOR;
 use crate::server::settings::{EVALUATION_MIN_MAGNITUDE, EVALUATION_MIN_RELEVANCE, read_num};
 use crate::server::similar_title::{
@@ -116,11 +116,12 @@ pub fn parse_timeline_params(
 
 /// 화면에 보일 평가: 관련도와 영향도가 둘 다 기준 이상(11단계). 11단계 전 평가(영향도 없음)는 관련도만 본다.
 /// 조건 글자와 거기 들어갈 값(`?` 둘)을 돌려준다.
-/// 숨김 규칙(`NOT_HIDDEN_SQL`)이 뒤에 붙는다. 조회에 `evaluations`·`stocks` 별칭이 있어야 한다.
+/// 숨김 규칙(`NOT_HIDDEN_SQL`)과 기사 성격 숨김이 뒤에 붙는다. 조회에 `evaluations`·`stocks`·`articles` 별칭이 있어야 한다.
 fn display_rule(conn: &Connection) -> rusqlite::Result<(String, [Value; 3])> {
+    let nature = not_nature_hidden_sql();
     Ok((
         format!(
-            "evaluations.relevance >= ? AND (evaluations.magnitude IS NULL OR evaluations.magnitude >= ?) AND {NOT_HIDDEN_SQL}"
+            "evaluations.relevance >= ? AND (evaluations.magnitude IS NULL OR evaluations.magnitude >= ?) AND {NOT_HIDDEN_SQL} AND {nature}"
         ),
         [
             Value::Real(read_num(conn, &EVALUATION_MIN_RELEVANCE)?),
@@ -285,6 +286,7 @@ pub fn read_timeline(
              article_matches.match_kind, article_matches.keyword_path \
              FROM evaluations \
              INNER JOIN article_matches ON article_matches.id = evaluations.match_id \
+             INNER JOIN articles ON articles.id = evaluations.article_id \
              INNER JOIN stocks ON stocks.id = evaluations.stock_id \
              LEFT JOIN topics ON topics.id = stocks.topic_id \
              WHERE evaluations.article_id IN ({}) AND stocks.deleted_at IS NULL AND {rule}",
@@ -566,6 +568,7 @@ pub fn read_topic_cards(conn: &Connection, now: EpochMs) -> rusqlite::Result<Vec
             "SELECT evaluations.stock_id, article_matches.keyword_path, evaluations.relevance, \
              evaluations.magnitude, evaluations.impact FROM evaluations \
              INNER JOIN article_matches ON article_matches.id = evaluations.match_id \
+             INNER JOIN articles ON articles.id = evaluations.article_id \
              INNER JOIN stocks ON stocks.id = evaluations.stock_id \
              WHERE evaluations.stock_id IN ({}) AND {rule}",
             marks(stock_ids.len())

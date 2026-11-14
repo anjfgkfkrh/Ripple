@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use rusqlite::{Connection, params};
 
 use crate::server::db::schema::BYSTANDER_THRESHOLD;
-use crate::server::evaluate::run::{NOT_HIDDEN_SQL, meets_display_rule};
+use crate::server::evaluate::run::{NOT_HIDDEN_SQL, meets_display_rule, not_nature_hidden_sql};
 use crate::server::keywords::tree::{PATH_SEPARATOR, normalize_key};
 use crate::server::time::EpochMs;
 
@@ -30,13 +30,15 @@ pub fn keyword_performance(
     let mut stmt = conn.prepare(&format!(
         "SELECT article_matches.keyword_path, article_matches.created_at, \
                 evaluations.relevance, evaluations.magnitude, \
-                CASE WHEN {NOT_HIDDEN_SQL} THEN 1 ELSE 0 END \
+                CASE WHEN {NOT_HIDDEN_SQL} AND {nature} THEN 1 ELSE 0 END \
          FROM article_matches \
          LEFT JOIN evaluations ON evaluations.match_id = article_matches.id \
+         INNER JOIN articles ON articles.id = article_matches.article_id \
          INNER JOIN stocks ON stocks.id = article_matches.stock_id \
          WHERE article_matches.stock_id = ?1 AND article_matches.match_kind = 'keyword' \
            AND article_matches.created_at >= ?2",
-        NOT_HIDDEN_SQL = NOT_HIDDEN_SQL.replace('?', "?3")
+        NOT_HIDDEN_SQL = NOT_HIDDEN_SQL.replace('?', "?3"),
+        nature = not_nature_hidden_sql()
     ))?;
     let rows = stmt
         .query_map(params![stock_id, since, BYSTANDER_THRESHOLD], |row| {

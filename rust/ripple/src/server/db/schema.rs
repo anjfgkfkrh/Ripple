@@ -156,6 +156,12 @@ pub struct EvaluationSummary {
     pub failed: i64,
     /// 예산·키 문제 등으로 손대지 않고 남긴 수
     pub remaining: i64,
+    /// 기사 성격을 Jev에 물은 수(article-classify)
+    pub nature_asked: i64,
+    /// 같은 소식의 앞선 성격을 복사한 수
+    pub nature_copied: i64,
+    /// 성격 묻기에 실패해 다음 회차로 미룬 수
+    pub nature_failed: i64,
     /// 이 회차 평가 비용(달러)
     pub cost_usd: f64,
     pub ms: i64,
@@ -171,6 +177,9 @@ impl EvaluationSummary {
             copied: 0,
             failed: 0,
             remaining: 0,
+            nature_asked: 0,
+            nature_copied: 0,
+            nature_failed: 0,
             cost_usd: 0.0,
             ms: 0,
             note: None,
@@ -190,6 +199,16 @@ impl EvaluationSummary {
             crate::server::text::json_number(self.cost_usd),
         );
         map.insert("ms".into(), self.ms.into());
+        // 성격 묻기를 한 회차에만 적는다(앞선 기록과 같은 모양을 지킨다)
+        for (key, value) in [
+            ("natureAsked", self.nature_asked),
+            ("natureCopied", self.nature_copied),
+            ("natureFailed", self.nature_failed),
+        ] {
+            if value > 0 {
+                map.insert(key.into(), value.into());
+            }
+        }
         if let Some(note) = &self.note {
             map.insert("note".into(), note.clone().into());
         }

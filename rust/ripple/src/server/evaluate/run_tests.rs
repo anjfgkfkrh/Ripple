@@ -87,8 +87,9 @@ fn add_link(
     let serial = SERIAL.fetch_add(1, Ordering::SeqCst) + 1;
     let conn = shared.db.lock().unwrap();
     conn.execute(
-        "INSERT INTO articles (url_key, url, title, summary, publisher, feed, published_at, collected_at) \
-         VALUES (?1, ?2, ?3, ?4, '가경제', 'rss:a:economy', ?5, ?6)",
+        // 성격은 이미 물은 것으로 둔다(평가 시험이 성격 묻기에 흔들리지 않게). 성격 시험은 `nature_pending`으로 비운다.
+        "INSERT INTO articles (url_key, url, title, summary, publisher, feed, published_at, collected_at, nature_at) \
+         VALUES (?1, ?2, ?3, ?4, '가경제', 'rss:a:economy', ?5, ?6, ?6)",
         rusqlite::params![format!("n.example/{serial}"), format!("https://n.example/{serial}"), title, format!("{title} 요약"), published_at, now()],
     )
     .unwrap();
@@ -848,6 +849,9 @@ async fn summary_json_keeps_ts_key_order_and_integer_numbers() {
         copied: 0,
         failed: 0,
         remaining: 1,
+        nature_asked: 0,
+        nature_copied: 0,
+        nature_failed: 0,
         cost_usd: 0.0,
         ms: 12,
         note: None,
@@ -1192,4 +1196,274 @@ async fn stock_links_are_still_asked_one_by_one_beside_the_merged_call() {
     assert_eq!(calls[0].0.stock.name, "삼성전자");
     assert_eq!(decider.merged_calls.lock().unwrap().len(), 1);
     assert_eq!(summary.evaluated, 4);
+}
+
+// ---- article-classify/article-nature: 기사 성격 묻기 ----
+
+use crate::test_support::{LinkSpec, insert_link};
+
+/// 평가가 이미 있고 성격은 아직 없는 기사를 넣는다(`insert_link`는 `nature_at`을 비워 둔다). 기사 id를 돌려준다.
+fn rated_article(
+    shared: &SharedTestDb,
+    stock_id: i64,
+    title: &str,
+    published_at: EpochMs,
+    relevance: f64,
+) -> i64 {
+    let conn = shared.db.lock().unwrap();
+    insert_link(
+        &conn,
+        &LinkSpec::new(stock_id, title, published_at).with_relevance(relevance),
+    )
+    .1
+}
+
+fn nature_row(shared: &SharedTestDb, article_id: i64) -> (Option<f64>, Option<f64>, Option<i64>) {
+    shared
+        .db
+        .lock()
+        .unwrap()
+        .query_row(
+            "SELECT nature_fact, nature_media, nature_at FROM articles WHERE id = ?1",
+            [article_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap()
+}
+
+fn nature_titles(decider: &FakeDecider) -> Vec<String> {
+    decider
+        .nature_calls
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(title, _)| title.clone())
+        .collect()
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn asks_nature_only_for_visible_recent_articles_without_nature() {
+    let shared = seeded();
+    let ids = add_stocks(&shared);
+    let visible = rated_article(&shared, ids.samsung, DISTINCT[0], ago(1), 8.0);
+    let _below = rated_article(&shared, ids.samsung, DISTINCT[1], ago(2), 3.0);
+    let bystander = rated_article(&shared, ids.samsung, DISTINCT[2], ago(3), 8.0);
+    shared
+        .db
+        .lock()
+        .unwrap()
+        .execute(
+            "UPDATE evaluations SET bystander = 0.9 WHERE article_id = ?1",
+            [bystander],
+        )
+        .unwrap();
+    let _old = rated_article(&shared, ids.samsung, DISTINCT[3], ago(24 * 8), 8.0);
+    let answered = rated_article(&shared, ids.samsung, DISTINCT[4], ago(4), 8.0);
+    shared
+        .db
+        .lock()
+        .unwrap()
+        .execute(
+            "UPDATE articles SET nature_at = 1, nature_fact = 0.5 WHERE id = ?1",
+            [answered],
+        )
+        .unwrap();
+    let decider = fake_article_decider(|_| Ok(fake_decision()));
+
+    let summary = evaluate(&shared, Some(&decider)).await;
+
+    assert_eq!(nature_titles(&decider), [DISTINCT[0]]);
+    assert_eq!(
+        (
+            summary.nature_asked,
+            summary.nature_copied,
+            summary.nature_failed
+        ),
+        (1, 0, 0)
+    );
+    let (fact, media, at) = nature_row(&shared, visible);
+    assert_eq!((fact, media, at), (Some(0.9), Some(0.1), Some(now())));
+    for untouched in [bystander] {
+        assert_eq!(nature_row(&shared, untouched).2, None);
+    }
+    // 사용량: 성격 한 줄, 종목 없음, 비용 = 입력 700토큰 × 단가
+    let conn = shared.db.lock().unwrap();
+    let (count, stock_null, input, cost): (i64, i64, i64, f64) = conn
+        .query_row(
+            "SELECT count(*), sum(stock_id IS NULL), sum(input_tokens), sum(cost_usd) FROM usage_logs WHERE purpose = 'article_nature'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .unwrap();
+    assert_eq!((count, stock_null, input), (1, 1, 700));
+    assert!(close(cost, 700.0 * 0.042 / 1_000_000.0), "{cost}");
+    assert!(close(summary.cost_usd, cost));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn same_news_with_nature_is_copied_without_a_call() {
+    let shared = seeded();
+    let ids = add_stocks(&shared);
+    let first = rated_article(
+        &shared,
+        ids.samsung,
+        "삼성전자 3분기 영업이익 발표 반도체 호조",
+        ago(5),
+        8.0,
+    );
+    shared
+        .db
+        .lock()
+        .unwrap()
+        .execute(
+            "UPDATE articles SET nature_fact = 0.2, nature_analysis = 0.3, nature_forecast = 0.4, nature_opinion = 0.5, \
+             nature_media = 0.8, nature_roundup = 0.6, nature_at = 123 WHERE id = ?1",
+            [first],
+        )
+        .unwrap();
+    let same = rated_article(
+        &shared,
+        ids.samsung,
+        "삼성전자 3분기 영업이익 발표 반도체 호조!",
+        ago(1),
+        8.0,
+    );
+    let decider = fake_article_decider(|_| Ok(fake_decision()));
+
+    let summary = evaluate(&shared, Some(&decider)).await;
+
+    assert!(nature_titles(&decider).is_empty());
+    assert_eq!((summary.nature_asked, summary.nature_copied), (0, 1));
+    let conn = shared.db.lock().unwrap();
+    let row: (f64, f64, f64, f64, f64, f64, i64) = conn
+        .query_row(
+            "SELECT nature_fact, nature_analysis, nature_forecast, nature_opinion, nature_media, nature_roundup, nature_at \
+             FROM articles WHERE id = ?1",
+            [same],
+            |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                    r.get(6)?,
+                ))
+            },
+        )
+        .unwrap();
+    assert_eq!(row, (0.2, 0.3, 0.4, 0.5, 0.8, 0.6, now()));
+    let usage: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM usage_logs WHERE purpose = 'article_nature'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(usage, 0);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn nature_calls_share_the_run_limit_with_evaluation_calls() {
+    let shared = seeded();
+    let ids = add_stocks(&shared);
+    for (i, title) in DISTINCT.iter().take(3).enumerate() {
+        rated_article(&shared, ids.samsung, title, ago(i as i64 + 1), 8.0);
+    }
+    name_link(&shared, ids.samsung, DISTINCT[5], ago(1));
+    set_num(&shared, &EVALUATION_MAX_PER_RUN, 2.0);
+    let decider = fake_article_decider(|_| Ok(fake_decision()));
+
+    let summary = evaluate(&shared, Some(&decider)).await;
+
+    // 평가 1번 + 성격 1번 = 한도 2. 나머지 성격은 다음 회차로.
+    assert_eq!(decider.calls.lock().unwrap().len(), 1);
+    assert_eq!(summary.nature_asked, 1);
+    assert!(summary.note.as_deref().unwrap().contains("회차 한도 2건"));
+    // 평가한 새 기사(성격이 이미 있는 것으로 넣은 연결)는 묻지 않았다.
+    let pending: i64 = shared
+        .db
+        .lock()
+        .unwrap()
+        .query_row(
+            "SELECT count(*) FROM articles WHERE nature_at IS NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(pending, 2);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn budget_stops_nature_calls_and_leaves_the_rest() {
+    let shared = seeded();
+    let ids = add_stocks(&shared);
+    for (i, title) in DISTINCT.iter().take(3).enumerate() {
+        rated_article(&shared, ids.samsung, title, ago(i as i64 + 1), 8.0);
+    }
+    // 성격 한 번 $0.0000294: 두 번째 호출 전엔 한도 아래, 세 번째 호출 전엔 한도 이상
+    set_num(&shared, &BUDGET_MONTHLY_USD, 0.00005);
+    let decider = fake_article_decider(|_| Ok(fake_decision()));
+
+    let summary = evaluate(&shared, Some(&decider)).await;
+
+    assert_eq!(summary.nature_asked, 2);
+    assert_eq!(
+        summary.note.as_deref(),
+        Some("이번 달 AI 예산을 모두 써서 성격 묻기를 멈췄습니다.")
+    );
+    assert_eq!(decider.nature_calls.lock().unwrap().len(), 2);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn failed_nature_stays_null_and_is_asked_again_next_run() {
+    let shared = seeded();
+    let ids = add_stocks(&shared);
+    let article = rated_article(&shared, ids.samsung, DISTINCT[0], ago(1), 8.0);
+    let failing = fake_article_decider(|_| Ok(fake_decision()))
+        .with_nature(|_| Err(DeciderError::new("일시 오류", DeciderErrorKind::Upstream)));
+
+    let summary = evaluate(&shared, Some(&failing)).await;
+    assert_eq!(
+        (
+            summary.nature_asked,
+            summary.nature_failed,
+            summary.nature_copied
+        ),
+        (0, 1, 0)
+    );
+    assert_eq!(nature_row(&shared, article).2, None);
+    let usage: i64 = shared
+        .db
+        .lock()
+        .unwrap()
+        .query_row("SELECT count(*) FROM usage_logs", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(usage, 0);
+
+    let working = fake_article_decider(|_| Ok(fake_decision()));
+    let summary = evaluate(&shared, Some(&working)).await;
+    assert_eq!((summary.nature_asked, summary.nature_failed), (1, 0));
+    assert_eq!(nature_row(&shared, article).2, Some(now()));
+}
+
+#[test]
+fn nature_summary_keys_appear_only_when_used() {
+    let summary = EvaluationSummary {
+        nature_asked: 2,
+        nature_copied: 1,
+        nature_failed: 3,
+        ..EvaluationSummary::empty()
+    };
+    let json = summary.to_json();
+    assert_eq!(json["natureAsked"], 2);
+    assert_eq!(json["natureCopied"], 1);
+    assert_eq!(json["natureFailed"], 3);
+    assert!(
+        EvaluationSummary::empty()
+            .to_json()
+            .get("natureAsked")
+            .is_none()
+    );
 }
