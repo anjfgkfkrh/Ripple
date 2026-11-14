@@ -3,15 +3,11 @@
 > 읽는 때: 세션을 시작할 때 맨 먼저. 지금 하는 일, 답 대기, 다음 할 일만 둔다(화면 한 장 안).
 > 이 문서는 덧붙이지 않고 통째로 다시 쓴다(agentflow review가 작업 통과 때, `/handoff`가 단계 밖 작업 뒤). 끝난 일의 자세한 기록은 [DECISIONS.md](DECISIONS.md) 3장, 단계 표·작업 방법은 [DEVELOPMENT.md](DEVELOPMENT.md)에 둔다. 실제와 다르면 `git log`와 `git status`를 먼저 본다.
 
-마지막 갱신: 2026-11-13 22:18 (한국 시간), 기사 분류 조사와 결정(단계 밖, 코드 변경 없음)
+마지막 갱신: 2026-11-14 (한국 시간), 18단계 `article-classify` 계획 승인(브랜치 `af/article-classify`)
 
 ## 다음 할 일
 
-- **새 단계 "기사 분류 개선" 시작: 새 세션에서 사람이 `/agentflow:plan <단계 이름>`(이름 제안 `article-classify`, 18단계).** 결정은 DECISIONS.md 1장 "기사 분류 개선(2026-11-13 …)" 한 줄(①~⑱), 근거 숫자는 2장 "기사 분류 조사", 자료·스크립트는 `scripts/analysis/article-classify/`(사람이 고친 오분류 표본 포함). SPEC 10장 단계 순서·본문에는 아직 없음(계획 때 더함). 범위 요약:
-  - 시장 항목(한국·미국 증시)을 코드 고정 별칭으로 제목+요약에서 건다(11단계 결정 바꿈). 최근 7일 기사는 다시 걸고 평가(약 $0.014).
-  - 종목 평가에 예/아니오 질문 "다른 대상(지수·다른 회사·기관)이 받는 영향을 보도하고 이 회사는 원인으로만 나오는가" → 예면 종목 탭에서 숨김. 지난 기사는 표시 규칙(같은 기사의 시장 관련도 비교)으로 거름.
-  - 기사 성격 사실·해석·전망·기타를 제목 앞 태그로(여럿이면 모두), 사실 탭과 해석·전망·기타 탭을 나눔(태그마다 그 탭에 나옴). 사진·영상·뉴스 모음은 숨김, 사설·칼럼은 기타.
-  - 계획 때 정할 세부: 성격을 어떻게 물을지(기사당 한 번, 여러 태그), 탭 화면 모양, `questions.ts`와 글자 맞추기, 일관성 유료 측정(승인됨, 예상 약 $0.03·최대 $0.05, 단계 안에서 비용을 먼저 알림).
+- **18단계 `article-classify` 진행: 사람이 원격 최신 백업을 `.check-restore/ripple.db`로 받아 둔 뒤 새 세션에서 `/agentflow:run article-classify`.** 계획 `work/article-classify/PLAN.md`(작업 9개: measure → schema → market-alias → relink-7d, stock-subject → display-rule → article-nature → nature-tabs → stage-check). 결정은 DECISIONS.md 1장 "기사 분류 개선", "18단계 `article-classify` 계획 답", "18단계 계획 때 정한 세부". `measure`(유료 최대 $0.05)가 통과하면 상위가 질문 문구·기준을 확정하고, 지난 평가 규칙 결과와 7일 성격 묻기 비용을 사용자에게 알린 뒤 진행한다. `stage-check`는 최대 $0.15 승인됨.
 
 ## 답 대기
 
