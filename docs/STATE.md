@@ -3,13 +3,13 @@
 > 읽는 때: 세션을 시작할 때 맨 먼저. 지금 하는 일, 답 대기, 다음 할 일만 둔다(화면 한 장 안).
 > 이 문서는 덧붙이지 않고 통째로 다시 쓴다(agentflow review가 작업 통과 때, `/handoff`가 단계 밖 작업 뒤). 끝난 일의 자세한 기록은 [DECISIONS.md](DECISIONS.md) 3장, 단계 표·작업 방법은 [DEVELOPMENT.md](DEVELOPMENT.md)에 둔다. 실제와 다르면 `git log`와 `git status`를 먼저 본다.
 
-마지막 갱신: 2026-11-14 (한국 시간), 18단계 `article-classify`의 마지막 작업 `stage-check` 통과(브랜치 `af/article-classify`)
+마지막 갱신: 2026-11-14 (한국 시간), 18단계 `article-classify` 보관·main 합치기·본 Docker 배포 완료(main `d3e3904`, 푸시는 아직)
 
 ## 다음 할 일
 
-- **18단계 `article-classify`: 작업 9개 모두 통과. 사용자가 단계 결과(아래 stage-check 수치·캡처)를 확인하고 승인하면 `/agentflow:close article-classify` → main 합치기(합치기 전 `node scripts/check-secrets.mjs`) → `/deploy`.** 종목 평가에 예/아니오 질문 `bystander`, 숨김 규칙 하나(`evaluate/run.rs` `NOT_HIDDEN_SQL` + 성격 숨김 `not_nature_hidden_sql()`)가 타임라인·토픽 카드·토픽 기사 수·키워드 통과 수·통계 낱말에 함께 걸린다. 평가 회차 끝에 화면 기준을 넘은 성격 없는 7일 안 기사마다 Jev 별도 요청으로 성격을 묻고(같은 소식 복사, `purpose = article_nature`), `media`·`roundup` ≥ 0.5 기사는 숨긴다. 타임라인에 "사실"·"해석·전망·기타" 두 탭(`?nature=view`)과 제목 앞 성격 태그. worker 첫 시작 때 최근 7일 기사를 시장 항목에 다시 건다(`classify.marketRelinkedAt`). 결정은 DECISIONS.md 1장 "기사 분류 개선"·"18단계 `article-classify` 계획 답"·"18단계 계획 때 정한 세부"·"18단계 measure~nature-tabs 구현 세부", 수치는 2장 "기사 분류 측정"·"18단계 단계 끝 실제 확인".
-- **stage-check 요약(시험 Docker, 실제 AI $0.0604)**: 다시 걸기 새 연결 667, 평가 Jev 호출 842(회차 한도 200으로 4회차), 종목 새 평가 87 중 `bystander` ≥ 0.5 39(화면 기준 넘던 17), 성격 물음 1,331·복사 363·실패 0, 숨김 29(사진영상 2·뉴스 모음 27). 표본 보이는 수 ① 69→50, ② 8→4, ④ 96→92. 배포 직후 본 DB에서 다시 걸기·7일 성격 묻기가 비슷한 양(약 $0.06)으로 몇 회차 돈다. 캡처는 `work/article-classify/stage-check/*.png`(close 뒤 보관소).
-- **`pnpm format:check`**: measure가 커밋한 `work/article-classify/measure/first-response.json` 서식 문제 기록이 있었으나 이후 `/check`는 통과. close로 `work/`가 옮겨지면 사라진다.
+- **18단계 배포 직후 확인(사용자 몫)**: 휴대폰·PC에서 타임라인 "사실"·"해석·전망·기타" 탭과 제목 앞 성격 태그, 시장 항목에 걸린 지수 기사를 본다. worker 첫 시작 때 최근 7일 기사 다시 걸기와 7일 성격 묻기가 몇 회차에 걸쳐 돈다(약 $0.06 예상). 끝난 뒤 상태 화면의 AI 사용량과 숨김 기사 수(사진영상·뉴스 모음)를 본다.
+- main은 아직 푸시하지 않았다(요청 시 `--history` 검사 뒤 푸시). 다음 단계는 SPEC 10장 순서에 따라 `/agentflow:plan <단계>`로 시작한다.
+- 배포 기록: DECISIONS.md 3장 맨 위. 단계 기록은 보관소 `../Ripple-archive/article-classify/`.
 
 ## 답 대기
 
