@@ -3,11 +3,11 @@
 > 읽는 때: 세션을 시작할 때 맨 먼저. 지금 하는 일, 답 대기, 다음 할 일만 둔다(화면 한 장 안).
 > 이 문서는 덧붙이지 않고 통째로 다시 쓴다(agentflow review가 작업 통과 때, `/handoff`가 단계 밖 작업 뒤). 끝난 일의 자세한 기록은 [DECISIONS.md](DECISIONS.md) 3장, 단계 표·작업 방법은 [DEVELOPMENT.md](DEVELOPMENT.md)에 둔다. 실제와 다르면 `git log`와 `git status`를 먼저 본다.
 
-마지막 갱신: 2026-11-14 (한국 시간), 18단계 `article-classify`의 `stock-subject` 통과(브랜치 `af/article-classify`)
+마지막 갱신: 2026-11-14 (한국 시간), 18단계 `article-classify`의 `display-rule` 통과(브랜치 `af/article-classify`)
 
 ## 다음 할 일
 
-- **18단계 `article-classify`: `measure`·`schema`·`market-alias`·`relink-7d`·`stock-subject` 통과. 다음은 `display-rule`(`/agentflow:run article-classify`로 이어 감).** 사람이 measure 결과(지난 평가 규칙이 화면 기준을 넘는 종목 평가 2,106건 중 79건 숨김, 7일 성격 묻기 약 $0.043~0.048 등)를 보고 `stock-subject`를 `대기`로 되돌려 진행했다. `stock-subject`로 종목 평가 요청에 예/아니오 질문 `bystander`(`type` `"noul"`)가 붙고 확률이 `evaluations.bystander`에 저장·같은 소식 복사로 옮겨진다(시장·주제 평가는 NULL, 화면 숨김은 아직 없음, `display-rule`이 한다). 종목 응답에 `bystander` 답이 없으면 그 평가는 형식 오류로 다음 회차에 다시 묻는다. 결정은 DECISIONS.md 1장 "기사 분류 개선", "18단계 `article-classify` 계획 답", "18단계 계획 때 정한 세부", "18단계 measure·schema·market-alias·relink-7d·stock-subject 구현 세부", 수치는 2장 "기사 분류 측정". `stage-check`는 최대 $0.15 승인됨.
+- **18단계 `article-classify`: `measure`·`schema`·`market-alias`·`relink-7d`·`stock-subject`·`display-rule` 통과. 다음은 `article-nature`(`/agentflow:run article-classify`로 이어 감).** 종목 평가 요청에 예/아니오 질문 `bystander`(`type` `"noul"`)가 붙어 확률이 `evaluations.bystander`에 저장되고, `display-rule`로 숨김 규칙 하나(`evaluate/run.rs` `NOT_HIDDEN_SQL`)가 타임라인·토픽 카드·토픽 기사 수·키워드 통과 수·통계 낱말에 함께 걸린다: 종목 항목 평가의 `bystander` ≥ 0.5이면 숨기고, `bystander`가 없는 지난 평가는 같은 기사의 시장 항목 관련도가 종목 관련도보다 크면 숨긴다(시장·주제 항목은 받지 않음, 평가 회차 요약 `relevant`는 그대로). 성격 숨김(사진영상·뉴스 모음)은 `article-nature`가 같은 조각에 더한다. 결정은 DECISIONS.md 1장 "기사 분류 개선", "18단계 `article-classify` 계획 답", "18단계 계획 때 정한 세부", "18단계 measure·schema·market-alias·relink-7d·stock-subject·display-rule 구현 세부", 수치는 2장 "기사 분류 측정". `stage-check`는 최대 $0.15 승인됨. 타임라인 조회 속도는 재지 않았다(stage-check에서 실제 DB로 볼 것).
 - **`pnpm format:check`**: measure 작업이 커밋한 `work/article-classify/measure/first-response.json`이 prettier 서식이 아니어서 실패한다고 기록했으나, 2026-11-14 stock-subject 리뷰의 `/check`에서는 통과했다(원인 다시 보지 않음). 단계 끝 `close`에서 `work/`가 보관소로 옮겨지면 사라진다.
 
 ## 답 대기

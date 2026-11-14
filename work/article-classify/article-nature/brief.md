@@ -44,7 +44,7 @@
 - `server/collect/run.rs`의 `evaluate_pending` 호출과 요약 저장
 
 ## 미리 정한 판단
-- `Decider`에 `classify_nature(article: &DecisionArticle, model) -> NatureDecision`(6개 확률, 모델, 토큰)을 더한다. state `{"article": {"title", "summary"?}}`. questions는 이 순서와 글자 그대로, 모두 `{"type": "boolean", "instructions": …}`:
+- `Decider`에 `classify_nature(article: &DecisionArticle, model) -> NatureDecision`(6개 확률, 모델, 토큰)을 더한다. state `{"article": {"title", "summary"?}}`. questions는 이 순서와 글자 그대로, 모두 `{"type": "noul", "instructions": …}`(답은 `answers.<이름>.noul`, measure 확인):
   - `fact`: "Does the `article` report facts: events, announcements, results, or market moves that have already happened?"
   - `analysis`: "Does the `article` interpret the causes, meaning, or background of the news, beyond restating the facts?"
   - `forecast`: "Does the `article` present a prediction or outlook, such as a target price, an earnings estimate, or an expected market direction?"
@@ -76,6 +76,7 @@
 ## 알려진 함정
 - 리뷰(2026-11-14, measure): 예/아니오 질문 `type`은 브리프의 `"boolean"`이 아니라 `"noul"`이고 답은 `answers.<이름>.noul`(0~1)이다(`"boolean"`은 HTTP 400). measure도 `"noul"`로 쟀다.
 - 리뷰(2026-11-14, schema): `server/db/schema.rs`에 이미 자유 함수 `classify_nature(&NatureProbs) -> (Vec<NatureTag>, bool)`와 구조체 `NatureProbs`(f64 6칸)가 있다. `Decider` 메서드를 같은 이름으로 두면 헷갈리니 6확률은 `NatureProbs`로 담고, 숨김 기준은 `NATURE_THRESHOLD`를 쓴다.
+- 리뷰(2026-11-14, display-rule): 숨김 조각은 `server/evaluate/run.rs`의 `NOT_HIDDEN_SQL`(`?` 하나 = `BYSTANDER_THRESHOLD`)이다. 쓰는 곳: `timeline/read.rs` `display_rule`(값 배열 `[Value; 3]`, 조회 4곳: `read_timeline` 기사 고르기·카드 항목 줄, `read_topic_cards` 토픽 항목·붙은 종목), `topics/store.rs` `topic_article_counts`(`thresholds()`), `keywords/performance.rs`·`stat_words.rs`(`NOT_HIDDEN_SQL.replace('?', "?3")`로 번호 자리표에 맞춤). 성격 부분으로 `?`가 늘면 `replace('?', "?3")`는 모든 `?`를 한 값으로 묶는다(두 기준이 지금 둘 다 0.5라 시험에 안 드러남). 자리표 번호를 따로 준다. `articles`가 없는 조회: 카드 항목 줄(`read.rs` 약 281줄), `read_topic_cards` 붙은 종목 조회, `keyword_performance`. 묻기 대상 고르기는 성격 부분을 빼야 하니 종목 숨김 조각과 성격 조각을 나눠 두면 쉽다.
 
 ## 상위로 올릴 조건
 기본 규칙(범위 밖·기대값 변경·두 번 고쳐도 남는 오류는 보고)
