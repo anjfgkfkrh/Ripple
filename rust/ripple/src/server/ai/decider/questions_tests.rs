@@ -73,6 +73,22 @@ fn article_questions_are_six_level_scores_and_a_choice() {
 }
 
 #[test]
+fn stock_asks_bystander_yes_no_after_impact_only_for_stock() {
+    let stock = build_article_questions(JudgeTarget::Stock);
+    let keys: Vec<&String> = stock.as_object().unwrap().keys().collect();
+    assert_eq!(keys, ["relevance", "magnitude", "impact", "bystander"]);
+    assert_eq!(stock["bystander"]["type"], "noul");
+    assert_eq!(
+        instructions(&stock["bystander"]),
+        "Does the `article` mainly report how something else (a stock index, another company, or an institution) is affected, with the company in `stock` appearing only as a cause or in passing?"
+    );
+    assert!(stock["bystander"].get("criteria").is_none());
+    for target in [JudgeTarget::Market, JudgeTarget::Topic] {
+        assert!(build_article_questions(target).get("bystander").is_none());
+    }
+}
+
+#[test]
 fn stock_asks_about_company_market_and_topic_about_whole_market() {
     // it("종목은 그 종목을, 시장·주제는 증시 전체를 움직이는지 묻는다(주제는 증시 기준)")
     let stock = build_article_questions(JudgeTarget::Stock);

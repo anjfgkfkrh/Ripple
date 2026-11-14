@@ -1,5 +1,5 @@
-//! Jev에 묻는 질문(SPEC FR-5, 11단계 결정). 판단을 Jev 한 곳에 모은다. 문구는 `questions.ts`와 글자까지 같아야 한다
-//! (테스트가 TS로 만든 값을 파일로 뽑아 비교한다).
+//! Jev에 묻는 질문(SPEC FR-5, 11단계 결정). 판단을 Jev 한 곳에 모은다. 문구는 고정본 `questions_fixture.json`과 글자까지 같아야 한다
+//! (테스트가 이 파일과 비교한다).
 //! - 기사: 관련도·영향도·호재/악재를 한 요청에 묻는다.
 //! - 키워드·토픽(트리 후보, 토픽×종목 쌍): 관련도·영향도를 묻는다.
 //!
@@ -112,7 +112,7 @@ fn score(instructions: String, criteria: &[&str]) -> Value {
 
 /// 기사 질문: 관련도·영향도(점수)와 호재/악재(선택)
 pub fn build_article_questions(target: JudgeTarget) -> Value {
-    json!({
+    let mut questions = json!({
         "relevance": score(
             format!(
                 "How directly is the `article` about {}? `link` explains how the article was matched.",
@@ -128,8 +128,19 @@ pub fn build_article_questions(target: JudgeTarget) -> Value {
             "What effect does the `article` have on {}?",
             moves_text(target)
         )),
-    })
+    });
+    // 종목 대상일 때만: 다른 대상이 받는 영향을 보도하고 이 회사는 원인·지나가는 언급인가
+    if target == JudgeTarget::Stock {
+        questions["bystander"] = json!({
+            "type": "noul",
+            "instructions": BYSTANDER_INSTRUCTIONS,
+        });
+    }
+    questions
 }
+
+/// 종목 기사 질문 `bystander`의 글자(예/아니오 질문, API type은 "noul")
+pub const BYSTANDER_INSTRUCTIONS: &str = "Does the `article` mainly report how something else (a stock index, another company, or an institution) is affected, with the company in `stock` appearing only as a cause or in passing?";
 
 fn impact_choice(instructions: String) -> Value {
     json!({
