@@ -3,11 +3,11 @@
 > 읽는 때: 세션을 시작할 때 맨 먼저. 지금 하는 일, 답 대기, 다음 할 일만 둔다(화면 한 장 안).
 > 이 문서는 덧붙이지 않고 통째로 다시 쓴다(agentflow review가 작업 통과 때, `/handoff`가 단계 밖 작업 뒤). 끝난 일의 자세한 기록은 [DECISIONS.md](DECISIONS.md) 3장, 단계 표·작업 방법은 [DEVELOPMENT.md](DEVELOPMENT.md)에 둔다. 실제와 다르면 `git log`와 `git status`를 먼저 본다.
 
-마지막 갱신: 2026-11-14 (한국 시간), 18단계 `article-classify`의 `market-alias` 통과(브랜치 `af/article-classify`)
+마지막 갱신: 2026-11-14 (한국 시간), 18단계 `article-classify`의 `relink-7d` 통과(브랜치 `af/article-classify`)
 
 ## 다음 할 일
 
-- **18단계 `article-classify`: `measure`·`schema`·`market-alias` 통과. `stock-subject`는 사람 확인을 기다린다.** 아래 "답 대기" 첫 항목을 보고 이의가 없으면 `work/article-classify/PLAN.md`의 `stock-subject` 상태를 `대기`로 되돌린 뒤 `/agentflow:run article-classify`. 그동안 `relink-7d`는 이어서 돌 수 있다. `market-alias`로 시장 항목(한국·미국 증시)이 코드 고정 별칭 구절(제목+요약)로 이름 연결된다(새 기사부터, 지난 7일은 `relink-7d`). 결정은 DECISIONS.md 1장 "기사 분류 개선", "18단계 `article-classify` 계획 답", "18단계 계획 때 정한 세부", "18단계 measure·schema·market-alias 구현 세부", 수치는 2장 "기사 분류 측정". `stage-check`는 최대 $0.15 승인됨.
+- **18단계 `article-classify`: `measure`·`schema`·`market-alias`·`relink-7d` 통과. `stock-subject`는 사람 확인을 기다린다(남은 작업은 모두 그 뒤).** 아래 "답 대기" 첫 항목을 보고 이의가 없으면 `work/article-classify/PLAN.md`의 `stock-subject` 상태를 `대기`로 되돌린 뒤 `/agentflow:run article-classify`. `market-alias`로 시장 항목(한국·미국 증시)이 코드 고정 별칭 구절(제목+요약)로 이름 연결되고, `relink-7d`로 worker가 처음 시작할 때 한 번 최근 7일 저장 기사를 시장 항목에 다시 건다(설정 `classify.marketRelinkedAt`, AI 없음, 평가는 다음 수집 회차). 결정은 DECISIONS.md 1장 "기사 분류 개선", "18단계 `article-classify` 계획 답", "18단계 계획 때 정한 세부", "18단계 measure·schema·market-alias·relink-7d 구현 세부", 수치는 2장 "기사 분류 측정". `stage-check`는 최대 $0.15 승인됨.
 - **`pnpm format:check`가 실패한다**: `work/article-classify/measure/first-response.json`(measure 작업이 커밋한 응답 원문)이 prettier 서식이 아니다. 코드와 무관해 작업들은 통과로 보고 있다. `work/`를 `.prettierignore`에 넣거나 파일을 서식화할지는 상위·사람이 정한다(단계 끝 `close`에서 보관소로 옮기면 사라짐).
 
 ## 답 대기
