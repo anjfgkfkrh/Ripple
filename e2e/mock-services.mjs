@@ -229,6 +229,58 @@ function jevAnswer({ model, state }) {
   };
 }
 
+const NATURE_KEYS = [
+  "fact",
+  "analysis",
+  "forecast",
+  "opinion",
+  "media",
+  "roundup",
+];
+
+/**
+ * 기사 성격 6문항(article-classify)에 대한 가짜 답. 적지 않은 것은 모두 0.1.
+ * - 제목에 "[포토]"가 있으면 media 0.9
+ * - 제목에 "전망"이 있으면 forecast 0.9, fact 0.2
+ * - 그 밖은 fact 0.9
+ */
+function natureAnswer({ model, state }) {
+  const title = state.article.title;
+  const chances = Object.fromEntries(NATURE_KEYS.map((key) => [key, 0.1]));
+  if (title.includes("[포토]")) {
+    chances.media = 0.9;
+  } else if (title.includes("전망")) {
+    chances.forecast = 0.9;
+    chances.fact = 0.2;
+  } else {
+    chances.fact = 0.9;
+  }
+  return {
+    model,
+    answers: Object.fromEntries(
+      NATURE_KEYS.map((key) => [key, { type: "noul", noul: chances[key] }]),
+    ),
+    usage: { input_tokens: 700, output_tokens: 100 },
+  };
+}
+
+/** 성격 요청: 기사 하나와 예/아니오 질문 여섯 개 */
+function natureShapeOk(parsed) {
+  const keys = Object.keys(parsed.questions ?? {});
+  return (
+    keys.length === NATURE_KEYS.length &&
+    NATURE_KEYS.every(
+      (key, index) =>
+        keys[index] === key &&
+        parsed.questions[key].type === "noul" &&
+        typeof parsed.questions[key].instructions === "string",
+    ) &&
+    typeof parsed.state?.article?.title === "string" &&
+    parsed.state.stock === undefined &&
+    parsed.state.markets === undefined
+  );
+}
+
 /**
  * 시장·주제 항목의 기사당 한 요청(17단계 eval-merge)에 대한 가짜 답. 질문 키마다 답한다.
  * - 토픽 관련도 4단계(8점), 시장 항목 관련도 1.5단계(3점)
@@ -356,6 +408,13 @@ createServer(async (request, response) => {
     let body = "";
     for await (const chunk of request) body += chunk;
     const parsed = JSON.parse(body);
+    // 기사 성격은 예/아니오 질문 여섯 개만 묻는다(article-classify).
+    if (parsed.questions?.fact !== undefined) {
+      if (!parsed.model || !natureShapeOk(parsed)) {
+        return sendJson(response, 422, { detail: "bad request" });
+      }
+      return sendJson(response, 200, natureAnswer(parsed));
+    }
     // 기사는 관련도·영향도·호재/악재, 키워드·토픽은 관련도·영향도만 묻는다(11단계).
     const lead = Boolean(parsed.state?.subject);
     // 시장·주제 항목은 기사당 한 요청이다(17단계): 토픽마다 관련도, 증시마다 영향도·호재/악재.

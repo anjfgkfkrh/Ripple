@@ -266,11 +266,14 @@ where
     {
         Ok(evaluation) => {
             log(&format!(
-                "평가 회차 {run_id}: {}건(기준 이상 {}, 실패 {}, 남김 {}), ${}{}",
+                "평가 회차 {run_id}: {}건(기준 이상 {}, 실패 {}, 남김 {}), 성격 물음 {}·복사 {}·실패 {}, ${}{}",
                 evaluation.evaluated,
                 evaluation.relevant,
                 evaluation.failed,
                 evaluation.remaining,
+                evaluation.nature_asked,
+                evaluation.nature_copied,
+                evaluation.nature_failed,
                 js_to_fixed(evaluation.cost_usd, 5),
                 evaluation
                     .note

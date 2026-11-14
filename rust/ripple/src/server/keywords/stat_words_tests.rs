@@ -233,3 +233,36 @@ fn db_words_skip_hidden_stock_evaluations() {
     }
     assert_eq!(stat_words(&conn, id, now).unwrap().articles, 2);
 }
+
+#[test]
+fn db_words_skip_nature_hidden_articles() {
+    let shared = shared_test_db();
+    seed_listings(&mut shared.db.lock().unwrap());
+    let conn = shared.db.lock().unwrap();
+    let id = first_stock(&conn);
+    let now = ms("2026-11-10T03:00:00Z");
+    insert_feed(&conn, 20);
+    let day = 24 * 60 * 60 * 1000;
+    let mut articles = Vec::new();
+    for title in [
+        "삼성전자 엔비디아 납품",
+        "삼성전자 엔비디아 승인",
+        "삼성전자 엔비디아 협력",
+    ] {
+        let mut link = LinkSpec::new(id, title, now - day);
+        link.relevance = Some(8.0);
+        link.magnitude = Some(8.0);
+        articles.push(insert_link(&conn, &link).1);
+    }
+    conn.execute(
+        "UPDATE articles SET nature_media = 0.8 WHERE id = ?1",
+        [articles[0]],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE articles SET nature_roundup = 0.7 WHERE id = ?1",
+        [articles[1]],
+    )
+    .unwrap();
+    assert_eq!(stat_words(&conn, id, now).unwrap().articles, 1);
+}

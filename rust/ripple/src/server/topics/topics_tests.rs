@@ -1824,3 +1824,41 @@ fn previous_topic_line_shows_screen_pass_count() {
             .contains("- 1: a — b [c] · 기사 7건 · 통과 2건\n")
     );
 }
+
+#[test]
+fn topic_article_counts_skip_nature_hidden_articles() {
+    let (shared, _samsung) = setup();
+    ensure_default_market(&shared.db.lock().unwrap(), at(-30.0)).unwrap();
+    let market_topic = auto_topic(&shared, "중동 긴장", &["중동"]);
+    let lens = {
+        let conn = shared.db.lock().unwrap();
+        sync_topic_lenses(&conn, &market_topic, at(-30.0)).unwrap()[0]
+    };
+    for media in [Some(0.9), None] {
+        let m = link_to(&shared, lens, 8.0, 8.0);
+        shared
+            .db
+            .lock()
+            .unwrap()
+            .execute(
+                "UPDATE articles SET nature_media = ?1 WHERE id = (SELECT article_id FROM article_matches WHERE id = ?2)",
+                rusqlite::params![media, m],
+            )
+            .unwrap();
+    }
+    let counts = topic_article_counts(
+        &shared.db.lock().unwrap(),
+        &[market_topic.id],
+        at(-24.0),
+        6.0,
+        6.0,
+    )
+    .unwrap();
+    assert_eq!(
+        (
+            counts[&market_topic.id].matched,
+            counts[&market_topic.id].shown
+        ),
+        (2, 1)
+    );
+}

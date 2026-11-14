@@ -1164,3 +1164,75 @@ fn read_topic_cards_apply_the_hidden_rule_to_attached_stocks_only() {
         }]
     );
 }
+
+// ---- 기사 성격 숨김(article-classify/article-nature) ----
+
+fn set_nature(conn: &Connection, article_id: i64, media: Option<f64>, roundup: Option<f64>) {
+    conn.execute(
+        "UPDATE articles SET nature_media = ?1, nature_roundup = ?2, nature_at = 1 WHERE id = ?3",
+        params![media, roundup, article_id],
+    )
+    .unwrap();
+}
+
+#[test]
+fn nature_media_or_roundup_at_threshold_hides_the_article_everywhere_but_null_shows() {
+    let t = test_db_with_listings();
+    let c = &t.conn;
+    let ids = add_stocks(c);
+    ensure_default_market(c, ago(80.0)).unwrap();
+    let article_of = |title: &str, hours: f64| {
+        Link::new(ids.samsung, ago(hours))
+            .titled(title)
+            .score(8.0)
+            .magnitude(7.0)
+            .insert(c)
+            .1
+    };
+    let media = article_of("사진 기사", 1.0);
+    let roundup = article_of("뉴스 모음", 2.0);
+    article_of("성격 없음", 3.0);
+    let low = article_of("기준 미만", 4.0);
+    set_nature(c, media, Some(0.8), Some(0.1));
+    set_nature(c, roundup, Some(0.1), Some(0.5));
+    set_nature(c, low, Some(0.49), Some(0.2));
+
+    assert_eq!(titles(c, &ALL), names(&["성격 없음", "기준 미만"]));
+    // 종목 필터에서도 같다
+    let by_samsung = TimelineFilter {
+        stock_id: Some(ids.samsung),
+        ..ALL
+    };
+    assert_eq!(titles(c, &by_samsung), names(&["성격 없음", "기준 미만"]));
+    // 카드 항목 줄(articles를 붙인 조회)도 같은 규칙: 숨긴 기사만 걸린 종목은 카드에 없다
+    assert_eq!(card_stock_ids(c, &ALL, "사진 기사"), None);
+    assert_eq!(
+        card_stock_ids(c, &ALL, "성격 없음"),
+        Some(vec![ids.samsung])
+    );
+}
+
+#[test]
+fn nature_hidden_articles_do_not_count_in_topic_cards() {
+    let t = test_db_with_listings();
+    let c = &t.conn;
+    let _ids = add_stocks(c);
+    ensure_default_market(c, ago(80.0)).unwrap();
+    let (_topic, lenses) = auto_topic(c, "중동 긴장");
+    let mut hidden = 0;
+    for (n, media) in [Some(0.9), None, Some(0.2)].into_iter().enumerate() {
+        let (_, article) = Link::new(lenses[0], ago(1.0 + n as f64))
+            .titled(&distinct(n as u32))
+            .keyword("종목")
+            .score(8.0)
+            .magnitude(7.0)
+            .impact("negative")
+            .insert(c);
+        set_nature(c, article, media, None);
+        hidden += i32::from(media == Some(0.9));
+    }
+    assert_eq!(hidden, 1);
+    let cards = read_topic_cards(c, now()).unwrap();
+    assert_eq!(cards.len(), 1);
+    assert_eq!(cards[0].shown_total, 2);
+}

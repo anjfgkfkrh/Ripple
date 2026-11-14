@@ -1283,9 +1283,7 @@ async fn asks_nature_only_for_visible_recent_articles_without_nature() {
     );
     let (fact, media, at) = nature_row(&shared, visible);
     assert_eq!((fact, media, at), (Some(0.9), Some(0.1), Some(now())));
-    for untouched in [bystander] {
-        assert_eq!(nature_row(&shared, untouched).2, None);
-    }
+    assert_eq!(nature_row(&shared, bystander).2, None);
     // 사용량: 성격 한 줄, 종목 없음, 비용 = 입력 700토큰 × 단가
     let conn = shared.db.lock().unwrap();
     let (count, stock_null, input, cost): (i64, i64, i64, f64) = conn
