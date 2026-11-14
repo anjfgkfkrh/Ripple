@@ -12,7 +12,7 @@
 | relink-7d | worker 시작 때 최근 7일 저장 기사를 시장 항목에 한 번 다시 건다 | `backfill_tests` 새 시험 통과, `/check` 전체 통과 | Sonnet / medium | market-alias 통과 | 통과 | 1 |
 | stock-subject | 종목 평가에 예/아니오 질문 `bystander`를 더해 해석·저장·복사 | `questions_tests`·`typesafe_tests`·`evaluate/run_tests` 새 시험 통과, `/check` 전체 통과 | Sonnet / medium | measure 통과, schema 통과 | 통과 | 1 |
 | display-rule | 숨김 규칙 하나(새 질문·지난 평가 규칙)를 타임라인·토픽 수·키워드 통과·통계 낱말에 적용 | `timeline/read_tests`·`store` 시험·`performance_tests`·`stat_words` 시험 새 시험 통과, `/check` 전체 통과 | Sonnet / medium | stock-subject 통과 | 통과 | 1 |
-| article-nature | 보이는 기사의 성격을 Jev 별도 요청으로 묻고 저장·복사, 사진영상·뉴스 모음 숨김 | `questions_tests`·`typesafe_tests`·`evaluate` 시험 새 시험 통과, `/check` 전체 통과 | Sonnet / medium | display-rule 통과 | 대기 | 0 |
+| article-nature | 보이는 기사의 성격을 Jev 별도 요청으로 묻고 저장·복사, 사진영상·뉴스 모음 숨김 | `questions_tests`·`typesafe_tests`·`evaluate` 시험 새 시험 통과, `/check` 전체 통과 | Sonnet / medium | display-rule 통과 | 진행 | 1 |
 | nature-tabs | 제목 앞 성격 태그와 사실 / 해석·전망·기타 탭 | `timeline/read_tests`·`web/timeline_tests` 새 시험, E2E `timeline.spec.ts` 새 시험 통과, `/check` 전체 통과, 휴대폰·PC 캡처 | Sonnet / medium | article-nature 통과 | 대기 | 0 |
 | stage-check | 시험 Docker에서 실제 AI로 다시 걸기·평가·성격 묻기를 돌리고 표본 ①②④를 다시 센다 | 인계에 항목별 수치·비용($0.15 이하)·화면 캡처, 시험 Docker 내림 | Sonnet / medium | 앞 작업 모두 통과 | 대기 | 0 |
 
