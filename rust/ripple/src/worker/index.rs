@@ -8,6 +8,7 @@ use crate::server::ai::decider::typesafe::TypeSafeDecider;
 use crate::server::ai::llm::models::{ModelListOptions, is_open_router_model};
 use crate::server::ai::llm::openrouter::OpenRouterClient;
 use crate::server::backup::run_backup;
+use crate::server::collect::backfill::relink_market_articles_once;
 use crate::server::collect::finnhub::FinnhubClient;
 use crate::server::collect::http::{HttpClientOptions, ReqwestHttpClient};
 use crate::server::collect::robots::RobotsChecker;
@@ -98,6 +99,7 @@ async fn start(env: &Env) -> Result<(), Box<dyn std::error::Error>> {
             "도중에 멈춘 수집 회차 {stale}개를 실패로 정리했습니다."
         ));
     }
+    relink_markets_at_start(&db);
     if config.finnhub_api_key.is_none() {
         log("FINNHUB_API_KEY가 없어 미국 뉴스(Finnhub)는 수집하지 않습니다.");
     }
@@ -251,6 +253,18 @@ async fn start(env: &Env) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// 시작 때 한 번, 저장된 최근 7일 기사를 시장 항목에 다시 건다(표시가 있으면 하지 않는다). 실패해도 시작은 계속한다.
+fn relink_markets_at_start(db: &Db) {
+    let mut conn = db.lock().expect("DB 잠금이 깨졌습니다");
+    match relink_market_articles_once(&mut conn, now_ms()) {
+        Ok(Some((checked, added))) => log(&format!(
+            "시장 항목 다시 걸기: 기사 {checked}건 확인, 새 연결 {added}개"
+        )),
+        Ok(None) => {}
+        Err(error) => log_error("시장 항목 다시 걸기 실패", &error),
+    }
+}
+
 /// 백업 폴더(BACKUP_DIR)가 있을 때만 백업 함수를 만든다. DB는 파일 경로로 따로 연다(R8 ⑥).
 fn backup_function(config: &WorkerConfig) -> Option<BackupFn> {
     let dir = PathBuf::from(config.backup_dir.as_ref()?);
@@ -325,5 +339,53 @@ async fn wait_for_signal() -> &'static str {
     tokio::select! {
         _ = term.recv() => "SIGTERM",
         _ = int.recv() => "SIGINT",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::server::settings::{MARKET_RELINKED_AT, read_num};
+    use crate::test_support::{seed_market, shared_test_db};
+
+    #[test]
+    fn start_relink_links_recent_market_articles_once() {
+        let shared = shared_test_db();
+        let now = now_ms();
+        {
+            let conn = shared.db.lock().unwrap();
+            seed_market(&conn, "KR", now);
+            conn.execute(
+                "INSERT INTO articles (url_key, url, title, publisher, feed, published_at, collected_at) \
+                 VALUES ('w/1', 'https://w/1', '코스피 상승', '가경제', 'rss:a:economy', ?1, ?1)",
+                [now - 1000],
+            )
+            .unwrap();
+        }
+        relink_markets_at_start(&shared.db);
+        let count = |db: &Db| -> i64 {
+            db.lock()
+                .unwrap()
+                .query_row("SELECT COUNT(*) FROM article_matches", [], |r| r.get(0))
+                .unwrap()
+        };
+        assert_eq!(count(&shared.db), 1);
+        assert_ne!(
+            read_num(&shared.db.lock().unwrap(), &MARKET_RELINKED_AT).unwrap(),
+            0.0
+        );
+        // 두 번째 시작에서는 새 기사가 있어도 하지 않는다.
+        shared
+            .db
+            .lock()
+            .unwrap()
+            .execute(
+                "INSERT INTO articles (url_key, url, title, publisher, feed, published_at, collected_at) \
+                 VALUES ('w/2', 'https://w/2', '코스닥 하락', '가경제', 'rss:a:economy', ?1, ?1)",
+                [now - 1000],
+            )
+            .unwrap();
+        relink_markets_at_start(&shared.db);
+        assert_eq!(count(&shared.db), 1);
     }
 }
