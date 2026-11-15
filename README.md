@@ -1,5 +1,7 @@
 # Ripple
 
+사용 가능한 사이트: https://ripple.anjfgkfkrh.com
+
 보유 주식과 시장 전체에 관련된 뉴스를 자동으로 모으고 Jev(TypeSafe AI)로 관련도·영향도와 호재·악재를 골라 웹으로 보여 주는 개인용 앱. 집 노트북의 Docker에서 돌고, 휴대폰에서는 Cloudflare 임시 주소(또는 내 도메인의 고정 주소)로 접속한다.
 
 - 기능 명세: [docs/SPEC.md](docs/SPEC.md)
