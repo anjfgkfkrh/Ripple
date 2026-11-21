@@ -22,7 +22,7 @@
 
 ## 1. 처음 설치
 
-준비물: Docker Desktop(compose v2). 개발할 때만 Rust 1.99.1(rustup)과 Node.js 24·pnpm 12가 더 필요하다(실행 파일 빌드와 E2E).
+준비물: Docker Desktop 또는 Docker Engine(compose v2). 개발할 때만 Rust 1.99.1(rustup)과 Node.js 24·pnpm 12가 더 필요하다(실행 파일 빌드와 E2E).
 
 ```bash
 cp .env.example .env    # 아직 .env가 없을 때만
@@ -245,7 +245,7 @@ ARCHS=arm64 scripts/release.sh   # 한 종류만 다시 만들 때
 
 스크립트가 이미지 안을 검사한다: 종류(arm64/amd64)가 맞는지, 환경변수·`.env`·DB 파일이 없는지, 내 `.env`의 비밀 값이 이미지 어디에도 없는지, 그 종류에서 마이그레이션이 실제로 도는지. 하나라도 어긋나면 멈춘다.
 
-한계: amd64 이미지는 이 Mac에서 에뮬레이션으로 만들고 마이그레이션까지만 확인했다. 실제 amd64 PC에서 전체를 켜 본 것은 아니다.
+한계: v0.3.0의 amd64 이미지는 Mac에서 에뮬레이션으로 만들고 마이그레이션까지만 확인했다. 2026-11-20부터 개발 컴퓨터가 amd64 Linux(blockall)라 이제는 arm64 쪽이 에뮬레이션이 된다(Docker에 arm64 binfmt가 있어야 한다).
 
 ## 8. 개발
 

@@ -1,12 +1,12 @@
 ---
 name: deploy
-description: 본 Docker(원격 서버 blockall-ss, 사용자 실제 데이터)에 지금 작업 트리를 배포한다. 배포 전 확인 → 백업 → Mac에서 amd64 빌드·전송 → 다시 띄우기 → 확인 → 기록. 사용자가 배포를 요청했을 때만 쓴다.
+description: 본 Docker(원격 서버 blockall-ss, 사용자 실제 데이터)에 지금 작업 트리를 배포한다. 배포 전 확인 → 백업 → 개발 컴퓨터(blockall)에서 amd64 빌드·전송 → 다시 띄우기 → 확인 → 기록. 사용자가 배포를 요청했을 때만 쓴다.
 disable-model-invocation: true
 ---
 
-본 Docker(compose 프로젝트 `ripple`, 볼륨 `ripple_ripple-data`)는 2026-11-09부터 원격 서버 `blockall@blockall-ss`(Ubuntu x86_64)의 `~/Ripple`에서 돈다(DECISIONS.md 1장 "본 Docker 원격 서버로 옮기기"). 원격에는 `docker-compose.yml`·`.env`·`backups/`만 있고 소스는 없다. 이미지는 Mac에서 amd64로 빌드해 보낸다.
+본 Docker(compose 프로젝트 `ripple`, 볼륨 `ripple_ripple-data`)는 2026-11-09부터 원격 서버 `blockall@blockall-ss`(Ubuntu x86_64)의 `~/Ripple`에서 돈다(DECISIONS.md 1장 "본 Docker 원격 서버로 옮기기"). 원격에는 `docker-compose.yml`·`.env`·`backups/`만 있고 소스는 없다. 이미지는 개발 컴퓨터 `blockall`(Ubuntu x86_64, 2026-11-20부터. 그 전은 Mac)에서 빌드해 보낸다(DECISIONS.md 1장 "개발 컴퓨터 blockall로 옮기기"). blockall-ss는 2026-11-21부터 blockall과 같은 라우터에 유선 직결이고, blockall의 `~/.ssh/config`의 `Host blockall-ss`가 그 주소(`125.190.190.117`, 라우터 DHCP)를 가리킨다. 접속이 안 되면 blockall-ss의 유선 주소(`ip -br addr show enx00e04c531628`)를 보고 고친다.
 
-이 절차 밖의 일(비밀번호·설정·종목·예산 바꾸기, `down`, `-v`, 볼륨 지우기)은 하지 않는다. **Mac에서는 `-p ripple-check` 없이 `docker compose up`하지 않는다**: 같은 터널 토큰과 worker가 원격과 겹친다. Mac의 `ripple` 컨테이너·볼륨은 2026-11-09에 지웠다. 로컬 명령은 저장소 루트에서 돈다. 원격 명령은 `R='ssh blockall@blockall-ss'`로 두고 `$R 'cd ~/Ripple && …'`로 부른다.
+이 절차 밖의 일(비밀번호·설정·종목·예산 바꾸기, `down`, `-v`, 볼륨 지우기)은 하지 않는다. **개발 컴퓨터에서는 `-p ripple-check` 없이 `docker compose up`하지 않는다**: 같은 터널 토큰과 worker가 원격과 겹친다. 로컬 명령은 저장소 루트에서 돈다. 원격 명령은 `R='ssh blockall@blockall-ss'`로 두고 `$R 'cd ~/Ripple && …'`로 부른다.
 
 ## 1. 배포 전 확인
 
@@ -47,17 +47,17 @@ scp -q docker-compose.yml blockall@blockall-ss:Ripple/docker-compose.yml
 $R 'cd ~/Ripple && docker compose config --quiet && docker compose up -d --no-build'
 ```
 
-- Mac(arm64)에서 QEMU로 빌드한다(`scripts/release.sh`와 같은 방식). `--no-build`는 원격에 소스가 없어서 꼭 붙인다.
-- `-t ripple-app:amd64`로 따로 이름을 붙여 Mac의 시험용 이미지(`ripple-app`, arm64)를 덮지 않는다.
+- blockall은 amd64라 에뮬레이션 없이 빌드된다. `--no-build`는 원격에 소스가 없어서 꼭 붙인다.
+- `-t ripple-app:amd64`로 따로 이름을 붙여 시험용 이미지(`ripple-app`, `/real-check`가 빌드)와 섞지 않는다.
 - `config`는 비밀 값을 출력하므로 `--quiet`로만 쓴다.
 - migrate·worker·web만 다시 만들어진다. tunnel은 이미지와 설정이 그대로라 다시 만들어지지 않는다(tunnel 서비스의 명령·환경이 바뀐 배포는 예외).
 
 ## 4. 확인
 
 - `$R 'cd ~/Ripple && docker compose ps'`: worker `healthy`, web `Up`, tunnel은 배포 전과 같은 가동 시간(tunnel 설정이 바뀐 배포는 예외).
-- `docker compose logs migrate --tail 20`(원격): 오류 없음. 1의 조회를 다시 돌려 `userVersion`이 `rust/ripple/migrations/*.sql` 파일 수와 같고(지금 11), 기사 수가 배포 전 이상인지 본다.
+- `docker compose logs migrate --tail 20`(원격): 오류 없음. 1의 조회를 다시 돌려 `userVersion`이 `rust/ripple/migrations/*.sql` 파일 수와 같고(지금 14), 기사 수가 배포 전 이상인지 본다.
 - 원격에서 `curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' http://127.0.0.1:3000/` → `200`(손님 보기), `/status` → `307 …/login?next=%2Fstatus`.
-- 터널: 1의 `/ready`가 `200`·`readyConnections` 4. 공개 주소는 tunnel 로그 `ingress`의 `hostname`(지금 `ripple.anjfgkfkrh.com`)으로 Mac에서 `curl`한다.
+- 터널: 1의 `/ready`가 `200`·`readyConnections` 4. 공개 주소는 tunnel 로그 `ingress`의 `hostname`(지금 `ripple.anjfgkfkrh.com`)으로 개발 컴퓨터에서 `curl`한다.
 - `docker compose logs --since 10m worker web 2>&1 | grep -i -E 'error|fail' | head`(원격): 새 오류 없음. tunnel의 `failed to sufficiently increase receive buffer size`(UDP 버퍼) 경고는 옮길 때부터 있던 것이다.
 - 이번 변경에 맞는 확인을 하나 더 한다(예: 새 API를 데이터가 바뀌지 않는 방식으로 부르기). 데이터를 바꾸는 확인은 하지 않는다.
 - AI 호출은 하지 않는다(정기 작업이 부르는 것은 평소대로).

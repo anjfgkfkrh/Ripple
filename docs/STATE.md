@@ -3,10 +3,14 @@
 > 읽는 때: 세션을 시작할 때 맨 먼저. 지금 하는 일, 답 대기, 다음 할 일만 둔다(화면 한 장 안).
 > 이 문서는 덧붙이지 않고 통째로 다시 쓴다(agentflow review가 작업 통과 때, `/handoff`가 단계 밖 작업 뒤). 끝난 일의 자세한 기록은 [DECISIONS.md](DECISIONS.md) 3장, 단계 표·작업 방법은 [DEVELOPMENT.md](DEVELOPMENT.md)에 둔다. 실제와 다르면 `git log`와 `git status`를 먼저 본다.
 
-마지막 갱신: 2026-11-14 16:38 (한국 시간), 화면 느림 고치기(마이그레이션 0013 색인) 커밋·본 Docker 배포 완료(main `9ac0f00`, 푸시 완료)
+마지막 갱신: 2026-11-20 (한국 시간), 개발 컴퓨터를 Mac에서 blockall로 옮김(코드 변경 없음, 비용 0). 그 전: 키워드 트리 이슈 추적 점검, 화면 느림 고치기 배포(main `9ac0f00`)
 
 ## 다음 할 일
 
+- **개발 컴퓨터 blockall로 옮김(2026-11-20)**: 이제 세션은 `ssh blockall` → `cd ~/workspace/Ripple` → `claude`로 연다. 남은 것: ① **배포 경로 끝(2026-11-21)**: blockall-ss를 라우터에 유선 직결(`125.190.190.117`), blockall에서 SSH·`/deploy` 1장 확인됨(DECISIONS 3장 맨 위). 남은 판단: 유선 주소 DHCP 고정 할당, blockall-ss SSH가 공인 IP에 열림(키 전용) → ufw로 좁힐지 ② 사용자 sudo(선택): Playwright 글꼴(`sudo $(command -v pnpm) exec playwright install-deps chromium`, E2E는 없이도 통과함). jq는 `~/.local/bin/jq`(1.7.1, sha256 확인)로 넣었고 hook이 막는 것을 확인함 ③ blockall 원격 시동 끝(2026-11-21): Mac에서 `wake-blockall`(blockall-ss가 WoL), Ubuntu·Windows 어느 쪽에서 꺼도 켜지고 GRUB 기본 Ubuntu로 부팅. blockall은 SSH(키 전용)만 받음(ufw 22만, neo4j 닫음). 결정·세부는 DECISIONS.md 1장 "개발 컴퓨터 blockall로 옮기기", 기록은 3장 맨 위.
+
+- **키워드 트리 이슈 추적 점검 끝(2026-11-16)**: 11-16 06:00 정기 점검이 한국 증시 환율·유가·외국인 수급, 두산 SMR을 실적 없는 새 키워드로 밀어냄(설계대로 동작, 규칙 문제). 보고서 https://claude.ai/artifact/MF5AbEDTMVpk88RVv53u93, 숫자는 DECISIONS.md 2장 "키워드 트리 이슈 추적 점검". 아래 답 대기 질문 7개.
+- **키워드 트리 유용성 조사 끝(2026-11-16)**: 결론은 유지(59.5시간 타임라인 1,016건 중 78건이 트리로만, 월 약 $0.22). 보고서 https://claude.ai/artifact/SosvAjkFBQRp8sZMoTY7oy, 숫자는 DECISIONS.md 2장 "키워드 트리 유용성 조사". 아래 답 대기 질문 4개.
 - **화면 느림 고치기 배포됨(2026-11-14 16:37)**: 원격 `/` 27.2초 → 0.20초, 컨테이너 CPU 0%. main은 문서 커밋과 함께 푸시했다. 휴대폰·PC에서 화면이 빨라졌는지 확인은 사용자 몫. 기록: DECISIONS.md 3장 맨 위.
 - **18단계 배포 직후 확인(사용자 몫)**: 휴대폰·PC에서 타임라인 "사실"·"해석·전망·기타" 탭과 제목 앞 성격 태그, 시장 항목에 걸린 지수 기사를 본다. worker 첫 시작 때 최근 7일 기사 다시 걸기와 7일 성격 묻기가 몇 회차에 걸쳐 돈다(약 $0.06 예상). 끝난 뒤 상태 화면의 AI 사용량과 숨김 기사 수(사진영상·뉴스 모음)를 본다.
 - 다음 단계는 SPEC 10장 순서에 따라 `/agentflow:plan <단계>`로 시작한다.
@@ -14,6 +18,8 @@
 
 ## 답 대기
 
+- **키워드 트리 이슈 추적(2026-11-16, 보고서 마지막 절)**: ① 밀어내기에서 4주 통과 있는 키워드를 지키고 자리 없으면 더할 것 버림 A(추천)/점검 프롬프트에 상한·실적 B ② 별칭 연결도 시장 키워드 실적으로 셈 A/안 셈 B(추천) ③ 1A 뒤 한국 증시·두산 다시 만들기 A(추천)/다음 주 점검 B ④ 낱말 찾기에서 가운뎃점(·)을 공백으로 A(추천)/그대로 B ⑤ 세 낱말 키워드 막는 프롬프트 A/그대로 B(추천) ⑥ 미국 증시 AI·기술주 요인 A/그대로 B(추천) ⑦ 1A 뒤 두 번째 점검 뒤 다시 재기 A(추천)/B. 아래 유용성 질문 ①~④와 함께 답한다.
+- **키워드 트리 유용성(2026-11-16)**: ① 종목 구조 트리 A 유지(추천)/B 없앰 ② 넓은 고유어(삼성 '엔비디아'·'반도체' 등) A 문구로 막기/B 그대로(추천) ③ 종목 2단계 A 그대로(추천)/B 종목만 깊이 1 ④ 2주 이상 창(18단계 뒤 사본)으로 다시 재기 A(추천, 원격 사본 받기는 권한 분류기가 막아 사용자가 받거나 허용)/B 끝. 보고서 마지막 절.
 - **18단계 measure에서 남긴 질문**: `[자막뉴스]` 4건은 `media` 0.19~0.30으로 숨겨지지 않는다(성격 질문 문구를 바꿀지, 그대로 둘지). 뉴스 모음 `roundup`은 0.52·0.56으로 기준 근처. `article-nature`는 measure 때 글자 그대로 구현됨(문구 바꾸지 않음). stage-check에서 7일 기사 중 사진영상으로 숨겨진 것은 2건뿐(뉴스 모음 27). 단계 확인 때 함께 볼 것.
 - **기사 분류 2-5 나머지**: 젠슨 황 사임 뒤 본인 심경·주변 반응·다른 경영자 비교 기사(영향도 6.9~7.7로 보임)가 왜 엔비디아에 붙는지. 사용자 "지금 그대로, 나중에 수정". 사례는 DECISIONS 2장 "기사 분류 조사".
 - **16단계(작음): 손님이 비밀번호 창으로 권한을 얻은 직후 화면.** A(추천) 그대로 둔다(새로 고치면 맞아짐) / B 비밀번호가 맞으면 원래 요청 뒤 화면을 새로 고친다. DECISIONS.md 1장 "16단계 unlock-ui 구현 세부" ⑤.
@@ -22,7 +28,7 @@
 
 ## 남은 확인
 
-- 17단계 단계 끝 확인에서 넘어온 것: ① 회차 887에서 종목 키워드 연결 278건이 전부 `gated`(고유어가 너무 좁은지 본 DB의 `article_matches.gated` 비율로 다시 볼 것) ② 시장 항목 통과 수가 직전보다 적었음(한국 9 vs 40, 미국 14 vs 31, 조건이 달라 비교 불확실) ③ Jev 호출 수·토픽 갱신 추론 토큰은 기록이 없어 못 잼. 설정(영향도 기준 5, 키워드 재생성 주 1회)은 2026-11-13 원격 DB에서 반영된 것을 확인함.
+- 17단계 단계 끝 확인에서 넘어온 것: ① 고유어가 너무 좁은지: 2026-11-16 조사에서 `gated` 구조 키워드 연결 35건 표본은 거의 잡음이라 좁지 않음(오히려 넓은 고유어가 문제, DECISIONS 2장 "키워드 트리 유용성 조사") ② 시장 항목 통과 수가 직전보다 적었음(한국 9 vs 40, 미국 14 vs 31, 조건이 달라 비교 불확실) ③ Jev 호출 수·토픽 갱신 추론 토큰은 기록이 없어 못 잼. 설정(영향도 기준 5, 키워드 재생성 주 1회)은 2026-11-13 원격 DB에서 반영된 것을 확인함.
 - 엔비디아 이름 연결이 17단계 배포 뒤에만 있다(원인 확인 안 함, 엔비디아는 별칭 없음).
 - 원격 본 Docker의 장중 주가 갱신(KIS·Finnhub): `stock_prices`의 최근 `fetched_at`과 상태 화면 "주가" 줄로 본다(아직 보지 않음).
 - 13단계: 모의 서버 값이 실전과 같은지(사용자가 증권 앱과 대조), KIS 미국 시세가 실시간인지(미국 장중 KIS `last`와 Finnhub `c` 비교). 14단계: KIS 주가 띠(Rust)를 실제 키로 확인, 12~14단계 휴대폰·PC 화면 확인(사용자 몫).
@@ -31,7 +37,7 @@
 
 ## 운영 메모
 
-- 본 Docker는 원격 서버 `blockall@blockall-ss`(`~/Ripple`)에서 돈다(2026-11-09 전환, 2026-11-13 기준 주소 192.168.200.100, `known_hosts` 등록됨). 배포는 `/deploy`, 공개 주소 `https://ripple.anjfgkfkrh.com`. Mac에서는 `-p ripple-check` 없이 `up`하지 않는다. 시험용 Docker(`/real-check`)는 Mac. 같은 터널 토큰·KIS 키를 시험 Docker와 본 Docker에서 함께 쓰지 않는다. 시험 볼륨 `ripple-check_ripple-data`는 `down -v`로 안 지워질 수 있어 `docker volume rm`으로 확인한다. 본 DB를 읽기만 할 때는 `scripts/analysis/article-classify/README.md` 1번처럼 `ripple.db`와 `-wal`을 함께 받는다.
+- 본 Docker는 원격 서버 `blockall@blockall-ss`(`~/Ripple`)에서 돈다(2026-11-09 전환. 주소: blockall에서는 유선 `125.190.190.117`(2026-11-21 직결, `~/.ssh/config`의 `Host blockall-ss`), Wi-Fi `192.168.200.100`은 공유기 안이라 Mac에서만). 배포는 `/deploy`, 공개 주소 `https://ripple.anjfgkfkrh.com`. 개발 컴퓨터(2026-11-20부터 `blockall`, Ubuntu)에서는 `-p ripple-check` 없이 `up`하지 않는다. 시험용 Docker(`/real-check`)도 개발 컴퓨터. 같은 터널 토큰·KIS 키를 시험 Docker와 본 Docker에서 함께 쓰지 않는다. 시험 볼륨 `ripple-check_ripple-data`는 `down -v`로 안 지워질 수 있어 `docker volume rm`으로 확인한다. 본 DB를 읽기만 할 때는 `scripts/analysis/article-classify/README.md` 1번처럼 `ripple.db`와 `-wal`을 함께 받는다.
 - 단계: 0~17단계 완료·배포(17단계 2026-11-11, 기록은 보관소 `../Ripple-archive/keyword-topic/`; 16단계 2026-11-08, `separate-role/`). v0.3.0 릴리스(2026-11-07), v0.2.0 이하에서는 업데이트할 수 없음(DEVELOPMENT.md 7장).
-- 사용자가 할 일(개발 환경): ① `sudo chown -R "$(whoami)":staff ~/.npm`(playwright MCP) ② GitHub 토큰을 `GITHUB_PERSONAL_ACCESS_TOKEN`으로 셸 환경에 넣기 ③ 새 세션에서 `/mcp`로 확인.
+- 개발 환경(blockall, 2026-11-20): github MCP 토큰은 `~/.bashrc`의 `GITHUB_PERSONAL_ACCESS_TOKEN="$(gh auth token)"`(gh 로그인 토큰을 같이 씀, `gh` 2.105.0은 `~/.local/bin`). Mac에서는 키체인 `github-mcp` 항목을 `~/.zshrc`가 읽었다. github·playwright MCP 연결 확인됨.
 - 지난 진행 기록(단계별 체크리스트·배포 기록)은 DECISIONS.md 3장.

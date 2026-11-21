@@ -24,7 +24,7 @@ TUNNEL_TOKEN= PUBLIC_URL= WEB_PORT=3300 BACKUP_HOST_DIR=./.check-backups docker 
 
 ## 2. 실제 데이터 사본 넣기(필요할 때)
 
-본 DB를 직접 쓰지 않고 백업 사본을 시험 볼륨에 넣는다. 본 Docker는 2026-11-09부터 원격 서버라 백업도 원격 `~/Ripple/backups`에 있다(매일 04:00 자동, 7개 보관). Mac의 `backups/`는 그 전까지의 옛 백업이다. 최신 백업을 시험 폴더로 받아 온다:
+본 DB를 직접 쓰지 않고 백업 사본을 시험 볼륨에 넣는다. 본 Docker는 2026-11-09부터 원격 서버라 백업도 원격 `~/Ripple/backups`에 있다(매일 04:00 자동, 7개 보관). 개발 컴퓨터(blockall)의 `backups/`는 그 전까지의 옛 백업이다(Mac에서 옮겨 옴). 원격 백업은 blockall에서 바로 받는다(2026-11-21 직결 뒤). 최신 백업을 시험 폴더로 받아 온다:
 
 ```bash
 F="$(ssh blockall@blockall-ss 'ls -t ~/Ripple/backups/*.db | head -1')"
